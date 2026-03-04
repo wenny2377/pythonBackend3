@@ -1,0 +1,5 @@
+models/
+*.onnx
+*.zip
+__pycache__/
+.env
