@@ -1,0 +1,1823 @@
+[
+  {
+    "faiss_idx": 0,
+    "user": "User_Mom",
+    "action": "walking",
+    "instance": "mom's bed",
+    "interacting_items": [
+      "remote control"
+    ],
+    "all_items": [
+      "wooden floor",
+      "blue line",
+      "white bed",
+      "remote control"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "person",
+        "relation": "on",
+        "object": "wooden floor"
+      },
+      {
+        "subject": "bed",
+        "relation": "next to",
+        "object": "wooden floor"
+      },
+      {
+        "subject": "remote control",
+        "relation": "in hand of",
+        "object": "person"
+      }
+    ],
+    "furniture_pos": [
+      -7.162,
+      9.31
+    ],
+    "mongo_id": "69a7a2ed7b292c7eb561423f",
+    "description": "A person is walking in a bedroom holding a remote control. person on wooden floor bed next to wooden floor remote control in hand of person",
+    "memory_text": "User_Mom walking near mom's bed with remote control. A person is walking in a bedroom holding a remote control. person on wooden floor bed next to wooden floor remote control in hand of person person on wooden floor. bed next to wooden floor. remote control in hand of person.",
+    "timestamp": "2026-03-06T09:12:47.272806"
+  },
+  {
+    "faiss_idx": 1,
+    "user": "User_Dad",
+    "action": "none",
+    "instance": "sofa",
+    "interacting_items": [],
+    "all_items": [],
+    "spatial_relations": [],
+    "furniture_pos": [
+      -0.169999987,
+      8.62
+    ],
+    "mongo_id": "69a7a2ed7b292c7eb561424f",
+    "description": "Observed behavior.",
+    "memory_text": "User_Dad none near sofa with nothing. Observed behavior.",
+    "timestamp": "2026-03-06T09:13:06.264735"
+  },
+  {
+    "faiss_idx": 2,
+    "user": "User_Mom",
+    "action": "sitting",
+    "instance": "sofa",
+    "interacting_items": [
+      "remote control"
+    ],
+    "all_items": [
+      "wooden floor",
+      "blue line",
+      "remote control"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "remote control",
+        "relation": "in_hand_of",
+        "object": "person"
+      },
+      {
+        "subject": "wooden floor",
+        "relation": "underneath",
+        "object": "couch"
+      },
+      {
+        "subject": "blue line",
+        "relation": "on",
+        "object": "floor"
+      }
+    ],
+    "furniture_pos": [
+      -0.169999987,
+      8.62
+    ],
+    "mongo_id": "69a7a2ed7b292c7eb561424f",
+    "description": "A person sitting on a couch holding a remote control. remote control in_hand_of person wooden floor underneath couch blue line on floor",
+    "memory_text": "User_Mom sitting near sofa with remote control. A person sitting on a couch holding a remote control. remote control in_hand_of person wooden floor underneath couch blue line on floor remote control in_hand_of person. wooden floor underneath couch. blue line on floor.",
+    "timestamp": "2026-03-06T09:14:29.406209"
+  },
+  {
+    "faiss_idx": 3,
+    "user": "User_Dad",
+    "action": "sleeping",
+    "instance": "mom's bed",
+    "interacting_items": [
+      "blue laser"
+    ],
+    "all_items": [
+      "blue laser"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "laser",
+        "relation": "on",
+        "object": "bed"
+      }
+    ],
+    "furniture_pos": [
+      -7.162,
+      9.31
+    ],
+    "mongo_id": "69a7a2ed7b292c7eb561423f",
+    "description": "A person is sleeping on a bed with a blue laser beside them. laser on bed",
+    "memory_text": "User_Dad sleeping near mom's bed with blue laser. A person is sleeping on a bed with a blue laser beside them. laser on bed laser on bed.",
+    "timestamp": "2026-03-06T09:14:54.189790"
+  },
+  {
+    "faiss_idx": 4,
+    "user": "User_Dad",
+    "action": "none",
+    "instance": "apple",
+    "interacting_items": [],
+    "all_items": [],
+    "spatial_relations": [],
+    "furniture_pos": [
+      0.858,
+      7.885
+    ],
+    "mongo_id": "69a7a2ed7b292c7eb5614243",
+    "description": "Observed behavior.",
+    "memory_text": "User_Dad none near apple with nothing. Observed behavior.",
+    "timestamp": "2026-03-06T09:15:10.968758"
+  },
+  {
+    "faiss_idx": 5,
+    "user": "User_Dad",
+    "action": "sitting",
+    "instance": "sofa",
+    "interacting_items": [
+      "remote control"
+    ],
+    "all_items": [
+      "couch",
+      "computer monitor",
+      "desk",
+      "remote control",
+      "keyboard",
+      "table"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "remote control",
+        "relation": "in_hand_of",
+        "object": "person"
+      },
+      {
+        "subject": "couch",
+        "relation": "next_to",
+        "object": "sofa"
+      },
+      {
+        "subject": "table",
+        "relation": "on",
+        "object": "floor"
+      },
+      {
+        "subject": "desk",
+        "relation": "in",
+        "object": "drawers"
+      },
+      {
+        "subject": "computer monitor",
+        "relation": "on",
+        "object": "desk"
+      },
+      {
+        "subject": "keyboard",
+        "relation": "on",
+        "object": "desk"
+      }
+    ],
+    "furniture_pos": [
+      -0.169999987,
+      8.62
+    ],
+    "mongo_id": "69a7a2ed7b292c7eb561424f",
+    "description": "A person sitting on a sofa with a remote control in their hand. remote control in_hand_of person couch next_to sofa table on floor desk in drawers computer monitor on desk keyboard on desk",
+    "memory_text": "User_Dad sitting near sofa with remote control. A person sitting on a sofa with a remote control in their hand. remote control in_hand_of person couch next_to sofa table on floor desk in drawers computer monitor on desk keyboard on desk remote control in_hand_of person. couch next_to sofa. table on floor. desk in drawers. computer monitor on desk. keyboard on desk.",
+    "timestamp": "2026-03-06T09:19:22.588448"
+  },
+  {
+    "faiss_idx": 6,
+    "user": "User_Mom",
+    "action": "sitting",
+    "instance": "sofa",
+    "interacting_items": [
+      "remote control"
+    ],
+    "all_items": [
+      "wooden floor",
+      "blue line",
+      "remote control"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "remote control",
+        "relation": "in_hand_of",
+        "object": "person"
+      },
+      {
+        "subject": "wooden floor",
+        "relation": "underneath",
+        "object": "couch"
+      },
+      {
+        "subject": "blue line",
+        "relation": "on",
+        "object": "floor"
+      }
+    ],
+    "furniture_pos": [
+      -0.169999987,
+      8.62
+    ],
+    "mongo_id": "69a7a2ed7b292c7eb561424f",
+    "description": "A person sitting on a couch holding a remote control. remote control in_hand_of person wooden floor underneath couch blue line on floor",
+    "memory_text": "User_Mom sitting near sofa with remote control. A person sitting on a couch holding a remote control. remote control in_hand_of person wooden floor underneath couch blue line on floor remote control in_hand_of person. wooden floor underneath couch. blue line on floor.",
+    "timestamp": "2026-03-06T09:19:28.626710"
+  },
+  {
+    "faiss_idx": 7,
+    "user": "User_Dad",
+    "action": "none",
+    "instance": "apple",
+    "interacting_items": [],
+    "all_items": [],
+    "spatial_relations": [],
+    "furniture_pos": [
+      0.858,
+      7.885
+    ],
+    "mongo_id": "69a7a2ed7b292c7eb5614243",
+    "description": "Observed behavior.",
+    "memory_text": "User_Dad none near apple with nothing. Observed behavior.",
+    "timestamp": "2026-03-06T09:19:36.035689"
+  },
+  {
+    "faiss_idx": 8,
+    "user": "User_Dad",
+    "action": "none",
+    "instance": "apple",
+    "interacting_items": [],
+    "all_items": [],
+    "spatial_relations": [],
+    "furniture_pos": [
+      0.858,
+      7.885
+    ],
+    "mongo_id": "69a7a2ed7b292c7eb5614243",
+    "description": "Observed behavior.",
+    "memory_text": "User_Dad none near apple with nothing. Observed behavior.",
+    "timestamp": "2026-03-06T09:19:42.951324"
+  },
+  {
+    "faiss_idx": 9,
+    "user": "User_Mom",
+    "action": "sitting",
+    "instance": "mom's bed",
+    "interacting_items": [
+      "banana"
+    ],
+    "all_items": [
+      "blue line",
+      "banana",
+      "white blanket",
+      "wooden floor"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "banana",
+        "relation": "on",
+        "object": "bed"
+      },
+      {
+        "subject": "blue line",
+        "relation": "in front of",
+        "object": "bed"
+      },
+      {
+        "subject": "white blanket",
+        "relation": "underneath",
+        "object": "bed"
+      },
+      {
+        "subject": "wooden floor",
+        "relation": "beneath",
+        "object": "bed"
+      }
+    ],
+    "furniture_pos": [
+      -7.162,
+      9.31
+    ],
+    "mongo_id": "69a7a2ed7b292c7eb561423f",
+    "description": "A person sitting on a bed with a banana next to them. banana on bed blue line in front of bed white blanket underneath bed wooden floor beneath bed",
+    "memory_text": "User_Mom sitting near mom's bed with banana. A person sitting on a bed with a banana next to them. banana on bed blue line in front of bed white blanket underneath bed wooden floor beneath bed banana on bed. blue line in front of bed. white blanket underneath bed. wooden floor beneath bed.",
+    "timestamp": "2026-03-06T09:20:51.558617"
+  },
+  {
+    "faiss_idx": 10,
+    "user": "User_Mom",
+    "action": "standing",
+    "instance": "mom's bed",
+    "interacting_items": [
+      "remote"
+    ],
+    "all_items": [
+      "gray wall",
+      "black monitor",
+      "remote",
+      "wooden floor",
+      "blue line",
+      "white blanket"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "remote",
+        "relation": "in_hand_of",
+        "object": "woman"
+      },
+      {
+        "subject": "white blanket",
+        "relation": "on",
+        "object": "bed"
+      },
+      {
+        "subject": "blue line",
+        "relation": "next_to",
+        "object": "wooden floor"
+      },
+      {
+        "subject": "gray wall",
+        "relation": "behind",
+        "object": "woman"
+      },
+      {
+        "subject": "black monitor",
+        "relation": "above",
+        "object": "woman"
+      }
+    ],
+    "furniture_pos": [
+      -7.162,
+      9.31
+    ],
+    "mongo_id": "69a7a2ed7b292c7eb561423f",
+    "description": "A woman standing on a bed holding a remote control. remote in_hand_of woman white blanket on bed blue line next_to wooden floor gray wall behind woman black monitor above woman",
+    "memory_text": "User_Mom standing near mom's bed with remote. A woman standing on a bed holding a remote control. remote in_hand_of woman white blanket on bed blue line next_to wooden floor gray wall behind woman black monitor above woman remote in_hand_of woman. white blanket on bed. blue line next_to wooden floor. gray wall behind woman. black monitor above woman.",
+    "timestamp": "2026-03-06T09:20:56.758938"
+  },
+  {
+    "faiss_idx": 11,
+    "user": "User_Dad",
+    "action": "sitting",
+    "instance": "sofa",
+    "interacting_items": [
+      "remote control"
+    ],
+    "all_items": [
+      "remote control",
+      "blue lines",
+      "wooden floor",
+      "television",
+      "couch"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "person",
+        "relation": "on",
+        "object": "sofa"
+      },
+      {
+        "subject": "television",
+        "relation": "next to",
+        "object": "couch"
+      },
+      {
+        "subject": "remote control",
+        "relation": "in hand of",
+        "object": "person"
+      },
+      {
+        "subject": "wooden floor",
+        "relation": "underneath",
+        "object": "sofa"
+      },
+      {
+        "subject": "blue lines",
+        "relation": "on top of",
+        "object": "wooden floor"
+      }
+    ],
+    "furniture_pos": [
+      -0.169999987,
+      8.62
+    ],
+    "mongo_id": "69a7a2ed7b292c7eb561424f",
+    "description": "A person sitting on a couch holding a remote control. person on sofa television next to couch remote control in hand of person wooden floor underneath sofa blue lines on top of wooden floor",
+    "memory_text": "User_Dad sitting near sofa with remote control. A person sitting on a couch holding a remote control. person on sofa television next to couch remote control in hand of person wooden floor underneath sofa blue lines on top of wooden floor person on sofa. television next to couch. remote control in hand of person. wooden floor underneath sofa. blue lines on top of wooden floor.",
+    "timestamp": "2026-03-06T09:21:02.001828"
+  },
+  {
+    "faiss_idx": 12,
+    "user": "User_Mom",
+    "action": "sitting",
+    "instance": "mom's bed",
+    "interacting_items": [
+      "banana"
+    ],
+    "all_items": [
+      "wooden_floor",
+      "banana",
+      "blue_curtain",
+      "white_couch"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "banana",
+        "relation": "on",
+        "object": "bedroom_desk"
+      },
+      {
+        "subject": "blue_curtain",
+        "relation": "next_to",
+        "object": "wooden_floor"
+      },
+      {
+        "subject": "white_couch",
+        "relation": "in_front_of",
+        "object": "wooden_floor"
+      },
+      {
+        "subject": "wooden_floor",
+        "relation": "underneath",
+        "object": "bedroom_desk"
+      }
+    ],
+    "furniture_pos": [
+      -7.162,
+      9.31
+    ],
+    "mongo_id": "69a7a2ed7b292c7eb561423f",
+    "description": "A person sitting at a desk with a banana on it. banana on bedroom_desk blue_curtain next_to wooden_floor white_couch in_front_of wooden_floor wooden_floor underneath bedroom_desk",
+    "memory_text": "User_Mom sitting near mom's bed with banana. A person sitting at a desk with a banana on it. banana on bedroom_desk blue_curtain next_to wooden_floor white_couch in_front_of wooden_floor wooden_floor underneath bedroom_desk banana on bedroom_desk. blue_curtain next_to wooden_floor. white_couch in_front_of wooden_floor. wooden_floor underneath bedroom_desk.",
+    "timestamp": "2026-03-06T09:21:50.490931"
+  },
+  {
+    "faiss_idx": 13,
+    "user": "User_Mom",
+    "action": "sitting",
+    "instance": "table",
+    "interacting_items": [
+      "banana"
+    ],
+    "all_items": [
+      "blue line",
+      "banana",
+      "wooden floor",
+      "white table"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "banana",
+        "relation": "on",
+        "object": "desk"
+      },
+      {
+        "subject": "blue line",
+        "relation": "next to",
+        "object": "table"
+      },
+      {
+        "subject": "white table",
+        "relation": "in front of",
+        "object": "wooden floor"
+      }
+    ],
+    "furniture_pos": [
+      1.97,
+      2.29
+    ],
+    "mongo_id": "69a7a2ed7b292c7eb5614241",
+    "description": "A person sitting at a desk with a banana on it. banana on desk blue line next to table white table in front of wooden floor",
+    "memory_text": "User_Mom sitting near table with banana. A person sitting at a desk with a banana on it. banana on desk blue line next to table white table in front of wooden floor banana on desk. blue line next to table. white table in front of wooden floor.",
+    "timestamp": "2026-03-06T09:22:18.884439"
+  },
+  {
+    "faiss_idx": 14,
+    "user": "User_Mom",
+    "action": "sitting",
+    "instance": "table",
+    "interacting_items": [
+      "banana"
+    ],
+    "all_items": [
+      "blue line",
+      "banana",
+      "wooden floor",
+      "white table"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "banana",
+        "relation": "on",
+        "object": "desk"
+      },
+      {
+        "subject": "blue line",
+        "relation": "next to",
+        "object": "table"
+      },
+      {
+        "subject": "white table",
+        "relation": "in front of",
+        "object": "wooden floor"
+      }
+    ],
+    "furniture_pos": [
+      1.97,
+      2.29
+    ],
+    "mongo_id": "69a7a2ed7b292c7eb5614241",
+    "description": "A person sitting at a desk with a banana on it. banana on desk blue line next to table white table in front of wooden floor",
+    "memory_text": "User_Mom sitting near table with banana. A person sitting at a desk with a banana on it. banana on desk blue line next to table white table in front of wooden floor banana on desk. blue line next to table. white table in front of wooden floor.",
+    "timestamp": "2026-03-06T09:24:49.537642"
+  },
+  {
+    "faiss_idx": 15,
+    "user": "User_Dad",
+    "action": "sitting",
+    "instance": "sofa",
+    "interacting_items": [
+      "remote control"
+    ],
+    "all_items": [
+      "remote control",
+      "keyboard",
+      "computer monitor",
+      "table",
+      "desk",
+      "couch"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "remote control",
+        "relation": "in_hand_of",
+        "object": "person"
+      },
+      {
+        "subject": "sofa",
+        "relation": "next_to",
+        "object": "couch"
+      },
+      {
+        "subject": "table",
+        "relation": "on",
+        "object": "floor"
+      },
+      {
+        "subject": "computer monitor",
+        "relation": "on",
+        "object": "desk"
+      },
+      {
+        "subject": "keyboard",
+        "relation": "on",
+        "object": "desk"
+      }
+    ],
+    "furniture_pos": [
+      -0.169999987,
+      8.62
+    ],
+    "mongo_id": "69a7a2ed7b292c7eb561424f",
+    "description": "A person sitting on a couch with a remote control in their hand, next to a table and a computer monitor. remote control in_hand_of person sofa next_to couch table on floor computer monitor on desk keyboard on desk",
+    "memory_text": "User_Dad sitting near sofa with remote control. A person sitting on a couch with a remote control in their hand, next to a table and a computer monitor. remote control in_hand_of person sofa next_to couch table on floor computer monitor on desk keyboard on desk remote control in_hand_of person. sofa next_to couch. table on floor. computer monitor on desk. keyboard on desk.",
+    "timestamp": "2026-03-06T09:25:12.061762"
+  },
+  {
+    "faiss_idx": 16,
+    "user": "User_Mom",
+    "action": "standing",
+    "instance": "mom's bed",
+    "interacting_items": [
+      "remote"
+    ],
+    "all_items": [
+      "blue line",
+      "wooden floor",
+      "remote",
+      "white bed"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "person",
+        "relation": "on",
+        "object": "wooden floor"
+      },
+      {
+        "subject": "bed",
+        "relation": "next to",
+        "object": "wooden floor"
+      },
+      {
+        "subject": "remote control",
+        "relation": "in hand of",
+        "object": "person"
+      },
+      {
+        "subject": "blue line",
+        "relation": "on",
+        "object": "wooden floor"
+      },
+      {
+        "subject": "white bed",
+        "relation": "next to",
+        "object": "wooden floor"
+      }
+    ],
+    "furniture_pos": [
+      -7.162,
+      9.31
+    ],
+    "mongo_id": "69a7a2ed7b292c7eb561423f",
+    "description": "A person standing in a bedroom holding a remote control. person on wooden floor bed next to wooden floor remote control in hand of person blue line on wooden floor white bed next to wooden floor",
+    "memory_text": "User_Mom standing near mom's bed with remote. A person standing in a bedroom holding a remote control. person on wooden floor bed next to wooden floor remote control in hand of person blue line on wooden floor white bed next to wooden floor person on wooden floor. bed next to wooden floor. remote control in hand of person. blue line on wooden floor. white bed next to wooden floor.",
+    "timestamp": "2026-03-06T09:26:06.460896"
+  },
+  {
+    "faiss_idx": 17,
+    "user": "User_Mom",
+    "action": "sitting",
+    "instance": "mom's bed",
+    "interacting_items": [
+      "banana"
+    ],
+    "all_items": [
+      "wooden_floor",
+      "banana",
+      "blue_curtain",
+      "white_blanket"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "banana",
+        "relation": "on",
+        "object": "bedroom_desk"
+      },
+      {
+        "subject": "blue_curtain",
+        "relation": "next_to",
+        "object": "wooden_floor"
+      },
+      {
+        "subject": "white_blanket",
+        "relation": "in",
+        "object": "wooden_floor"
+      },
+      {
+        "subject": "bedroom_desk",
+        "relation": "on",
+        "object": "wooden_floor"
+      }
+    ],
+    "furniture_pos": [
+      -7.162,
+      9.31
+    ],
+    "mongo_id": "69a7a2ed7b292c7eb561423f",
+    "description": "A person sitting at a desk with a banana on it. banana on bedroom_desk blue_curtain next_to wooden_floor white_blanket in wooden_floor bedroom_desk on wooden_floor",
+    "memory_text": "User_Mom sitting near mom's bed with banana. A person sitting at a desk with a banana on it. banana on bedroom_desk blue_curtain next_to wooden_floor white_blanket in wooden_floor bedroom_desk on wooden_floor banana on bedroom_desk. blue_curtain next_to wooden_floor. white_blanket in wooden_floor. bedroom_desk on wooden_floor.",
+    "timestamp": "2026-03-06T09:29:18.324225"
+  },
+  {
+    "faiss_idx": 18,
+    "user": "User_Mom",
+    "action": "sitting",
+    "instance": "table",
+    "interacting_items": [
+      "banana"
+    ],
+    "all_items": [
+      "banana",
+      "white tablecloth",
+      "wooden floor"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "banana",
+        "relation": "on",
+        "object": "desk"
+      },
+      {
+        "subject": "desk",
+        "relation": "in front of",
+        "object": "wooden floor"
+      }
+    ],
+    "furniture_pos": [
+      1.97,
+      2.29
+    ],
+    "mongo_id": "69a7a2ed7b292c7eb5614241",
+    "description": "A person sitting at a desk with a banana on it. banana on desk desk in front of wooden floor",
+    "memory_text": "User_Mom sitting near table with banana. A person sitting at a desk with a banana on it. banana on desk desk in front of wooden floor banana on desk. desk in front of wooden floor.",
+    "timestamp": "2026-03-06T09:33:54.678145"
+  },
+  {
+    "faiss_idx": 19,
+    "user": "User_Dad",
+    "action": "none",
+    "instance": "shelf",
+    "interacting_items": [],
+    "all_items": [],
+    "spatial_relations": [],
+    "furniture_pos": [
+      5.41,
+      6.07
+    ],
+    "mongo_id": "69a7a2ed7b292c7eb561423d",
+    "description": "Observed behavior.",
+    "memory_text": "User_Dad none near shelf with nothing. Observed behavior.",
+    "timestamp": "2026-03-06T09:34:13.620338"
+  },
+  {
+    "faiss_idx": 20,
+    "user": "User_Mom",
+    "action": "sitting",
+    "instance": "sofa",
+    "interacting_items": [
+      "remote control"
+    ],
+    "all_items": [
+      "wooden chair",
+      "remote control",
+      "wooden shelf",
+      "wooden table"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "remote control",
+        "relation": "in_hand_of",
+        "object": "person"
+      },
+      {
+        "subject": "wooden table",
+        "relation": "on",
+        "object": "sofa"
+      },
+      {
+        "subject": "wooden chair",
+        "relation": "next_to",
+        "object": "sofa"
+      },
+      {
+        "subject": "wooden shelf",
+        "relation": "in",
+        "object": "sofa"
+      }
+    ],
+    "furniture_pos": [
+      -0.169999987,
+      8.62
+    ],
+    "mongo_id": "69a7a2ed7b292c7eb561424f",
+    "description": "A person sitting on a sofa with a remote control in their hand. remote control in_hand_of person wooden table on sofa wooden chair next_to sofa wooden shelf in sofa",
+    "memory_text": "User_Mom sitting near sofa with remote control. A person sitting on a sofa with a remote control in their hand. remote control in_hand_of person wooden table on sofa wooden chair next_to sofa wooden shelf in sofa remote control in_hand_of person. wooden table on sofa. wooden chair next_to sofa. wooden shelf in sofa.",
+    "timestamp": "2026-03-06T09:34:17.378332"
+  },
+  {
+    "faiss_idx": 21,
+    "user": "User_Mom",
+    "action": "sitting",
+    "instance": "sofa",
+    "interacting_items": [
+      "remote control"
+    ],
+    "all_items": [
+      "remote control",
+      "blue wall",
+      "wooden floor",
+      "wooden table"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "remote control",
+        "relation": "in_hand_of",
+        "object": "person"
+      },
+      {
+        "subject": "wooden chair",
+        "relation": "on",
+        "object": "wooden table"
+      },
+      {
+        "subject": "wooden table",
+        "relation": "next_to",
+        "object": "wooden floor"
+      },
+      {
+        "subject": "blue wall",
+        "relation": "above",
+        "object": "wooden floor"
+      }
+    ],
+    "furniture_pos": [
+      -0.169999987,
+      8.62
+    ],
+    "mongo_id": "69a7a2ed7b292c7eb561424f",
+    "description": "A person sitting on a wooden chair, holding a remote control and looking at the floor. remote control in_hand_of person wooden chair on wooden table wooden table next_to wooden floor blue wall above wooden floor",
+    "memory_text": "User_Mom sitting near sofa with remote control. A person sitting on a wooden chair, holding a remote control and looking at the floor. remote control in_hand_of person wooden chair on wooden table wooden table next_to wooden floor blue wall above wooden floor remote control in_hand_of person. wooden chair on wooden table. wooden table next_to wooden floor. blue wall above wooden floor.",
+    "timestamp": "2026-03-06T09:34:21.333303"
+  },
+  {
+    "faiss_idx": 22,
+    "user": "User_Mom",
+    "action": "sleeping",
+    "instance": "mom's bed",
+    "interacting_items": [],
+    "all_items": [
+      "white pillow"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "pillow",
+        "relation": "on",
+        "object": "bed"
+      }
+    ],
+    "furniture_pos": [
+      -7.162,
+      9.31
+    ],
+    "mongo_id": "69a7a2ed7b292c7eb561423f",
+    "description": "A woman is sleeping on a bed with no pillows. pillow on bed",
+    "memory_text": "User_Mom sleeping near mom's bed with nothing. A woman is sleeping on a bed with no pillows. pillow on bed pillow on bed.",
+    "timestamp": "2026-03-06T09:34:53.542512"
+  },
+  {
+    "faiss_idx": 23,
+    "user": "User_Mom",
+    "action": "sitting",
+    "instance": "sofa",
+    "interacting_items": [
+      "remote control"
+    ],
+    "all_items": [
+      "remote control",
+      "blue wall",
+      "wooden floor",
+      "wooden table"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "remote control",
+        "relation": "in_hand_of",
+        "object": "person"
+      },
+      {
+        "subject": "wooden chair",
+        "relation": "next_to",
+        "object": "wooden table"
+      },
+      {
+        "subject": "wooden table",
+        "relation": "on",
+        "object": "wooden floor"
+      },
+      {
+        "subject": "blue wall",
+        "relation": "behind",
+        "object": "wooden table"
+      }
+    ],
+    "furniture_pos": [
+      -0.169999987,
+      8.62
+    ],
+    "mongo_id": "69a7a2ed7b292c7eb561424f",
+    "description": "A person sitting on a wooden chair, holding a remote control and looking at the television. remote control in_hand_of person wooden chair next_to wooden table wooden table on wooden floor blue wall behind wooden table",
+    "memory_text": "User_Mom sitting near sofa with remote control. A person sitting on a wooden chair, holding a remote control and looking at the television. remote control in_hand_of person wooden chair next_to wooden table wooden table on wooden floor blue wall behind wooden table remote control in_hand_of person. wooden chair next_to wooden table. wooden table on wooden floor. blue wall behind wooden table.",
+    "timestamp": "2026-03-06T09:35:05.200458"
+  },
+  {
+    "faiss_idx": 24,
+    "user": "User_Mom",
+    "action": "sitting",
+    "instance": "table",
+    "interacting_items": [
+      "banana"
+    ],
+    "all_items": [
+      "banana",
+      "white tablecloth",
+      "gray floor",
+      "blue wall"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "banana",
+        "relation": "on",
+        "object": "desk"
+      },
+      {
+        "subject": "white tablecloth",
+        "relation": "on",
+        "object": "desk"
+      },
+      {
+        "subject": "blue wall",
+        "relation": "behind",
+        "object": "desk"
+      },
+      {
+        "subject": "gray floor",
+        "relation": "underneath",
+        "object": "desk"
+      }
+    ],
+    "furniture_pos": [
+      1.97,
+      2.29
+    ],
+    "mongo_id": "69a7a2ed7b292c7eb5614241",
+    "description": "A person sitting at a desk with a banana on it. banana on desk white tablecloth on desk blue wall behind desk gray floor underneath desk",
+    "memory_text": "User_Mom sitting near table with banana. A person sitting at a desk with a banana on it. banana on desk white tablecloth on desk blue wall behind desk gray floor underneath desk banana on desk. white tablecloth on desk. blue wall behind desk. gray floor underneath desk.",
+    "timestamp": "2026-03-06T09:37:27.970114"
+  },
+  {
+    "faiss_idx": 25,
+    "user": "User_Mom",
+    "action": "walking",
+    "instance": "toilet",
+    "interacting_items": [
+      "remote control"
+    ],
+    "all_items": [
+      "remote control"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "person",
+        "relation": "on",
+        "object": "floor"
+      },
+      {
+        "subject": "remote control",
+        "relation": "in hand of",
+        "object": "person"
+      }
+    ],
+    "furniture_pos": [
+      -2.99,
+      8.2
+    ],
+    "mongo_id": "69a7a2ed7b292c7eb5614259",
+    "description": "A person walking on a wooden floor holding a remote control. person on floor remote control in hand of person",
+    "memory_text": "User_Mom walking near toilet with remote control. A person walking on a wooden floor holding a remote control. person on floor remote control in hand of person person on floor. remote control in hand of person.",
+    "timestamp": "2026-03-06T09:37:33.497297"
+  },
+  {
+    "faiss_idx": 26,
+    "user": "User_Mom",
+    "action": "looking at banana",
+    "instance": "table",
+    "interacting_items": [
+      "banana"
+    ],
+    "all_items": [
+      "banana",
+      "white tablecloth",
+      "wooden floor",
+      "blue wall"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "banana",
+        "relation": "on",
+        "object": "desk"
+      },
+      {
+        "subject": "white tablecloth",
+        "relation": "on",
+        "object": "desk"
+      },
+      {
+        "subject": "wooden floor",
+        "relation": "underneath",
+        "object": "desk"
+      },
+      {
+        "subject": "blue wall",
+        "relation": "behind",
+        "object": "desk"
+      }
+    ],
+    "furniture_pos": [
+      1.97,
+      2.29
+    ],
+    "mongo_id": "69a7a2ed7b292c7eb5614241",
+    "description": "A person looking at a banana on a desk. banana on desk white tablecloth on desk wooden floor underneath desk blue wall behind desk",
+    "memory_text": "User_Mom looking at banana near table with banana. A person looking at a banana on a desk. banana on desk white tablecloth on desk wooden floor underneath desk blue wall behind desk banana on desk. white tablecloth on desk. wooden floor underneath desk. blue wall behind desk.",
+    "timestamp": "2026-03-06T09:50:03.625132"
+  },
+  {
+    "faiss_idx": 27,
+    "user": "User_Mom",
+    "action": "walking",
+    "instance": "sofa",
+    "interacting_items": [
+      "remote control"
+    ],
+    "all_items": [
+      "remote control",
+      "white pillow",
+      "blue blanket"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "person",
+        "relation": "on",
+        "object": "wooden floor"
+      },
+      {
+        "subject": "person",
+        "relation": "in hand of",
+        "object": "remote control"
+      },
+      {
+        "subject": "blue blanket",
+        "relation": "next to",
+        "object": "sofa"
+      },
+      {
+        "subject": "white pillow",
+        "relation": "on top of",
+        "object": "sofa"
+      }
+    ],
+    "furniture_pos": [
+      -0.169999987,
+      8.62
+    ],
+    "mongo_id": "69a7a2ed7b292c7eb561424f",
+    "description": "A person walking with a remote control in their hand, next to a blue blanket and on a wooden floor. person on wooden floor person in hand of remote control blue blanket next to sofa white pillow on top of sofa",
+    "memory_text": "User_Mom walking near sofa with remote control. A person walking with a remote control in their hand, next to a blue blanket and on a wooden floor. person on wooden floor person in hand of remote control blue blanket next to sofa white pillow on top of sofa person on wooden floor. person in hand of remote control. blue blanket next to sofa. white pillow on top of sofa.",
+    "timestamp": "2026-03-06T09:50:07.341007"
+  },
+  {
+    "faiss_idx": 28,
+    "user": "User_Dad",
+    "action": "sitting",
+    "instance": "sofa",
+    "interacting_items": [
+      "remote control"
+    ],
+    "all_items": [
+      "remote control",
+      "keyboard",
+      "computer monitor",
+      "table",
+      "desk",
+      "couch"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "remote control",
+        "relation": "in_hand_of",
+        "object": "person"
+      },
+      {
+        "subject": "remote control",
+        "relation": "on",
+        "object": "sofa"
+      },
+      {
+        "subject": "couch",
+        "relation": "next_to",
+        "object": "desk"
+      },
+      {
+        "subject": "computer monitor",
+        "relation": "on",
+        "object": "desk"
+      },
+      {
+        "subject": "keyboard",
+        "relation": "on",
+        "object": "desk"
+      }
+    ],
+    "furniture_pos": [
+      -0.169999987,
+      8.62
+    ],
+    "mongo_id": "69a7a2ed7b292c7eb561424f",
+    "description": "A person sitting on a couch with a remote control in their hand. remote control in_hand_of person remote control on sofa couch next_to desk computer monitor on desk keyboard on desk",
+    "memory_text": "User_Dad sitting near sofa with remote control. A person sitting on a couch with a remote control in their hand. remote control in_hand_of person remote control on sofa couch next_to desk computer monitor on desk keyboard on desk remote control in_hand_of person. remote control on sofa. couch next_to desk. computer monitor on desk. keyboard on desk.",
+    "timestamp": "2026-03-06T09:50:11.472476"
+  },
+  {
+    "faiss_idx": 29,
+    "user": "User_Dad",
+    "action": "walking",
+    "instance": "sofa",
+    "interacting_items": [
+      "remote control"
+    ],
+    "all_items": [
+      "blue object on floor",
+      "remote control",
+      "white chair next to sofa",
+      "tv screen"
+    ],
+    "spatial_relations": [],
+    "furniture_pos": [
+      -0.169999987,
+      8.62
+    ],
+    "mongo_id": "69a7a2ed7b292c7eb561424f",
+    "description": "A person is walking and holding a remote control.",
+    "memory_text": "User_Dad walking near sofa with remote control. A person is walking and holding a remote control.",
+    "timestamp": "2026-03-06T09:50:23.386486"
+  },
+  {
+    "faiss_idx": 30,
+    "user": "User_Mom",
+    "action": "sitting",
+    "instance": "toilet",
+    "interacting_items": [
+      "blue jeans"
+    ],
+    "all_items": [
+      "blue jeans"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "jeans",
+        "relation": "on",
+        "object": "floor"
+      }
+    ],
+    "furniture_pos": [
+      -2.99,
+      8.2
+    ],
+    "mongo_id": "69a7a2ed7b292c7eb5614259",
+    "description": "A person is sitting on the floor wearing blue jeans. jeans on floor",
+    "memory_text": "User_Mom sitting near toilet with blue jeans. A person is sitting on the floor wearing blue jeans. jeans on floor jeans on floor.",
+    "timestamp": "2026-03-06T09:50:31.347051"
+  },
+  {
+    "faiss_idx": 31,
+    "user": "User_Mom",
+    "action": "sitting",
+    "instance": "mom's bed",
+    "interacting_items": [
+      "banana"
+    ],
+    "all_items": [
+      "banana",
+      "white tablecloth",
+      "wooden floor"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "banana",
+        "relation": "on",
+        "object": "bed"
+      }
+    ],
+    "furniture_pos": [
+      -7.162,
+      9.31
+    ],
+    "mongo_id": "69a7a2ed7b292c7eb561423f",
+    "description": "A person sitting on a bed with a banana next to them. banana on bed",
+    "memory_text": "User_Mom sitting near mom's bed with banana. A person sitting on a bed with a banana next to them. banana on bed banana on bed.",
+    "timestamp": "2026-03-06T09:50:40.728120"
+  },
+  {
+    "faiss_idx": 32,
+    "user": "User_Mom",
+    "action": "sleeping",
+    "instance": "mom's bed",
+    "interacting_items": [
+      "pillow"
+    ],
+    "all_items": [
+      "wooden floor",
+      "blue blanket",
+      "wooden nightstand",
+      "pillow",
+      "wooden dresser",
+      "white wall"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "bed",
+        "relation": "on top of",
+        "object": "wooden floor"
+      },
+      {
+        "subject": "pillow",
+        "relation": "next to",
+        "object": "bed"
+      },
+      {
+        "subject": "blue blanket",
+        "relation": "covering",
+        "object": "bed"
+      },
+      {
+        "subject": "wooden dresser",
+        "relation": "behind",
+        "object": "bed"
+      },
+      {
+        "subject": "wooden nightstand",
+        "relation": "next to",
+        "object": "dresser"
+      },
+      {
+        "subject": "white wall",
+        "relation": "behind",
+        "object": "bed"
+      }
+    ],
+    "furniture_pos": [
+      -7.162,
+      9.31
+    ],
+    "mongo_id": "69a7a2ed7b292c7eb561423f",
+    "description": "A person is sleeping on a bed with a pillow. bed on top of wooden floor pillow next to bed blue blanket covering bed wooden dresser behind bed wooden nightstand next to dresser white wall behind bed",
+    "memory_text": "User_Mom sleeping near mom's bed with pillow. A person is sleeping on a bed with a pillow. bed on top of wooden floor pillow next to bed blue blanket covering bed wooden dresser behind bed wooden nightstand next to dresser white wall behind bed bed on top of wooden floor. pillow next to bed. blue blanket covering bed. wooden dresser behind bed. wooden nightstand next to dresser. white wall behind bed.",
+    "timestamp": "2026-03-06T09:50:46.691687"
+  },
+  {
+    "faiss_idx": 33,
+    "user": "User_Dad",
+    "action": "sitting",
+    "instance": "sofa",
+    "interacting_items": [
+      "remote control"
+    ],
+    "all_items": [
+      "remote control",
+      "keyboard",
+      "computer monitor",
+      "table",
+      "desk",
+      "couch"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "person",
+        "relation": "on",
+        "object": "sofa"
+      },
+      {
+        "subject": "remote control",
+        "relation": "in_hand_of",
+        "object": "person"
+      },
+      {
+        "subject": "computer monitor",
+        "relation": "next_to",
+        "object": "desk"
+      },
+      {
+        "subject": "keyboard",
+        "relation": "on",
+        "object": "sofa"
+      }
+    ],
+    "furniture_pos": [
+      -0.169999987,
+      8.62
+    ],
+    "mongo_id": "69a7a2ed7b292c7eb561424f",
+    "description": "A person sitting on a sofa, holding a remote control and looking at the computer monitor. person on sofa remote control in_hand_of person computer monitor next_to desk keyboard on sofa",
+    "memory_text": "User_Dad sitting near sofa with remote control. A person sitting on a sofa, holding a remote control and looking at the computer monitor. person on sofa remote control in_hand_of person computer monitor next_to desk keyboard on sofa person on sofa. remote control in_hand_of person. computer monitor next_to desk. keyboard on sofa.",
+    "timestamp": "2026-03-06T09:50:50.476150"
+  },
+  {
+    "faiss_idx": 34,
+    "user": "User_Dad",
+    "action": "none",
+    "instance": "shelf",
+    "interacting_items": [],
+    "all_items": [],
+    "spatial_relations": [],
+    "furniture_pos": [
+      5.41,
+      6.07
+    ],
+    "mongo_id": "69a7a2ed7b292c7eb561423d",
+    "description": "Observed behavior.",
+    "memory_text": "User_Dad none near shelf with nothing. Observed behavior.",
+    "timestamp": "2026-03-06T09:51:17.828070"
+  },
+  {
+    "faiss_idx": 35,
+    "user": "User_Mom",
+    "action": "sleeping",
+    "instance": "mom's bed",
+    "interacting_items": [],
+    "all_items": [
+      "white pillow"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "pillow",
+        "relation": "on",
+        "object": "bed"
+      }
+    ],
+    "furniture_pos": [
+      -7.162,
+      9.31
+    ],
+    "mongo_id": "69a7a2ed7b292c7eb561423f",
+    "description": "A woman is sleeping on a bed with no pillows. pillow on bed",
+    "memory_text": "User_Mom sleeping near mom's bed with nothing. A woman is sleeping on a bed with no pillows. pillow on bed pillow on bed.",
+    "timestamp": "2026-03-06T09:51:20.379369"
+  },
+  {
+    "faiss_idx": 36,
+    "user": "User_Mom",
+    "action": "looking at banana",
+    "instance": "table",
+    "interacting_items": [
+      "banana"
+    ],
+    "all_items": [
+      "banana",
+      "white tablecloth",
+      "wooden floor",
+      "blue wall"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "banana",
+        "relation": "on",
+        "object": "desk"
+      },
+      {
+        "subject": "white tablecloth",
+        "relation": "on",
+        "object": "desk"
+      },
+      {
+        "subject": "wooden floor",
+        "relation": "underneath",
+        "object": "desk"
+      },
+      {
+        "subject": "blue wall",
+        "relation": "behind",
+        "object": "desk"
+      }
+    ],
+    "furniture_pos": [
+      1.97,
+      2.29
+    ],
+    "mongo_id": "69a7a2ed7b292c7eb5614241",
+    "description": "A person looking at a banana on the desk. banana on desk white tablecloth on desk wooden floor underneath desk blue wall behind desk",
+    "memory_text": "User_Mom looking at banana near table with banana. A person looking at a banana on the desk. banana on desk white tablecloth on desk wooden floor underneath desk blue wall behind desk banana on desk. white tablecloth on desk. wooden floor underneath desk. blue wall behind desk.",
+    "timestamp": "2026-03-06T09:51:24.260706"
+  },
+  {
+    "faiss_idx": 37,
+    "user": "User_Mom",
+    "action": "walking",
+    "instance": "sofa",
+    "interacting_items": [
+      "remote control"
+    ],
+    "all_items": [
+      "remote control",
+      "white pillow",
+      "blue blanket"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "person",
+        "relation": "on",
+        "object": "sofa"
+      },
+      {
+        "subject": "remote control",
+        "relation": "in_hand_of",
+        "object": "person"
+      },
+      {
+        "subject": "blue blanket",
+        "relation": "next_to",
+        "object": "sofa"
+      },
+      {
+        "subject": "white pillow",
+        "relation": "on",
+        "object": "sofa"
+      }
+    ],
+    "furniture_pos": [
+      -0.169999987,
+      8.62
+    ],
+    "mongo_id": "69a7a2ed7b292c7eb561424f",
+    "description": "A person walking on a sofa with a remote control in their hand. person on sofa remote control in_hand_of person blue blanket next_to sofa white pillow on sofa",
+    "memory_text": "User_Mom walking near sofa with remote control. A person walking on a sofa with a remote control in their hand. person on sofa remote control in_hand_of person blue blanket next_to sofa white pillow on sofa person on sofa. remote control in_hand_of person. blue blanket next_to sofa. white pillow on sofa.",
+    "timestamp": "2026-03-06T09:51:27.604933"
+  },
+  {
+    "faiss_idx": 38,
+    "user": "User_Mom",
+    "action": "sitting",
+    "instance": "toilet",
+    "interacting_items": [
+      "blue jeans"
+    ],
+    "all_items": [
+      "blue jeans"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "jeans",
+        "relation": "on",
+        "object": "floor"
+      }
+    ],
+    "furniture_pos": [
+      -2.99,
+      8.2
+    ],
+    "mongo_id": "69a7a2ed7b292c7eb5614259",
+    "description": "A person sitting on the floor wearing blue jeans. jeans on floor",
+    "memory_text": "User_Mom sitting near toilet with blue jeans. A person sitting on the floor wearing blue jeans. jeans on floor jeans on floor.",
+    "timestamp": "2026-03-06T09:51:30.029490"
+  },
+  {
+    "faiss_idx": 39,
+    "user": "User_Dad",
+    "action": "sleeping",
+    "instance": "mom's bed",
+    "interacting_items": [],
+    "all_items": [
+      "wooden floor"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "person",
+        "relation": "on",
+        "object": "bed"
+      }
+    ],
+    "furniture_pos": [
+      -7.162,
+      9.31
+    ],
+    "mongo_id": "69a7a2ed7b292c7eb561423f",
+    "description": "A person is sleeping on a bed. person on bed",
+    "memory_text": "User_Dad sleeping near mom's bed with nothing. A person is sleeping on a bed. person on bed person on bed.",
+    "timestamp": "2026-03-06T09:51:36.309463"
+  },
+  {
+    "faiss_idx": 40,
+    "user": "User_Dad",
+    "action": "sitting",
+    "instance": "sofa",
+    "interacting_items": [
+      "remote control"
+    ],
+    "all_items": [
+      "remote control",
+      "couch",
+      "wooden floor",
+      "television"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "person",
+        "relation": "on",
+        "object": "sofa"
+      },
+      {
+        "subject": "remote control",
+        "relation": "in hand of",
+        "object": "person"
+      },
+      {
+        "subject": "television",
+        "relation": "next to",
+        "object": "couch"
+      },
+      {
+        "subject": "wooden floor",
+        "relation": "underneath",
+        "object": "sofa"
+      }
+    ],
+    "furniture_pos": [
+      -0.169999987,
+      8.62
+    ],
+    "mongo_id": "69a7a2ed7b292c7eb561424f",
+    "description": "A person sitting on a couch holding a remote control. person on sofa remote control in hand of person television next to couch wooden floor underneath sofa",
+    "memory_text": "User_Dad sitting near sofa with remote control. A person sitting on a couch holding a remote control. person on sofa remote control in hand of person television next to couch wooden floor underneath sofa person on sofa. remote control in hand of person. television next to couch. wooden floor underneath sofa.",
+    "timestamp": "2026-03-06T09:51:39.909663"
+  },
+  {
+    "faiss_idx": 41,
+    "user": "User_Dad",
+    "action": "walking",
+    "instance": "sofa",
+    "interacting_items": [
+      "remote control"
+    ],
+    "all_items": [
+      "remote control",
+      "blue curtains",
+      "tv screen",
+      "keyboard",
+      "mouse"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "remote control",
+        "relation": "in_hand_of",
+        "object": "person"
+      },
+      {
+        "subject": "tv screen",
+        "relation": "on",
+        "object": "sofa"
+      },
+      {
+        "subject": "keyboard",
+        "relation": "next_to",
+        "object": "sofa"
+      },
+      {
+        "subject": "mouse",
+        "relation": "in_hand_of",
+        "object": "person"
+      },
+      {
+        "subject": "blue curtains",
+        "relation": "on",
+        "object": "window"
+      }
+    ],
+    "furniture_pos": [
+      -0.169999987,
+      8.62
+    ],
+    "mongo_id": "69a7a2ed7b292c7eb561424f",
+    "description": "A person walking next to a sofa with a remote control in their hand. remote control in_hand_of person tv screen on sofa keyboard next_to sofa mouse in_hand_of person blue curtains on window",
+    "memory_text": "User_Dad walking near sofa with remote control. A person walking next to a sofa with a remote control in their hand. remote control in_hand_of person tv screen on sofa keyboard next_to sofa mouse in_hand_of person blue curtains on window remote control in_hand_of person. tv screen on sofa. keyboard next_to sofa. mouse in_hand_of person. blue curtains on window.",
+    "timestamp": "2026-03-06T09:51:44.206810"
+  },
+  {
+    "faiss_idx": 42,
+    "user": "User_Dad",
+    "action": "sitting",
+    "instance": "sofa",
+    "interacting_items": [
+      "remote control"
+    ],
+    "all_items": [
+      "couch",
+      "computer monitor",
+      "desk",
+      "table",
+      "remote control"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "remote control",
+        "relation": "in_hand_of",
+        "object": "person"
+      },
+      {
+        "subject": "couch",
+        "relation": "next_to",
+        "object": "sofa"
+      },
+      {
+        "subject": "table",
+        "relation": "on",
+        "object": "floor"
+      },
+      {
+        "subject": "desk",
+        "relation": "in",
+        "object": "computer monitor"
+      }
+    ],
+    "furniture_pos": [
+      -0.169999987,
+      8.62
+    ],
+    "mongo_id": "69a7a2ed7b292c7eb561424f",
+    "description": "A person sitting on a couch with a remote control in their hand. remote control in_hand_of person couch next_to sofa table on floor desk in computer monitor",
+    "memory_text": "User_Dad sitting near sofa with remote control. A person sitting on a couch with a remote control in their hand. remote control in_hand_of person couch next_to sofa table on floor desk in computer monitor remote control in_hand_of person. couch next_to sofa. table on floor. desk in computer monitor.",
+    "timestamp": "2026-03-06T09:53:18.993282"
+  },
+  {
+    "faiss_idx": 43,
+    "user": "User_Mom",
+    "action": "sleeping",
+    "instance": "mom's bed",
+    "interacting_items": [],
+    "all_items": [
+      "white pillow"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "pillow",
+        "relation": "on",
+        "object": "bed"
+      }
+    ],
+    "furniture_pos": [
+      -7.162,
+      9.31
+    ],
+    "mongo_id": "69a7a2ed7b292c7eb561423f",
+    "description": "A woman is sleeping on a bed with no pillows. pillow on bed",
+    "memory_text": "User_Mom sleeping near mom's bed with nothing. A woman is sleeping on a bed with no pillows. pillow on bed pillow on bed.",
+    "timestamp": "2026-03-06T09:53:21.538817"
+  },
+  {
+    "faiss_idx": 44,
+    "user": "User_Mom",
+    "action": "looking at banana",
+    "instance": "table",
+    "interacting_items": [
+      "banana"
+    ],
+    "all_items": [
+      "wooden floor",
+      "banana",
+      "white tablecloth"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "banana",
+        "relation": "on",
+        "object": "desk"
+      },
+      {
+        "subject": "desk",
+        "relation": "in front of",
+        "object": "wooden floor"
+      }
+    ],
+    "furniture_pos": [
+      1.97,
+      2.29
+    ],
+    "mongo_id": "69a7a2ed7b292c7eb5614241",
+    "description": "A person looking at a banana on the desk. banana on desk desk in front of wooden floor",
+    "memory_text": "User_Mom looking at banana near table with banana. A person looking at a banana on the desk. banana on desk desk in front of wooden floor banana on desk. desk in front of wooden floor.",
+    "timestamp": "2026-03-06T09:53:24.554198"
+  },
+  {
+    "faiss_idx": 45,
+    "user": "User_Mom",
+    "action": "walking",
+    "instance": "sofa",
+    "interacting_items": [
+      "remote control"
+    ],
+    "all_items": [
+      "remote control"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "person",
+        "relation": "on",
+        "object": "wooden floor"
+      },
+      {
+        "subject": "person",
+        "relation": "in hand of",
+        "object": "remote control"
+      }
+    ],
+    "furniture_pos": [
+      -0.169999987,
+      8.62
+    ],
+    "mongo_id": "69a7a2ed7b292c7eb561424f",
+    "description": "A person walking on a wooden floor with a remote control in their hand. person on wooden floor person in hand of remote control",
+    "memory_text": "User_Mom walking near sofa with remote control. A person walking on a wooden floor with a remote control in their hand. person on wooden floor person in hand of remote control person on wooden floor. person in hand of remote control.",
+    "timestamp": "2026-03-06T09:53:27.196069"
+  },
+  {
+    "faiss_idx": 46,
+    "user": "User_Mom",
+    "action": "sitting",
+    "instance": "toilet",
+    "interacting_items": [
+      "blue jeans"
+    ],
+    "all_items": [
+      "blue jeans"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "jeans",
+        "relation": "on",
+        "object": "floor"
+      }
+    ],
+    "furniture_pos": [
+      -2.99,
+      8.2
+    ],
+    "mongo_id": "69a7a2ed7b292c7eb5614259",
+    "description": "A person sitting on a wooden floor wearing blue jeans. jeans on floor",
+    "memory_text": "User_Mom sitting near toilet with blue jeans. A person sitting on a wooden floor wearing blue jeans. jeans on floor jeans on floor.",
+    "timestamp": "2026-03-06T09:53:29.661565"
+  },
+  {
+    "faiss_idx": 47,
+    "user": "User_Dad",
+    "action": "sleeping",
+    "instance": "mom's bed",
+    "interacting_items": [],
+    "all_items": [
+      "wooden floor"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "person",
+        "relation": "on",
+        "object": "bed"
+      },
+      {
+        "subject": "bed",
+        "relation": "in",
+        "object": "wooden floor"
+      }
+    ],
+    "furniture_pos": [
+      -7.162,
+      9.31
+    ],
+    "mongo_id": "69a7a2ed7b292c7eb561423f",
+    "description": "A person is sleeping on a bed. person on bed bed in wooden floor",
+    "memory_text": "User_Dad sleeping near mom's bed with nothing. A person is sleeping on a bed. person on bed bed in wooden floor person on bed. bed in wooden floor.",
+    "timestamp": "2026-03-06T09:53:33.464504"
+  },
+  {
+    "faiss_idx": 48,
+    "user": "User_Dad",
+    "action": "sitting",
+    "instance": "sofa",
+    "interacting_items": [
+      "remote control"
+    ],
+    "all_items": [
+      "couch",
+      "wooden floor",
+      "television",
+      "remote control"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "person",
+        "relation": "on",
+        "object": "sofa"
+      },
+      {
+        "subject": "remote control",
+        "relation": "in hand of",
+        "object": "person"
+      },
+      {
+        "subject": "television",
+        "relation": "next to",
+        "object": "couch"
+      },
+      {
+        "subject": "wooden floor",
+        "relation": "underneath",
+        "object": "sofa"
+      }
+    ],
+    "furniture_pos": [
+      -0.169999987,
+      8.62
+    ],
+    "mongo_id": "69a7a2ed7b292c7eb561424f",
+    "description": "A person sitting on a couch holding a remote control. person on sofa remote control in hand of person television next to couch wooden floor underneath sofa",
+    "memory_text": "User_Dad sitting near sofa with remote control. A person sitting on a couch holding a remote control. person on sofa remote control in hand of person television next to couch wooden floor underneath sofa person on sofa. remote control in hand of person. television next to couch. wooden floor underneath sofa.",
+    "timestamp": "2026-03-06T09:53:39.547274"
+  }
+]
