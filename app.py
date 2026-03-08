@@ -69,11 +69,17 @@ def predict():
         user_pos_raw = data.get('user_pos')
         source_nodes = data.get('source_nodes', [])
         image_count  = data.get('image_count', len(image_list))
+        room_name    = data.get('room_name', '')
+
+        if not room_name and source_nodes:
+            first_node = source_nodes[0]
+            room_name  = first_node.rsplit('_Cam', 1)[0] if '_Cam' in first_node else first_node
+            print(f"[Room Fallback] '{first_node}' -> room='{room_name}'")
 
         if not image_list:
             return jsonify({"error": "image_list is empty"}), 400
 
-        print(f"\n[Predict] user={hint_user_id} | activity={activity} | "
+        print(f"\n[Predict] user={hint_user_id} | activity={activity} | room={room_name} | "
               f"images={image_count} | nodes={source_nodes}")
 
         preview_images(image_list, source_nodes, hint_user_id, activity)
@@ -85,34 +91,44 @@ def predict():
                 "z": float(user_pos_raw.get("z", 0))
             }
 
-        # ── Stage 1：VLM 感知（含空間關係）──
-        perception_res  = perception.analyze_action_burst(data)
-        user_id         = perception_res["user"]
-        action          = perception_res["action"]
-        detected_items  = perception_res["items"]        # 互動物品
-        all_items       = perception_res["all_items"]    # 畫面全部物品
-        spatial_rels    = perception_res["spatial"]      # 空間介係詞關係
-        vlm_desc        = perception_res["result"].get("context", "Observed behavior.")
-        vlm_object      = perception_res["bound_instance"]
+        data['room_name'] = room_name
+
+        perception_res = perception.analyze_action_burst(data)
+        user_id        = perception_res["user"]
+        action         = perception_res["action"]
+        detected_items = perception_res["items"]
+        all_items      = perception_res["all_items"]
+        spatial_rels   = perception_res["spatial"]
+        vlm_desc       = perception_res["result"].get("context", "Observed behavior.")
+        vlm_object     = perception_res["bound_instance"]
 
         print(f"[VLM] action={action} | object={vlm_object}")
         print(f"[VLM] interacting={detected_items} | scene={all_items}")
         print(f"[VLM] spatial_relations={spatial_rels}")
 
-        # ── Stage 2：家具綁定 + 物品雙軌 + 空間關係存入 MongoDB ──
+        if action == "none":
+            print("[Skip] VLM no valid action")
+            return jsonify({
+                "status":   "no_action",
+                "user":     user_id,
+                "action":   "none",
+                "bound_to": "Unknown_Area",
+                "reason":   "VLM returned no valid action"
+            }), 200
+
         final_bound_label = memory.bind_and_update(
             user_id=user_id,
             action=action,
             est_pos=est_pos,
             vlm_description=vlm_desc,
-            detected_items=detected_items,   # 人直接使用的物品
-            all_items=all_items,             # 畫面中所有物品
-            spatial_relations=spatial_rels,  # 空間關係
-            target_label=vlm_object
+            detected_items=detected_items,
+            all_items=all_items,
+            spatial_relations=spatial_rels,
+            target_label=vlm_object,
+            room_name=room_name,
         )
-        print(f"[Bind] '{vlm_object}' → '{final_bound_label}'")
+        print(f"[Bind] '{vlm_object}' -> '{final_bound_label}'")
 
-        # ── Stage 3：FAISS 向量化（含空間關係文字）──
         furniture_pos = None
         mongo_id      = None
 
@@ -122,7 +138,6 @@ def predict():
                 furniture_pos = furniture_doc.get('pos')
                 mongo_id      = furniture_doc.get('_id')
 
-            # 把空間關係也加進向量化文字，提升查詢召回率
             spatial_text = " ".join(
                 [f"{r['subject']} {r['relation']} {r['object']}" for r in spatial_rels]
             ) if spatial_rels else ""
@@ -138,27 +153,43 @@ def predict():
                 furniture_pos=furniture_pos,
                 mongo_id=mongo_id
             )
-        else:
-            print("⚠️ [Skip FAISS] 家具綁定失敗")
 
-        print(f"[Done] {user_id} @ {final_bound_label} → {action}")
+            scene_items       = [i for i in all_items if i not in detected_items]
+            all_dynamic_items = list(set(detected_items + scene_items))
+            for item_label in all_dynamic_items:
+                dyn_doc = db.dynamic_objects.find_one({"label": item_label.lower()})
+                if dyn_doc:
+                    vector_memory.upsert_dynamic_object(
+                        label          = dyn_doc["label"],
+                        room           = dyn_doc.get("room", room_name),
+                        last_seen_on   = dyn_doc.get("last_seen_on", final_bound_label),
+                        spatial_rel    = dyn_doc.get("spatial_rel", "near"),
+                        furniture_pos  = dyn_doc.get("furniture_pos", furniture_pos),
+                        seen_count     = dyn_doc.get("seen_count", 1),
+                        interact_count = dyn_doc.get("interact_count", 0),
+                        interacted_by  = dyn_doc.get("interacted_by", []),
+                    )
+        else:
+            print("[Skip FAISS] bind failed")
+
+        print(f"[Done] {user_id} @ {final_bound_label} -> {action}")
 
         return jsonify({
-            "status":             "Success",
-            "user":               user_id,
-            "action":             action,
-            "bound_to":           final_bound_label,
-            "interacting_items":  detected_items,
-            "all_items":          all_items,
-            "spatial_relations":  spatial_rels,
-            "description":        vlm_desc,
-            "estimated_pos":      est_pos,
-            "furniture_pos":      furniture_pos
+            "status":            "Success",
+            "user":              user_id,
+            "action":            action,
+            "bound_to":          final_bound_label,
+            "interacting_items": detected_items,
+            "all_items":         all_items,
+            "spatial_relations": spatial_rels,
+            "description":       vlm_desc,
+            "estimated_pos":     est_pos,
+            "furniture_pos":     furniture_pos
         }), 200
 
     except Exception as e:
         import traceback
-        print(f"❌ [Predict Error] {e}\n{traceback.format_exc()}")
+        print(f"[Predict Error] {e}\n{traceback.format_exc()}")
         return jsonify({"error": str(e)}), 500
 
 
@@ -168,23 +199,15 @@ def handle_scene():
         data    = request.get_json()
         objects = data.get('objects', [])
         count   = memory.sync_scene(objects)
-        print(f"[Scene Sync] 同步 {count} 個家具")
+        print(f"[Scene Sync] {count}")
         return jsonify({"status": "Success", "synced_count": count}), 200
     except Exception as e:
-        print(f"❌ [Scene Error] {e}")
+        print(f"[Scene Error] {e}")
         return jsonify({"error": str(e)}), 500
 
 
 @app.route('/query', methods=['POST'])
 def query_habit():
-    """
-    RAG 查詢：FAISS 模糊搜尋 → MongoDB 取最新座標與空間關係 → 組合回答
-
-    支援查詢類型：
-    - 「媽媽通常在哪裡喝水？」→ nav_target 座標
-    - 「刀子通常放在哪裡？」→ spatial_relations 搜尋
-    - 「流理台上通常有什麼？」→ scene_snapshots.items
-    """
     try:
         data       = request.get_json()
         user_query = data.get('query', '')
@@ -195,19 +218,16 @@ def query_habit():
 
         print(f"\n[Query] '{user_query}' | user={user_id}")
 
-        # Step 1：FAISS 模糊搜尋
         results = vector_memory.search_habit(user_query, user_id=user_id, top_k=5)
 
-        # Step 2：用 instance label 從 MongoDB 補最新資料
         for r in results:
             if r.get('instance') and r['instance'] != 'Unknown_Area':
                 fresh = db.scene_snapshots.find_one({"label": r['instance']})
                 if fresh:
-                    r['furniture_pos']      = fresh.get('pos')
-                    r['all_items']          = fresh.get('items', [])
-                    r['spatial_relations']  = fresh.get('spatial_relations', [])
+                    r['furniture_pos']     = fresh.get('pos')
+                    r['all_items']         = fresh.get('items', [])
+                    r['spatial_relations'] = fresh.get('spatial_relations', [])
 
-        # Step 3：最高頻習慣
         top_habit  = vector_memory.get_top_habit(user_query, user_id=user_id, top_k=1)
         nav_target = None
         answer     = "I don't remember."
@@ -215,23 +235,25 @@ def query_habit():
         if top_habit:
             fresh_doc = db.scene_snapshots.find_one({"label": top_habit['instance']})
             if fresh_doc:
-                nav_target                   = fresh_doc.get('pos')
-                top_habit['all_items']       = fresh_doc.get('items', [])
+                nav_target                     = fresh_doc.get('pos')
+                top_habit['all_items']         = fresh_doc.get('items', [])
                 top_habit['spatial_relations'] = fresh_doc.get('spatial_relations', [])
             else:
                 nav_target = top_habit.get('furniture_pos')
 
             interact_str = ", ".join(top_habit.get('interacting_items', [])) or "nothing specific"
-            answer = (f"Based on observations, {user_id or 'the user'} usually "
-                      f"{top_habit['action']} near {top_habit['instance']} "
-                      f"(seen {top_habit['count']} times), "
-                      f"typically interacting with: {interact_str}.")
+            answer = (
+                f"Based on observations, {user_id or 'the user'} usually "
+                f"{top_habit['actions'][0] if top_habit.get('actions') else 'does something'} "
+                f"near {top_habit['instance']} "
+                f"(seen {top_habit['count']} times), "
+                f"typically interacting with: {interact_str}."
+            )
 
         elif results:
             best       = results[0]
             nav_target = best.get('furniture_pos')
-            answer     = (f"I remember {best['user']} {best['action']} "
-                          f"near {best['instance']}.")
+            answer     = f"I remember {best['user']} {best['action']} near {best['instance']}."
 
         print(f"[Answer] {answer}")
         print(f"[Nav]    {nav_target}")
@@ -246,75 +268,10 @@ def query_habit():
 
     except Exception as e:
         import traceback
-        print(f"❌ [Query Error] {e}\n{traceback.format_exc()}")
+        print(f"[Query Error] {e}\n{traceback.format_exc()}")
         return jsonify({"error": str(e)}), 500
 
 
-if __name__ == "__main__":
-    host = getattr(CONFIG, 'FLASK_HOST', '0.0.0.0')
-    port = int(getattr(CONFIG, 'FLASK_PORT', 5000))
-    print(f"\nRobot Brain Server Running on {host}:{port}")
-    app.run(host=host, port=port, debug=False)
-
-
-# ─────────────────────────────────────────────
-# 延遲初始化（避免循環 import）
-# ─────────────────────────────────────────────
-from modules.interaction import InteractionEngine
-from modules.training_exporter import TrainingExporter
-from modules.cleanup import CleanupManager
-
-interaction_engine  = InteractionEngine(
-    mongo_client=mongo_client,
-    vector_memory=vector_memory,
-    ollama_url=CONFIG.OLLAMA_URL,
-    model_name=CONFIG.OLLAMA_MODEL
-)
-training_exporter = TrainingExporter(mongo_client)
-cleanup_manager   = CleanupManager(mongo_client)
-
-
-# 啟動定時清理（每 24 小時執行一次）
-cleanup_manager.start_scheduler(interval_hours=24)
-
-
-# ─────────────────────────────────────────────
-# /interact — 人機交互主路由
-# ─────────────────────────────────────────────
-@app.route('/interact', methods=['POST'])
-def interact():
-    try:
-        data      = request.get_json()
-        query     = data.get('query', '')
-        user_id   = data.get('userID', 'Unknown')
-        robot_pos = data.get('robot_pos')
-        user_pos  = data.get('user_pos')
-        room      = data.get('room', '')
-
-        if not query:
-            return jsonify({"error": "Empty query"}), 400
-
-        print(f"\n[Interact] user={user_id} | query='{query}' | room={room}")
-
-        result = interaction_engine.process(
-            query=query,
-            user_id=user_id,
-            robot_pos=robot_pos,
-            user_pos=user_pos,
-            room=room
-        )
-
-        return jsonify(result), 200
-
-    except Exception as e:
-        import traceback
-        print(f"❌ [Interact Error] {e}\n{traceback.format_exc()}")
-        return jsonify({"error": str(e)}), 500
-
-
-# ─────────────────────────────────────────────
-# /log_navigation — 接收 Unity 導航路徑訓練資料
-# ─────────────────────────────────────────────
 @app.route('/log_navigation', methods=['POST'])
 def log_navigation():
     try:
@@ -342,19 +299,16 @@ def log_navigation():
         return jsonify({"status": "Success"}), 200
 
     except Exception as e:
-        print(f"❌ [NavLog Error] {e}")
+        print(f"[NavLog Error] {e}")
         return jsonify({"error": str(e)}), 500
 
 
-# ─────────────────────────────────────────────
-# /export_training — 匯出所有訓練資料 JSONL
-# ─────────────────────────────────────────────
 @app.route('/export_training', methods=['POST'])
 def export_training():
     try:
-        data            = request.get_json() or {}
-        user_id_filter  = data.get('userID', None)
-        export_type     = data.get('type', 'all')  # all / perception / dialogue / navigation / scene / habit
+        data           = request.get_json() or {}
+        user_id_filter = data.get('userID', None)
+        export_type    = data.get('type', 'all')
 
         if export_type == 'all':
             stats = training_exporter.export_all(user_id_filter)
@@ -372,7 +326,7 @@ def export_training():
             return jsonify({"error": f"Unknown type: {export_type}"}), 400
 
         total = sum(stats.values())
-        print(f"[Export] 完成：{stats} | 共 {total} 筆")
+        print(f"[Export] {stats} | total={total}")
 
         return jsonify({
             "status":     "Success",
@@ -390,13 +344,10 @@ def export_training():
 
     except Exception as e:
         import traceback
-        print(f"❌ [Export Error] {e}\n{traceback.format_exc()}")
+        print(f"[Export Error] {e}\n{traceback.format_exc()}")
         return jsonify({"error": str(e)}), 500
 
 
-# ─────────────────────────────────────────────
-# /cleanup — 手動觸發清理
-# ─────────────────────────────────────────────
 @app.route('/cleanup', methods=['POST'])
 def manual_cleanup():
     try:
@@ -406,12 +357,88 @@ def manual_cleanup():
         return jsonify({"error": str(e)}), 500
 
 
-# ─────────────────────────────────────────────
-# /cleanup/status — 查詢各 collection 筆數
-# ─────────────────────────────────────────────
 @app.route('/cleanup/status', methods=['GET'])
 def cleanup_status():
     try:
         return jsonify(cleanup_manager.status()), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+@app.route('/interact', methods=['POST'])
+def interact():
+    try:
+        data      = request.get_json()
+        query     = data.get('query', '')
+        user_id   = data.get('userID', 'Unknown')
+        robot_pos = data.get('robot_pos')
+        user_pos  = data.get('user_pos')
+        room      = data.get('room', '')
+
+        if not query:
+            return jsonify({"error": "Empty query"}), 400
+
+        print(f"\n[Interact] user={user_id} | query='{query}' | room={room}")
+
+        result = interaction_engine.process(
+            query=query,
+            user_id=user_id,
+            robot_pos=robot_pos,
+            user_pos=user_pos,
+            room=room
+        )
+
+        return jsonify(result), 200
+
+    except Exception as e:
+        import traceback
+        print(f"[Interact Error] {e}\n{traceback.format_exc()}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/interact/confirm', methods=['POST'])
+def interact_confirm():
+    try:
+        data       = request.get_json()
+        choice     = int(data.get('choice', 3))
+        nav_target = data.get('nav_target')
+        nav_label  = data.get('nav_label', '')
+        user_id    = data.get('userID', 'Unknown')
+        query      = data.get('query', '')
+
+        result = interaction_engine.confirm(
+            choice=choice,
+            nav_target=nav_target,
+            nav_label=nav_label,
+            user_id=user_id,
+            query=query,
+        )
+        return jsonify(result), 200
+
+    except Exception as e:
+        import traceback
+        print(f"[Confirm Error] {e}\n{traceback.format_exc()}")
+        return jsonify({"error": str(e)}), 500
+
+
+if __name__ == "__main__":
+    host = getattr(CONFIG, 'FLASK_HOST', '0.0.0.0')
+    port = int(getattr(CONFIG, 'FLASK_PORT', 5000))
+    print(f"\nRobot Brain Server Running on {host}:{port}")
+    app.run(host=host, port=port, debug=False)
+
+
+from modules.interaction import InteractionEngine
+from modules.training_exporter import TrainingExporter
+from modules.cleanup import CleanupManager
+
+interaction_engine = InteractionEngine(
+    mongo_client=mongo_client,
+    vector_memory=vector_memory,
+    ollama_url=CONFIG.OLLAMA_URL,
+    model_name=CONFIG.OLLAMA_MODEL
+)
+training_exporter = TrainingExporter(mongo_client)
+cleanup_manager   = CleanupManager(mongo_client)
+
+cleanup_manager.start_scheduler(interval_hours=24)

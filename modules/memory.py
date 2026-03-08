@@ -4,13 +4,14 @@ from config import Config
 
 
 class MemoryManager:
-    WINDOW_SIZE = 3  # 滑動視窗大小（用於行為預測訓練資料）
+    WINDOW_SIZE = 3
 
     def __init__(self, client, embedding_model=None):
         self.db        = client[Config.DB_NAME]
         self.scene     = self.db["scene_snapshots"]
         self.logs      = self.db["observation_logs"]
-        self.sequences = self.db["activity_sequences"]  # 行為時間序列
+        self.sequences = self.db["activity_sequences"]
+        self.dynamics  = self.db["dynamic_objects"]     # ← 新增
         self.model     = embedding_model
 
     # ─────────────────────────────────────────────
@@ -45,60 +46,67 @@ class MemoryManager:
     # ─────────────────────────────────────────────
     def bind_and_update(self, user_id, action, est_pos,
                         vlm_description="",
-                        detected_items=None,    # 互動物品（人直接使用的）
-                        all_items=None,         # 畫面中所有物品
-                        spatial_relations=None, # 空間介係詞關係
+                        detected_items=None,
+                        all_items=None,
+                        spatial_relations=None,
                         max_distance=4.0,
-                        target_label=None):
+                        target_label=None,
+                        room_name=""):
 
         detected_items    = detected_items    or []
         all_items         = all_items         or []
         spatial_relations = spatial_relations or []
+
+        # scene_items = 畫面中有但人沒有直接用的
+        scene_items = [i for i in all_items if i not in detected_items]
 
         instance_id    = "Unknown_ID"
         instance_label = target_label if target_label else "Unknown_Area"
         instance_pos   = None
 
         try:
-            # ── A. 家具綁定：距離搜尋 + SBERT 語義驗證 ──
+            # ── A. 家具綁定 ──
             if not target_label or target_label in ["Unknown_Area", "unknown"]:
                 instance_id, instance_label, instance_pos = \
-                    self._bind_by_position_and_semantics(est_pos, target_label, max_distance)
+                    self._bind_by_position_and_semantics(
+                        est_pos, target_label, max_distance,
+                        room_name=room_name
+                    )
             else:
-                matched = self.scene.find_one({"label": target_label})
+                matched = self.scene.find_one({
+                    "label": {"$regex": target_label, "$options": "i"},
+                    **({"room": {"$regex": room_name, "$options": "i"}} if room_name else {})
+                })
+                if not matched and room_name:
+                    matched = self.scene.find_one(
+                        {"label": {"$regex": target_label, "$options": "i"}}
+                    )
                 if matched:
                     instance_id    = matched['id']
                     instance_label = matched['label']
                     instance_pos   = matched.get('pos')
                 else:
                     instance_id, instance_label, instance_pos = \
-                        self._bind_by_semantics_only(target_label)
+                        self._bind_by_semantics_only(target_label, room_name=room_name)
 
-            # ── B-1. 物品跟著家具 ──
+            # ── B-1. 物品跟著家具（scene_snapshots）──
             if instance_id != "Unknown_ID":
                 update_ops = {
                     "$set": {
                         "last_observation": datetime.datetime.now(),
-                        # current_contents：當前鏡頭看到的物品（覆蓋）
-                        # 定點相機沒看到 → 空清單 → 代表東西不在了
                         "current_contents": all_items
                     }
                 }
-                # items：歷史累積清單（只增不減，用於習慣學習）
                 if all_items:
-                    update_ops["$addToSet"] = {
-                        "items": {"$each": all_items}
-                    }
+                    update_ops["$addToSet"] = {"items": {"$each": all_items}}
 
-                # 空間關係：累積記錄 subject 在這個家具附近的位置關係
                 if spatial_relations:
                     for rel in spatial_relations:
-                        # 每個關係累計出現次數
                         rel_key = f"{rel['subject']}|{rel['relation']}|{rel['object']}"
                         self.scene.update_one(
                             {"id": instance_id},
                             {
-                                "$inc": {f"spatial_counts.{rel_key}": 1},
+                                "$inc":      {f"spatial_counts.{rel_key}": 1},
                                 "$addToSet": {"spatial_relations": rel}
                             }
                         )
@@ -110,7 +118,7 @@ class MemoryManager:
             print(f"❌ [Bind Error] {e}")
 
         try:
-            # ── B-2. 物品跟著用戶（行為日誌）──
+            # ── B-2. 物品跟著用戶（observation_logs）──
             self.logs.update_one(
                 {"user": user_id, "instance": instance_label, "action": action},
                 {
@@ -120,25 +128,35 @@ class MemoryManager:
                         "raw_vlm_desc": vlm_description,
                         "pos":          instance_pos
                     },
-                    # 互動物品：這個人在這個動作中直接使用的
                     "$addToSet": {
                         "interacting_items": {"$each": detected_items}
                     }
                 },
                 upsert=True
             )
-
-            # 空間關係也記錄到行為日誌（用於查詢「媽媽喝水時杯子在哪」）
             if spatial_relations:
                 self.logs.update_one(
                     {"user": user_id, "instance": instance_label, "action": action},
                     {"$addToSet": {"observed_relations": {"$each": spatial_relations}}}
                 )
-
         except Exception as e:
             print(f"❌ [Log Error] {e}")
 
-        # ── D. 即時更新行為時間序列 ──
+        # ── B-3. 動態物件更新（dynamic_objects）──
+        try:
+            self._update_dynamic_objects(
+                user_id          = user_id,
+                interacting_items= detected_items,
+                scene_items      = scene_items,
+                spatial_relations= spatial_relations,
+                bound_label      = instance_label,
+                furniture_pos    = instance_pos,
+                room_name        = room_name
+            )
+        except Exception as e:
+            print(f"❌ [Dynamic Error] {e}")
+
+        # ── D. 行為時間序列 ──
         try:
             self._update_activity_sequence(
                 user_id=user_id,
@@ -152,13 +170,71 @@ class MemoryManager:
         return instance_label
 
     # ─────────────────────────────────────────────
-    # D. 即時更新 activity_sequences
+    # B-3. dynamic_objects upsert
+    # ─────────────────────────────────────────────
+    def _update_dynamic_objects(self, user_id, interacting_items, scene_items,
+                                 spatial_relations, bound_label, furniture_pos, room_name):
+        """
+        - interacting_items: seen_count+1, interact_count+1, interacted_by addToSet
+        - scene_items:       seen_count+1 only
+        唯一鍵：label（last seen 覆蓋位置）
+        """
+        now = datetime.datetime.now()
+
+        # spatial_rel lookup：item → relation（從 spatial_relations 反查）
+        item_rel_map = {}
+        for rel in spatial_relations:
+            subj = rel.get("subject", "").lower().strip()
+            if subj:
+                item_rel_map[subj] = rel.get("relation", "on")
+
+        def _upsert_item(label: str, is_interacting: bool):
+            label = label.lower().strip()
+            if not label:
+                return
+
+            spatial_rel = item_rel_map.get(label, "near")
+
+            base_set = {
+                "last_seen_on":  bound_label,
+                "spatial_rel":   spatial_rel,
+                "room":          room_name,
+                "last_seen":     now,
+            }
+            if furniture_pos:
+                base_set["furniture_pos"] = furniture_pos
+
+            inc_ops = {"seen_count": 1}
+            if is_interacting:
+                inc_ops["interact_count"] = 1
+
+            update = {
+                "$inc":        inc_ops,
+                "$set":        base_set,
+                "$setOnInsert":{"first_seen": now},
+            }
+            if is_interacting:
+                update["$addToSet"] = {"interacted_by": user_id}
+
+            self.dynamics.update_one(
+                {"label": label},
+                update,
+                upsert=True
+            )
+            print(f"   🧩 [Dynamic] '{label}' "
+                  f"{'interacting' if is_interacting else 'scene'} "
+                  f"@ {bound_label} ({spatial_rel})")
+
+        for item in interacting_items:
+            _upsert_item(item, is_interacting=True)
+
+        for item in scene_items:
+            _upsert_item(item, is_interacting=False)
+
+    # ─────────────────────────────────────────────
+    # D. activity_sequences
     # ─────────────────────────────────────────────
     def _update_activity_sequence(self, user_id, action, instance, items):
-        """
-        每次感知後即時 append 到當天的序列。
-        同時記錄與上一筆的 transition（行為轉換）。
-        """
         now       = datetime.datetime.now()
         today_str = now.strftime("%Y-%m-%d")
 
@@ -170,31 +246,28 @@ class MemoryManager:
             "timestamp": now
         }
 
-        # 取當天序列（若不存在則自動建立）
         doc = self.sequences.find_one({"user_id": user_id, "date": today_str})
 
         if doc:
             seq = doc.get("sequence", [])
-
-            # 計算 transition
             if seq:
-                last        = seq[-1]
-                last_time   = datetime.datetime.strptime(
+                last      = seq[-1]
+                last_time = datetime.datetime.strptime(
                     f"{today_str} {last['time']}", "%Y-%m-%d %H:%M:%S"
                 )
                 gap_minutes = round((now - last_time).total_seconds() / 60, 1)
                 transition  = {
-                    "from":         last["action"],
-                    "from_instance":last["instance"],
-                    "to":           action,
-                    "to_instance":  instance,
-                    "gap_minutes":  gap_minutes
+                    "from":          last["action"],
+                    "from_instance": last["instance"],
+                    "to":            action,
+                    "to_instance":   instance,
+                    "gap_minutes":   gap_minutes
                 }
                 self.sequences.update_one(
                     {"user_id": user_id, "date": today_str},
                     {
-                        "$push":  {"sequence": new_entry, "transitions": transition},
-                        "$set":   {"last_updated": now}
+                        "$push": {"sequence": new_entry, "transitions": transition},
+                        "$set":  {"last_updated": now}
                     }
                 )
             else:
@@ -203,7 +276,6 @@ class MemoryManager:
                     {"$push": {"sequence": new_entry}, "$set": {"last_updated": now}}
                 )
         else:
-            # 建立新的當天序列
             self.sequences.insert_one({
                 "user_id":      user_id,
                 "date":         today_str,
@@ -217,12 +289,22 @@ class MemoryManager:
     # ─────────────────────────────────────────────
     # A. 距離搜尋 + SBERT 語義驗證
     # ─────────────────────────────────────────────
-    def _bind_by_position_and_semantics(self, est_pos, vlm_label, max_distance):
+    def _bind_by_position_and_semantics(self, est_pos, vlm_label, max_distance,
+                                         room_name=""):
         if not est_pos:
             return "Unknown_ID", "Unknown_Area", None
 
-        target_pt  = [float(est_pos.get('x', 0)), float(est_pos.get('z', 0))]
-        candidates = list(self.scene.find({}))
+        target_pt = [float(est_pos.get('x', 0)), float(est_pos.get('z', 0))]
+
+        if room_name:
+            candidates = list(self.scene.find(
+                {"room": {"$regex": room_name, "$options": "i"}}
+            ))
+            if not candidates:
+                print(f"   ⚠️ [Bind] room '{room_name}' 無家具，fallback 全部")
+                candidates = list(self.scene.find({}))
+        else:
+            candidates = list(self.scene.find({}))
 
         nearby = []
         for c in candidates:
@@ -246,7 +328,6 @@ class MemoryManager:
             best = nearby[0][0]
             return best['id'], best['label'], best.get('pos')
 
-        # 多個候選：SBERT 重排序
         if self.model and vlm_label and vlm_label not in ["Unknown_Area", "unknown", None]:
             best_item = self._semantic_rerank(vlm_label, nearby)
         else:
@@ -255,11 +336,19 @@ class MemoryManager:
 
         return best_item['id'], best_item['label'], best_item.get('pos')
 
-    def _bind_by_semantics_only(self, target_label):
+    def _bind_by_semantics_only(self, target_label, room_name=""):
         if not self.model:
             return "Unknown_ID", "Unknown_Area", None
 
-        candidates = list(self.scene.find({}))
+        if room_name:
+            candidates = list(self.scene.find(
+                {"room": {"$regex": room_name, "$options": "i"}}
+            ))
+            if not candidates:
+                candidates = list(self.scene.find({}))
+        else:
+            candidates = list(self.scene.find({}))
+
         if not candidates:
             return "Unknown_ID", "Unknown_Area", None
 
@@ -295,7 +384,8 @@ class MemoryManager:
             dist_score   = 1.0 - (dist / max_dist)
             final_score  = semantic_sim * 0.6 + dist_score * 0.4
 
-            print(f"[Rerank] {item['label']}: sem={semantic_sim:.2f} dist={dist:.1f}m → {final_score:.2f}")
+            print(f"[Rerank] {item['label']}: sem={semantic_sim:.2f} "
+                  f"dist={dist:.1f}m → {final_score:.2f}")
 
             if final_score > best_score:
                 best_score = final_score

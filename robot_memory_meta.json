@@ -2440,5 +2440,329 @@
     "description": "A person is sitting on a sofa next to a coffee table, bookshelf, and lamp. person on sofa coffee_table next_to sofa bookshelf next_to sofa lamp next_to sofa",
     "memory_text": "User_Mom sitting near sofa with nothing. A person is sitting on a sofa next to a coffee table, bookshelf, and lamp. person on sofa coffee_table next_to sofa bookshelf next_to sofa lamp next_to sofa person on sofa. coffee_table next_to sofa. bookshelf next_to sofa. lamp next_to sofa.",
     "timestamp": "2026-03-08T08:44:16.795003"
+  },
+  {
+    "faiss_idx": 63,
+    "user": "User_Mom",
+    "action": "sitting",
+    "instance": "sofa",
+    "interacting_items": [],
+    "all_items": [
+      "bookshelf",
+      "lamp",
+      "coffee_table"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "person",
+        "relation": "on",
+        "object": "sofa"
+      },
+      {
+        "subject": "coffee_table",
+        "relation": "next_to",
+        "object": "sofa"
+      },
+      {
+        "subject": "bookshelf",
+        "relation": "next_to",
+        "object": "sofa"
+      },
+      {
+        "subject": "lamp",
+        "relation": "next_to",
+        "object": "sofa"
+      }
+    ],
+    "furniture_pos": [
+      -0.169999987,
+      8.62
+    ],
+    "mongo_id": "69a7a2ed7b292c7eb561424f",
+    "description": "A person is sitting on a sofa next to a coffee table and bookshelf, with a lamp nearby. person on sofa coffee_table next_to sofa bookshelf next_to sofa lamp next_to sofa",
+    "memory_text": "User_Mom sitting near sofa with nothing. A person is sitting on a sofa next to a coffee table and bookshelf, with a lamp nearby. person on sofa coffee_table next_to sofa bookshelf next_to sofa lamp next_to sofa person on sofa. coffee_table next_to sofa. bookshelf next_to sofa. lamp next_to sofa.",
+    "timestamp": "2026-03-08T08:57:16.229752"
+  },
+  {
+    "faiss_idx": 64,
+    "user": "User_Mom",
+    "action": "sleeping",
+    "instance": "mom's bed",
+    "interacting_items": [],
+    "all_items": [],
+    "spatial_relations": [
+      {
+        "subject": "person",
+        "relation": "lying_on",
+        "object": "bed"
+      }
+    ],
+    "furniture_pos": [
+      -7.162,
+      9.31
+    ],
+    "mongo_id": "69a7a2ed7b292c7eb561423f",
+    "description": "The person is sleeping on the bed. person lying_on bed",
+    "memory_text": "User_Mom sleeping near mom's bed with nothing. The person is sleeping on the bed. person lying_on bed person lying_on bed.",
+    "timestamp": "2026-03-08T09:20:40.516191"
+  },
+  {
+    "faiss_idx": 65,
+    "user": "User_Mom",
+    "action": "typing",
+    "instance": "table",
+    "interacting_items": [],
+    "all_items": [
+      "laptop",
+      "monitor"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "person",
+        "relation": "at",
+        "object": "desk"
+      }
+    ],
+    "furniture_pos": [
+      1.97,
+      2.29
+    ],
+    "mongo_id": "69a7a2ed7b292c7eb5614241",
+    "description": "The person is typing on a desk. person at desk",
+    "memory_text": "User_Mom typing near table with nothing. The person is typing on a desk. person at desk person at desk.",
+    "timestamp": "2026-03-08T09:21:04.436748"
+  },
+  {
+    "faiss_idx": 66,
+    "user": "User_Dad",
+    "action": "drinking",
+    "instance": "sofa",
+    "interacting_items": [],
+    "all_items": [
+      "coffee table",
+      "floor"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "person",
+        "relation": "on",
+        "object": "sofa"
+      }
+    ],
+    "furniture_pos": [
+      -0.169999987,
+      8.62
+    ],
+    "mongo_id": "69a7a2ed7b292c7eb561424f",
+    "description": "The person is drinking from a cup on the sofa. person on sofa",
+    "memory_text": "User_Dad drinking near sofa with nothing. The person is drinking from a cup on the sofa. person on sofa person on sofa.",
+    "timestamp": "2026-03-08T09:21:58.691087"
+  },
+  {
+    "faiss_idx": 67,
+    "user": "User_Mom",
+    "action": "sleeping",
+    "instance": "mom's bed",
+    "interacting_items": [],
+    "all_items": [],
+    "spatial_relations": [
+      {
+        "subject": "person",
+        "relation": "lying_on",
+        "object": "bed"
+      }
+    ],
+    "furniture_pos": [
+      -7.162,
+      9.31
+    ],
+    "mongo_id": "69a7a2ed7b292c7eb561423f",
+    "description": "The person is sleeping on the bed. person lying_on bed",
+    "memory_text": "User_Mom sleeping near mom's bed with nothing. The person is sleeping on the bed. person lying_on bed person lying_on bed.",
+    "timestamp": "2026-03-08T09:46:06.542876"
+  },
+  {
+    "faiss_idx": 68,
+    "user": "User_Mom",
+    "action": "sitting",
+    "instance": "sofa",
+    "interacting_items": [],
+    "all_items": [],
+    "spatial_relations": [
+      {
+        "subject": "person",
+        "relation": "on",
+        "object": "sofa"
+      }
+    ],
+    "furniture_pos": [
+      -0.169999987,
+      8.62
+    ],
+    "mongo_id": "69a7a2ed7b292c7eb561424f",
+    "description": "The person is sitting on the sofa. person on sofa",
+    "memory_text": "User_Mom sitting near sofa with nothing. The person is sitting on the sofa. person on sofa person on sofa.",
+    "timestamp": "2026-03-08T09:46:18.675616"
+  },
+  {
+    "faiss_idx": 69,
+    "user": "User_Mom",
+    "action": "sitting",
+    "instance": "sofa",
+    "interacting_items": [],
+    "all_items": [
+      "floor",
+      "walls"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "person",
+        "relation": "on",
+        "object": "sofa"
+      }
+    ],
+    "furniture_pos": [
+      -0.169999987,
+      8.62
+    ],
+    "mongo_id": "69a7a2ed7b292c7eb561424f",
+    "description": "The person is sitting on the sofa. person on sofa",
+    "memory_text": "User_Mom sitting near sofa with nothing. The person is sitting on the sofa. person on sofa person on sofa.",
+    "timestamp": "2026-03-08T09:46:24.939002"
+  },
+  {
+    "faiss_idx": 70,
+    "user": "User_Dad",
+    "action": "sitting",
+    "instance": "sofa",
+    "interacting_items": [],
+    "all_items": [],
+    "spatial_relations": [
+      {
+        "subject": "person",
+        "relation": "on",
+        "object": "sofa"
+      }
+    ],
+    "furniture_pos": [
+      -0.169999987,
+      8.62
+    ],
+    "mongo_id": "69a7a2ed7b292c7eb561424f",
+    "description": "The person is sitting on the sofa. person on sofa",
+    "memory_text": "User_Dad sitting near sofa with nothing. The person is sitting on the sofa. person on sofa person on sofa.",
+    "timestamp": "2026-03-08T09:46:54.533554"
+  },
+  {
+    "faiss_idx": 71,
+    "user": "User_Mom",
+    "action": "sitting",
+    "instance": "sofa",
+    "interacting_items": [],
+    "all_items": [
+      "wall",
+      "floor"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "person",
+        "relation": "on",
+        "object": "sofa"
+      }
+    ],
+    "furniture_pos": [
+      -0.169999987,
+      8.62
+    ],
+    "mongo_id": "69a7a2ed7b292c7eb561424f",
+    "description": "The person is sitting on the sofa. person on sofa",
+    "memory_text": "User_Mom sitting near sofa with nothing. The person is sitting on the sofa. person on sofa person on sofa.",
+    "timestamp": "2026-03-08T09:59:52.845795"
+  },
+  {
+    "faiss_idx": 72,
+    "user": "User_Mom",
+    "action": "sitting",
+    "instance": "sofa",
+    "interacting_items": [],
+    "all_items": [],
+    "spatial_relations": [
+      {
+        "subject": "person",
+        "relation": "on",
+        "object": "sofa"
+      }
+    ],
+    "furniture_pos": [
+      -0.169999987,
+      8.62
+    ],
+    "mongo_id": "69a7a2ed7b292c7eb561424f",
+    "description": "The person is sitting on the sofa. person on sofa",
+    "memory_text": "User_Mom sitting near sofa with nothing. The person is sitting on the sofa. person on sofa person on sofa.",
+    "timestamp": "2026-03-08T10:00:07.382252"
+  },
+  {
+    "faiss_idx": 73,
+    "user": "User_Mom",
+    "action": "none",
+    "instance": "mom's bed",
+    "interacting_items": [],
+    "all_items": [],
+    "spatial_relations": [],
+    "furniture_pos": [
+      -7.162,
+      9.31
+    ],
+    "mongo_id": "69a7a2ed7b292c7eb561423f",
+    "description": "Observed behavior.",
+    "memory_text": "User_Mom none near mom's bed with nothing. Observed behavior.",
+    "timestamp": "2026-03-08T13:20:19.300699"
+  },
+  {
+    "faiss_idx": 74,
+    "user": "User_Mom",
+    "action": "sleeping",
+    "instance": "mom's bed",
+    "interacting_items": [],
+    "all_items": [],
+    "spatial_relations": [
+      {
+        "subject": "person",
+        "relation": "lying_on",
+        "object": "bed"
+      }
+    ],
+    "furniture_pos": [
+      -7.162,
+      9.31
+    ],
+    "mongo_id": "69a7a2ed7b292c7eb561423f",
+    "description": "The person is sleeping on the bed. person lying_on bed",
+    "memory_text": "User_Mom sleeping near mom's bed with nothing. The person is sleeping on the bed. person lying_on bed person lying_on bed.",
+    "timestamp": "2026-03-08T13:28:26.299463"
+  },
+  {
+    "faiss_idx": 75,
+    "user": "User_Mom",
+    "action": "sitting",
+    "instance": "table",
+    "interacting_items": [],
+    "all_items": [],
+    "spatial_relations": [
+      {
+        "subject": "person",
+        "relation": "sitting on",
+        "object": "table"
+      }
+    ],
+    "furniture_pos": [
+      1.97,
+      2.29
+    ],
+    "mongo_id": "69a7a2ed7b292c7eb5614241",
+    "description": "The person is sitting at the table. person sitting on table",
+    "memory_text": "User_Mom sitting near table with nothing. The person is sitting at the table. person sitting on table person sitting on table.",
+    "timestamp": "2026-03-08T13:30:29.921760"
   }
 ]

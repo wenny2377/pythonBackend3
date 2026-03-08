@@ -21,9 +21,10 @@ class PerceptionEngine:
         self.client = MongoClient(mongo_uri)
         self.db     = self.client[db_name]
         self.semantic_memories_collection = self.db["semantic_memories"]
+        self.scene_col = self.db["scene_snapshots"]   # ← 新增，用來查同房間家具
 
     # ─────────────────────────────────────────────
-    # 人臉辨識（None = 定點相機模式）
+    # 人臉辨識
     # ─────────────────────────────────────────────
     def _get_user_id(self, img_b64, hint_user_id="Unknown_User"):
         if not self.face_app or not self.face_bank:
@@ -53,40 +54,56 @@ class PerceptionEngine:
     # 主入口
     # ─────────────────────────────────────────────
     def analyze_action_burst(self, payload: dict):
-        image_list    = payload.get("image_list", [])
-        hint_user_id  = payload.get("userID", "Unknown_User")
-        source_nodes  = payload.get("source_nodes", [])
-        node_scores   = payload.get("node_scores", [])
+        image_list   = payload.get("image_list", [])
+        hint_user_id = payload.get("userID", "Unknown_User")
+        source_nodes = payload.get("source_nodes", [])
+        node_scores  = payload.get("node_scores", [])
+        room_name    = payload.get("room_name", "a room")   # Unity 傳入的房間名
 
         if not image_list:
             return self._empty_result(hint_user_id)
 
         sample_indices = self._select_sample_indices(image_list, node_scores, max_samples=3)
 
-        # ── 強化版 Prompt：要求輸出空間關係 + 物品互動分層 ──
-        prompt = """Analyze this home scene image carefully. Respond ONLY in valid JSON, no extra text.
+        # ── 從 scene_snapshots 查同房間家具清單，給 VLM 當 context ──
+        try:
+            room_docs = list(self.scene_col.find(
+                {"room": {"$regex": room_name, "$options": "i"}} if room_name else {}
+            ))
+            room_furniture = [d.get("label", "") for d in room_docs if d.get("label")]
+        except Exception:
+            room_furniture = []
 
-{
-  "action": "single verb describing what the person is doing (e.g. drinking, cooking, typing)",
-  "main_object": "the primary furniture or area the person is at (e.g. kitchen_counter, sofa, desk)",
-  "interacting_items": ["items the person is directly touching or using"],
-  "scene_items": ["other visible items NOT being directly used by the person"],
+        furniture_ctx = ""
+        if room_furniture:
+            furniture_ctx = (
+                f"\nFURNITURE in this room: {', '.join(room_furniture)}.\n"
+                "Use these names for main_object. Do NOT use furniture from other rooms.\n"
+            )
+
+        # ── FIX: 改用 f-string，room_name 正確注入 ──
+        prompt = f"""You are analyzing a home camera image inside "{room_name}".
+{furniture_ctx}
+Respond ONLY in valid JSON. No markdown, no extra text.
+
+{{
+  "action": "most specific single verb (sleeping/eating/cooking/typing/sitting/standing/watching/...)",
+  "main_object": "primary furniture the person is at",
+  "interacting_items": ["items person physically holds or uses — [] if none"],
+  "scene_items": ["other visible background items — [] if none"],
   "spatial_relations": [
-    {"subject": "item_name", "relation": "on/in/next_to/above/below/in_hand_of/on_top_of", "object": "furniture_or_person_name"}
+    {{"subject": "item_or_person", "relation": "on/in/next_to/above/below/in_hand_of/lying_on", "object": "furniture_or_person"}}
   ],
-  "description": "one natural sentence summarizing the scene"
-}
+  "description": "one natural sentence"
+}}
 
-Rules:
-1. interacting_items: ONLY items the person is physically holding or directly using.
-2. scene_items: everything else visible in the scene (on surfaces, shelves, background).
-3. spatial_relations: describe WHERE each item is relative to furniture or the person.
-   - Use "in_hand_of" when person is holding an item.
-   - Use "on" for items resting on surfaces.
-   - Use "in" for items inside containers/drawers.
-   - Use "next_to" for items beside furniture.
-4. Do NOT include placeholder names like "item1". Be specific.
-5. If no items are visible, return empty lists [].
+RULES:
+1. action: be specific. "sleeping" not "lying". "eating" not "sitting". "watching" not "sitting".
+2. main_object: must come from FURNITURE list above if provided.
+3. interacting_items: only items physically held or operated. Empty [] if none.
+4. scene_items: background items on surfaces/shelves. Do NOT repeat interacting_items.
+5. Use "lying_on" when person is horizontal on bed or sofa.
+6. Do NOT invent furniture not in the room list.
 """
 
         user_votes, action_votes, object_votes = [], [], []
@@ -104,7 +121,7 @@ Rules:
                     "model":   self.model,
                     "messages": [{"role": "user", "content": prompt, "images": [img_clean]}],
                     "stream":  False,
-                    "options": {"temperature": 0.1, "num_predict": 256}
+                    "options": {"temperature": 0.05, "num_predict": 512}
                 }
 
                 response   = requests.post(f"{self.url}/api/chat", json=api_payload, timeout=120)
@@ -112,41 +129,42 @@ Rules:
                 node_name  = source_nodes[idx] if idx < len(source_nodes) else f"node_{idx}"
                 print(f"✅ [Frame {idx} | {node_name}] VLM raw: {raw_result}")
 
-                clean_json = re.sub(r'```json\n?|```', '', raw_result).strip()
+                clean_json = self._extract_json(raw_result)
 
                 try:
                     data = json.loads(clean_json)
 
-                    act        = data.get("action", "none").lower()
-                    obj        = data.get("main_object", "unknown").lower()
-                    interact   = data.get("interacting_items", [])
-                    scene      = data.get("scene_items", [])
-                    spatial    = data.get("spatial_relations", [])
-                    desc       = data.get("description", "")
+                    act      = data.get("action", "none").lower().strip()
+                    obj      = data.get("main_object", "unknown").lower().strip()
+                    interact = data.get("interacting_items", [])
+                    scene    = data.get("scene_items", [])
+                    spatial  = data.get("spatial_relations", [])
+                    desc     = data.get("description", "")
 
-                    if act in ["none", "describe the verb", "unknown"]:
+                    invalid_actions = {
+                        "none", "describe the verb", "unknown", "n/a",
+                        "not visible", "cannot determine", ""
+                    }
+                    if act in invalid_actions:
+                        print(f"   ⚠️ Skipping invalid action: '{act}'")
                         continue
 
                     action_votes.append(act)
                     object_votes.append(obj)
                     descriptions.append(desc)
 
-                    # 清洗物品清單
-                    blacklist = {"item1", "item2", "none", "small_items", "unknown"}
+                    blacklist = {"item1", "item2", "none", "small_items", "unknown", "n/a", ""}
 
                     if isinstance(interact, list):
                         interacting_pool.extend([
-                            i.lower() for i in interact
-                            if i.lower() not in blacklist
+                            i.lower().strip() for i in interact
+                            if isinstance(i, str) and i.lower().strip() not in blacklist
                         ])
-
                     if isinstance(scene, list):
                         scene_pool.extend([
-                            i.lower() for i in scene
-                            if i.lower() not in blacklist
+                            i.lower().strip() for i in scene
+                            if isinstance(i, str) and i.lower().strip() not in blacklist
                         ])
-
-                    # 清洗空間關係
                     if isinstance(spatial, list):
                         for rel in spatial:
                             if (isinstance(rel, dict)
@@ -154,13 +172,14 @@ Rules:
                                     and rel.get("relation")
                                     and rel.get("object")):
                                 spatial_pool.append({
-                                    "subject":  rel["subject"].lower(),
-                                    "relation": rel["relation"].lower(),
-                                    "object":   rel["object"].lower()
+                                    "subject":  rel["subject"].lower().strip(),
+                                    "relation": rel["relation"].lower().strip(),
+                                    "object":   rel["object"].lower().strip()
                                 })
 
                 except Exception as je:
                     print(f"   ⚠️ JSON Parse Error Frame {idx}: {je}")
+                    print(f"   Cleaned JSON: {clean_json[:200]}")
                     continue
 
             except Exception as e:
@@ -168,8 +187,8 @@ Rules:
 
         # ── 投票 ──
         final_user   = max(set(user_votes), key=user_votes.count) if user_votes else hint_user_id
-        final_items  = list(set(interacting_pool))   # 用戶直接互動的物品
-        all_items    = list(set(interacting_pool + scene_pool))  # 畫面中所有物品
+        final_items  = list(set(interacting_pool))
+        all_items    = list(set(interacting_pool + scene_pool))
 
         if not action_votes:
             return self._empty_result(final_user)
@@ -179,47 +198,49 @@ Rules:
 
         try:
             base_desc = descriptions[action_votes.index(final_action)]
-        except:
+        except Exception:
             base_desc = "Observed behavior."
 
-        # 空間關係去重聚合（同一對 subject-relation-object 合併）
         spatial_merged = self._merge_spatial_relations(spatial_pool)
 
         final_result = {
             "location":          final_object,
-            "interacting_items": final_items,     # 人正在用的
-            "scene_items":       list(set(scene_pool)),  # 畫面中其他物品
-            "all_items":         all_items,       # 全部
-            "spatial_relations": spatial_merged,  # 空間介係詞關係
+            "interacting_items": final_items,
+            "scene_items":       list(set(scene_pool)),
+            "all_items":         all_items,
+            "spatial_relations": spatial_merged,
             "context":           base_desc
         }
 
-        # 寫入語義記憶
         self.semantic_memories_collection.insert_one({
-            "user":              final_user,
-            "action":            final_action,
-            "bound_to":          "Unknown_Area",
-            "details":           final_result,
-            "source_nodes":      source_nodes,
-            "timestamp":         datetime.datetime.utcnow()
+            "user":         final_user,
+            "action":       final_action,
+            "bound_to":     "Unknown_Area",   # 由 MemoryManager.bind_and_update 覆蓋
+            "details":      final_result,
+            "source_nodes": source_nodes,
+            "timestamp":    datetime.datetime.utcnow()
         })
 
         return {
             "user":           final_user,
             "action":         final_action,
             "result":         final_result,
-            "items":          final_items,        # 互動物品（主要）
-            "all_items":      all_items,          # 全部物品
-            "spatial":        spatial_merged,     # 空間關係
-            "bound_instance": final_object
+            "items":          final_items,
+            "all_items":      all_items,
+            "spatial":        spatial_merged,
+            "bound_instance": final_object    # VLM 的原始輸出，MemoryManager 會校正
         }
 
     # ─────────────────────────────────────────────
-    # 空間關係去重：相同 subject-relation-object 只保留一筆
+    # 工具方法
     # ─────────────────────────────────────────────
+    def _extract_json(self, raw: str) -> str:
+        cleaned = re.sub(r'```(?:json)?\s*', '', raw).strip()
+        match   = re.search(r'\{.*\}', cleaned, re.DOTALL)
+        return match.group(0).strip() if match else cleaned
+
     def _merge_spatial_relations(self, spatial_pool):
-        seen   = {}
-        merged = []
+        seen, merged = {}, []
         for rel in spatial_pool:
             key = f"{rel['subject']}|{rel['relation']}|{rel['object']}"
             if key not in seen:
@@ -227,9 +248,6 @@ Rules:
                 merged.append(rel)
         return merged
 
-    # ─────────────────────────────────────────────
-    # 依 node_scores 選取 sample frames
-    # ─────────────────────────────────────────────
     def _select_sample_indices(self, image_list, node_scores, max_samples=3):
         n = len(image_list)
         if n == 0:

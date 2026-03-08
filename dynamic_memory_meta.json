@@ -1,0 +1,34 @@
+[
+  {
+    "label": "wall",
+    "room": "",
+    "last_seen_on": "sofa",
+    "spatial_rel": "near",
+    "furniture_pos": [
+      -0.169999987,
+      8.62
+    ],
+    "seen_count": 1,
+    "interact_count": 0,
+    "interacted_by": [],
+    "memory_text": "wall near sofa in . seen 1 times. interacted 0 times.",
+    "timestamp": "2026-03-08T09:59:52.855836",
+    "faiss_idx": 0
+  },
+  {
+    "label": "floor",
+    "room": "",
+    "last_seen_on": "sofa",
+    "spatial_rel": "near",
+    "furniture_pos": [
+      -0.169999987,
+      8.62
+    ],
+    "seen_count": 1,
+    "interact_count": 0,
+    "interacted_by": [],
+    "memory_text": "floor near sofa in . seen 1 times. interacted 0 times.",
+    "timestamp": "2026-03-08T09:59:52.863474",
+    "faiss_idx": 1
+  }
+]

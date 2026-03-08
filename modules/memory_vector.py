@@ -2,66 +2,85 @@ import numpy as np
 import faiss
 import json
 import os
-import datetime 
+import datetime
 from sentence_transformers import SentenceTransformer
 
 
 class VectorMemory:
-    def __init__(self, index_path="robot_memory.index", meta_path="robot_memory_meta.json"):
+    def __init__(self, index_path="robot_memory.index", meta_path="robot_memory_meta.json",
+                 dynamic_index_path="dynamic_memory.index",
+                 dynamic_meta_path="dynamic_memory_meta.json"):
+
+        self.model = SentenceTransformer('paraphrase-MiniLM-L6-v2', device='cpu')
+        self.dim   = 384
+
+        # ── 習慣記憶索引（行為層）──
         self.index_path = index_path
         self.meta_path  = meta_path
-        self.model      = SentenceTransformer('paraphrase-MiniLM-L6-v2', device='cpu')
-        self.dim        = 384
-
-        # 載入或建立 FAISS index
         if os.path.exists(index_path):
             self.index = faiss.read_index(index_path)
-            print(f"✅ [FAISS] 載入現有索引，共 {self.index.ntotal} 筆")
+            print(f"✅ [FAISS] 習慣索引載入，共 {self.index.ntotal} 筆")
         else:
-            self.index = faiss.IndexFlatL2(self.dim)
-            print("✅ [FAISS] 建立新索引")
+            self.index = faiss.IndexFlatIP(self.dim)
+            print("✅ [FAISS] 習慣索引建立（IndexFlatIP）")
 
-        # 載入 metadata（每筆向量對應的完整資料）
         if os.path.exists(meta_path):
             with open(meta_path, 'r', encoding='utf-8') as f:
                 self.metadata = json.load(f)
         else:
             self.metadata = []
 
-# ─────────────────────────────────────────────
-    # C. 加強儲存：文字向量 + 完整 metadata（含家具座標與空間關係）
+        # ── 動態物件索引（物品層）──
+        self.dynamic_index_path = dynamic_index_path
+        self.dynamic_meta_path  = dynamic_meta_path
+        if os.path.exists(dynamic_index_path):
+            self.dynamic_index = faiss.read_index(dynamic_index_path)
+            print(f"✅ [FAISS] 動態物件索引載入，共 {self.dynamic_index.ntotal} 筆")
+        else:
+            self.dynamic_index = faiss.IndexFlatIP(self.dim)
+            print("✅ [FAISS] 動態物件索引建立（IndexFlatIP）")
+
+        if os.path.exists(dynamic_meta_path):
+            with open(dynamic_meta_path, 'r', encoding='utf-8') as f:
+                self.dynamic_metadata = json.load(f)
+        else:
+            self.dynamic_metadata = []
+
+    # ─────────────────────────────────────────────
+    # 習慣記憶：新增
     # ─────────────────────────────────────────────
     def add_memory(self, user_id, action, furniture_label, vlm_description,
-                   detected_items=None, all_items=None, spatial_relations=None, 
+                   detected_items=None, all_items=None, spatial_relations=None,
                    furniture_pos=None, mongo_id=None):
-        """
-        修正版：新增支援 all_items 與 spatial_relations
-        """
-        detected_items = detected_items or []
-        all_items = all_items or []
+
+        detected_items    = detected_items    or []
+        all_items         = all_items         or []
         spatial_relations = spatial_relations or []
 
-        # 1. 組合語意豐富的文字：加入空間關係描述，讓向量搜尋能搜到「香蕉在桌上」
-        items_str = ", ".join(detected_items) if detected_items else "nothing"
-        
-        # 將空間關係轉為文字描述，例如: "banana on desk. blue line next to table."
-        spatial_text = " ".join([f"{r['subject']} {r['relation']} {r['object']}." for r in spatial_relations])
-        
-        # 最終要向量化的長字串
-        memory_text = f"{user_id} {action} near {furniture_label} with {items_str}. {vlm_description} {spatial_text}".strip()
+        items_str    = ", ".join(detected_items) if detected_items else "nothing"
+        spatial_text = " ".join([
+            f"{r['subject']} {r['relation']} {r['object']}."
+            for r in spatial_relations
+            if r.get('subject') and r.get('relation') and r.get('object')
+        ])
+
+        memory_text = (
+            f"{user_id} {action} near {furniture_label} with {items_str}. "
+            f"{vlm_description} {spatial_text}"
+        ).strip()
 
         vec = self.model.encode([memory_text]).astype('float32')
+        faiss.normalize_L2(vec)
         self.index.add(vec)
 
-        # 2. metadata 同時儲存所有豐富資訊
         entry = {
             "faiss_idx":         self.index.ntotal - 1,
             "user":              user_id,
             "action":            action,
             "instance":          furniture_label,
-            "interacting_items": detected_items,   # 修改 key 名稱與 app.py 對齊
-            "all_items":         all_items,         # 新增：畫面所有物品
-            "spatial_relations": spatial_relations, # 新增：空間關係
+            "interacting_items": detected_items,
+            "all_items":         all_items,
+            "spatial_relations": spatial_relations,
             "furniture_pos":     furniture_pos,
             "mongo_id":          str(mongo_id) if mongo_id else None,
             "description":       vlm_description,
@@ -71,48 +90,158 @@ class VectorMemory:
         self.metadata.append(entry)
         self._save()
 
-        print(f"✅ [FAISS] 新增記憶（含空間語意）：{furniture_label} | {action}")
+        print(f"✅ [FAISS] 習慣記憶：{furniture_label} | {action}")
         return entry
 
     # ─────────────────────────────────────────────
-    # 模糊搜尋：回傳含家具座標的完整結果
+    # 動態物件：新增 or 更新 FAISS
+    # 向量文字格式：
+    #   "apple on kitchen_counter in Kitchen. seen 8 times. used by User_Mom."
+    # ─────────────────────────────────────────────
+    def upsert_dynamic_object(self, label: str, room: str, last_seen_on: str,
+                               spatial_rel: str, furniture_pos,
+                               seen_count: int, interact_count: int,
+                               interacted_by: list):
+        """
+        每次 dynamic_objects 更新後呼叫，用 label 找到現有向量並更新，
+        或新增一筆。
+        """
+        label = label.lower().strip()
+
+        # 組合向量化文字
+        used_str = f"used by {', '.join(interacted_by)}." if interacted_by else ""
+        memory_text = (
+            f"{label} {spatial_rel} {last_seen_on} in {room}. "
+            f"seen {seen_count} times. interacted {interact_count} times. "
+            f"{used_str}"
+        ).strip()
+
+        vec = self.model.encode([memory_text]).astype('float32')
+        faiss.normalize_L2(vec)
+
+        # 找現有 index（用 label 查）
+        existing_idx = None
+        for i, m in enumerate(self.dynamic_metadata):
+            if m.get("label") == label:
+                existing_idx = i
+                break
+
+        entry = {
+            "label":          label,
+            "room":           room,
+            "last_seen_on":   last_seen_on,
+            "spatial_rel":    spatial_rel,
+            "furniture_pos":  furniture_pos,
+            "seen_count":     seen_count,
+            "interact_count": interact_count,
+            "interacted_by":  interacted_by,
+            "memory_text":    memory_text,
+            "timestamp":      datetime.datetime.now().isoformat()
+        }
+
+        if existing_idx is not None:
+            # 更新：直接替換 metadata（FAISS 不支援原地更新，重建向量）
+            # 簡化處理：append 新向量，metadata 指向新 idx
+            faiss_idx = self.dynamic_index.ntotal
+            self.dynamic_index.add(vec)
+            entry["faiss_idx"] = faiss_idx
+            self.dynamic_metadata[existing_idx] = entry
+        else:
+            faiss_idx = self.dynamic_index.ntotal
+            self.dynamic_index.add(vec)
+            entry["faiss_idx"] = faiss_idx
+            self.dynamic_metadata.append(entry)
+
+        self._save_dynamic()
+        print(f"   🧩 [FAISS Dynamic] '{label}' @ {last_seen_on} updated")
+
+    # ─────────────────────────────────────────────
+    # 習慣記憶：搜尋
     # ─────────────────────────────────────────────
     def search_habit(self, query, user_id=None, top_k=3):
-        """
-        自然語言查詢 → FAISS 向量搜尋 → 回傳含導航座標的結果
-
-        範例查詢：
-        - "媽媽通常在哪裡喝水"
-        - "Where does mom usually sit?"
-        - "找媽媽常用的東西"
-        """
         if self.index.ntotal == 0:
             return []
 
-        query_vec = self.model.encode([query]).astype('float32')
-        k         = min(top_k * 3, self.index.ntotal)  # 多搜幾筆再過濾
-        distances, indices = self.index.search(query_vec, k)
+        vec = self.model.encode([query]).astype('float32')
+        faiss.normalize_L2(vec)
+
+        k = min(top_k * 3, self.index.ntotal)
+        scores, indices = self.index.search(vec, k)
 
         results = []
-        for dist, idx in zip(distances[0], indices[0]):
+        for score, idx in zip(scores[0], indices[0]):
             if idx < 0 or idx >= len(self.metadata):
                 continue
-
             entry = self.metadata[idx]
-
-            # 可選：過濾特定用戶
             if user_id and entry.get('user') != user_id:
+                continue
+            results.append({
+                "user":              entry.get('user'),
+                "action":            entry.get('action'),
+                "instance":          entry.get('instance'),
+                "interacting_items": entry.get('interacting_items', []),
+                "all_items":         entry.get('all_items', []),
+                "spatial_relations": entry.get('spatial_relations', []),
+                "furniture_pos":     entry.get('furniture_pos'),
+                "mongo_id":          entry.get('mongo_id'),
+                "description":       entry.get('description'),
+                "memory_text":       entry.get('memory_text'),
+                "similarity":        float(score),
+            })
+            if len(results) >= top_k:
+                break
+
+        return results
+
+    # ─────────────────────────────────────────────
+    # 動態物件：搜尋
+    # 範例查詢：「甜的東西在哪」「媽媽常用的東西」「廚房桌上有什麼」
+    # ─────────────────────────────────────────────
+    def search_dynamic(self, query, top_k=5, user_filter=None):
+        if self.dynamic_index.ntotal == 0:
+            return []
+
+        vec = self.model.encode([query]).astype('float32')
+        faiss.normalize_L2(vec)
+
+        k = min(top_k * 3, self.dynamic_index.ntotal)
+        scores, indices = self.dynamic_index.search(vec, k)
+
+        # label → 最新 metadata（避免重複 label 的舊向量干擾）
+        seen_labels = set()
+        results     = []
+
+        for score, idx in zip(scores[0], indices[0]):
+            if idx < 0:
+                continue
+            # 找 faiss_idx == idx 的 metadata
+            entry = next(
+                (m for m in self.dynamic_metadata if m.get("faiss_idx") == idx),
+                None
+            )
+            if not entry:
+                continue
+
+            label = entry.get("label")
+            if label in seen_labels:
+                continue
+            seen_labels.add(label)
+
+            # 可選：只回傳特定用戶互動過的
+            if user_filter and user_filter not in entry.get("interacted_by", []):
                 continue
 
             results.append({
-                "user":          entry.get('user'),
-                "action":        entry.get('action'),
-                "instance":      entry.get('instance'),
-                "items":         entry.get('items', []),
-                "furniture_pos": entry.get('furniture_pos'),   # 直接可用於導航
-                "mongo_id":      entry.get('mongo_id'),
-                "description":   entry.get('description'),
-                "similarity":    float(1 / (1 + dist))         # 距離轉換為相似度分數 0~1
+                "label":          label,
+                "room":           entry.get("room"),
+                "last_seen_on":   entry.get("last_seen_on"),
+                "spatial_rel":    entry.get("spatial_rel"),
+                "furniture_pos":  entry.get("furniture_pos"),
+                "seen_count":     entry.get("seen_count", 0),
+                "interact_count": entry.get("interact_count", 0),
+                "interacted_by":  entry.get("interacted_by", []),
+                "memory_text":    entry.get("memory_text"),
+                "similarity":     float(score),
             })
 
             if len(results) >= top_k:
@@ -121,41 +250,77 @@ class VectorMemory:
         return results
 
     # ─────────────────────────────────────────────
-    # 習慣聚合：同一用戶同一動作，哪個家具最高頻
+    # 習慣聚合
     # ─────────────────────────────────────────────
     def get_top_habit(self, query, user_id=None, top_k=1):
-        """
-        查詢最常發生的行為地點
-        例如：「媽媽最常在哪坐著」→ 回傳頻率最高的家具 + 座標
-        """
         results = self.search_habit(query, user_id=user_id, top_k=20)
 
-        # 按 instance 聚合，計算出現次數
         habit_count = {}
         for r in results:
             key = r['instance']
             if key not in habit_count:
                 habit_count[key] = {
-                    "instance":      r['instance'],
-                    "furniture_pos": r['furniture_pos'],
-                    "count":         0,
-                    "actions":       [],
-                    "items":         []
+                    "instance":          r['instance'],
+                    "furniture_pos":     r['furniture_pos'],
+                    "count":             0,
+                    "actions":           [],
+                    "interacting_items": [],
+                    "all_items":         [],
                 }
-            habit_count[key]['count']   += 1
+            habit_count[key]['count']             += 1
             habit_count[key]['actions'].append(r['action'])
-            habit_count[key]['items'].extend(r.get('items', []))
+            habit_count[key]['interacting_items'].extend(r.get('interacting_items', []))
+            habit_count[key]['all_items'].extend(r.get('all_items', []))
 
         sorted_habits = sorted(habit_count.values(), key=lambda x: x['count'], reverse=True)
-
         if not sorted_habits:
             return None
 
         top = sorted_habits[:top_k]
         for h in top:
-            h['items'] = list(set(h['items']))  # 去重
+            h['interacting_items'] = list(set(h['interacting_items']))
+            h['all_items']         = list(set(h['all_items']))
 
         return top[0] if top_k == 1 else top
+
+    # ─────────────────────────────────────────────
+    # 語意擴散
+    # ─────────────────────────────────────────────
+    def expand_query(self, query: str, candidate_items: list,
+                     top_k=10, threshold=0.35) -> list:
+        if not candidate_items:
+            return []
+        try:
+            q_vec  = self.model.encode(query)
+            scored = []
+            for item in candidate_items:
+                i_vec = self.model.encode(item)
+                sim   = float(
+                    np.dot(q_vec, i_vec) /
+                    (np.linalg.norm(q_vec) * np.linalg.norm(i_vec) + 1e-8)
+                )
+                if sim >= threshold:
+                    scored.append((item, sim))
+            scored.sort(key=lambda x: x[1], reverse=True)
+            result = [item for item, _ in scored[:top_k]]
+            print(f"[SemanticExpand] '{query}' → {result}")
+            return result
+        except Exception as e:
+            print(f"⚠️ [SemanticExpand] {e}")
+            return []
+
+    def get_all_known_items(self) -> list:
+        items = set()
+        for m in self.metadata:
+            for item in m.get('interacting_items', []):
+                items.add(item.lower())
+            for item in m.get('all_items', []):
+                items.add(item.lower())
+        # 也加入 dynamic_objects 的 label
+        for m in self.dynamic_metadata:
+            if m.get("label"):
+                items.add(m["label"].lower())
+        return list(items)
 
     # ─────────────────────────────────────────────
     # 持久化
@@ -165,55 +330,7 @@ class VectorMemory:
         with open(self.meta_path, 'w', encoding='utf-8') as f:
             json.dump(self.metadata, f, ensure_ascii=False, indent=2)
 
-    # ─────────────────────────────────────────────
-    # 語意擴散：把模糊查詢展開成具體物品標籤
-    # ─────────────────────────────────────────────
-    def expand_query(self, query: str, candidate_items: list, top_k=10, threshold=0.35) -> list:
-        """
-        把模糊需求展開成最相關的具體物品標籤。
-
-        例如：
-          query="甜的"     candidates=[chocolate, cookie, apple, knife, cup]
-          → ["chocolate", "cookie"]
-
-          query="喝的東西"  candidates=[cup, water_bottle, milk, knife, plate]
-          → ["cup", "water_bottle", "milk"]
-
-        candidate_items：從 scene_snapshots 收集到的所有出現過的物品標籤。
-        threshold：語意相似度門檻，低於此值不列入（預設 0.35）。
-        """
-        if not candidate_items:
-            return []
-
-        try:
-            query_vec = self.model.encode(query)
-            scored    = []
-
-            for item in candidate_items:
-                item_vec = self.model.encode(item)
-                sim      = float(
-                    np.dot(query_vec, item_vec) /
-                    (np.linalg.norm(query_vec) * np.linalg.norm(item_vec) + 1e-8)
-                )
-                if sim >= threshold:
-                    scored.append((item, sim))
-
-            scored.sort(key=lambda x: x[1], reverse=True)
-            result = [item for item, _ in scored[:top_k]]
-
-            print(f"[SemanticExpand] '{query}' → {result}")
-            return result
-
-        except Exception as e:
-            print(f"⚠️ [SemanticExpand] {e}")
-            return []
-
-    def get_all_known_items(self) -> list:
-        """FAISS metadata 中所有出現過的物品標籤（去重）"""
-        items = set()
-        for m in self.metadata:
-            for item in m.get('interacting_items', []):
-                items.add(item.lower())
-            for item in m.get('all_items', []):
-                items.add(item.lower())
-        return list(items)
+    def _save_dynamic(self):
+        faiss.write_index(self.dynamic_index, self.dynamic_index_path)
+        with open(self.dynamic_meta_path, 'w', encoding='utf-8') as f:
+            json.dump(self.dynamic_metadata, f, ensure_ascii=False, indent=2)
