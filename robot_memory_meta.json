@@ -1819,5 +1819,626 @@
     "description": "A person sitting on a couch holding a remote control. person on sofa remote control in hand of person television next to couch wooden floor underneath sofa",
     "memory_text": "User_Dad sitting near sofa with remote control. A person sitting on a couch holding a remote control. person on sofa remote control in hand of person television next to couch wooden floor underneath sofa person on sofa. remote control in hand of person. television next to couch. wooden floor underneath sofa.",
     "timestamp": "2026-03-06T09:53:39.547274"
+  },
+  {
+    "faiss_idx": 49,
+    "user": "User_Mom",
+    "action": "sitting",
+    "instance": "table",
+    "interacting_items": [
+      "banana"
+    ],
+    "all_items": [
+      "apple",
+      "banana"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "banana",
+        "relation": "on",
+        "object": "desk"
+      },
+      {
+        "subject": "apple",
+        "relation": "in",
+        "object": "desk"
+      }
+    ],
+    "furniture_pos": [
+      1.97,
+      2.29
+    ],
+    "mongo_id": "69a7a2ed7b292c7eb5614241",
+    "description": "A person sitting at a desk with a banana and an apple. banana on desk apple in desk",
+    "memory_text": "User_Mom sitting near table with banana. A person sitting at a desk with a banana and an apple. banana on desk apple in desk banana on desk. apple in desk.",
+    "timestamp": "2026-03-08T08:33:57.720780"
+  },
+  {
+    "faiss_idx": 50,
+    "user": "User_Dad",
+    "action": "sleeping",
+    "instance": "mom's bed",
+    "interacting_items": [],
+    "all_items": [
+      "wooden floor"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "person",
+        "relation": "on",
+        "object": "bed"
+      },
+      {
+        "subject": "bed",
+        "relation": "in",
+        "object": "wooden floor"
+      }
+    ],
+    "furniture_pos": [
+      -7.162,
+      9.31
+    ],
+    "mongo_id": "69a7a2ed7b292c7eb561423f",
+    "description": "A person is sleeping on a bed in a room with wooden flooring. person on bed bed in wooden floor",
+    "memory_text": "User_Dad sleeping near mom's bed with nothing. A person is sleeping on a bed in a room with wooden flooring. person on bed bed in wooden floor person on bed. bed in wooden floor.",
+    "timestamp": "2026-03-08T08:34:13.980469"
+  },
+  {
+    "faiss_idx": 51,
+    "user": "User_Dad",
+    "action": "sitting",
+    "instance": "sofa",
+    "interacting_items": [
+      "remote control"
+    ],
+    "all_items": [
+      "desk",
+      "chair",
+      "table",
+      "remote control",
+      "computer monitor",
+      "couch"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "remote control",
+        "relation": "in_hand_of",
+        "object": "person"
+      },
+      {
+        "subject": "sofa",
+        "relation": "on",
+        "object": "floor"
+      },
+      {
+        "subject": "table",
+        "relation": "next_to",
+        "object": "sofa"
+      },
+      {
+        "subject": "couch",
+        "relation": "in",
+        "object": "desk"
+      },
+      {
+        "subject": "chair",
+        "relation": "on",
+        "object": "couch"
+      },
+      {
+        "subject": "computer monitor",
+        "relation": "on",
+        "object": "table"
+      }
+    ],
+    "furniture_pos": [
+      -0.169999987,
+      8.62
+    ],
+    "mongo_id": "69a7a2ed7b292c7eb561424f",
+    "description": "A person sitting on a couch with a remote control in their hand. remote control in_hand_of person sofa on floor table next_to sofa couch in desk chair on couch computer monitor on table",
+    "memory_text": "User_Dad sitting near sofa with remote control. A person sitting on a couch with a remote control in their hand. remote control in_hand_of person sofa on floor table next_to sofa couch in desk chair on couch computer monitor on table remote control in_hand_of person. sofa on floor. table next_to sofa. couch in desk. chair on couch. computer monitor on table.",
+    "timestamp": "2026-03-08T08:34:29.126842"
+  },
+  {
+    "faiss_idx": 52,
+    "user": "User_Mom",
+    "action": "walking",
+    "instance": "sofa",
+    "interacting_items": [
+      "remote"
+    ],
+    "all_items": [
+      "remote"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "person",
+        "relation": "on",
+        "object": "wooden floor"
+      },
+      {
+        "subject": "person",
+        "relation": "in hand of",
+        "object": "remote control"
+      }
+    ],
+    "furniture_pos": [
+      -0.169999987,
+      8.62
+    ],
+    "mongo_id": "69a7a2ed7b292c7eb561424f",
+    "description": "A person walking on a wooden floor holding a remote control. person on wooden floor person in hand of remote control",
+    "memory_text": "User_Mom walking near sofa with remote. A person walking on a wooden floor holding a remote control. person on wooden floor person in hand of remote control person on wooden floor. person in hand of remote control.",
+    "timestamp": "2026-03-08T08:35:04.077322"
+  },
+  {
+    "faiss_idx": 53,
+    "user": "User_Dad",
+    "action": "sitting",
+    "instance": "sofa",
+    "interacting_items": [
+      "remote control"
+    ],
+    "all_items": [
+      "white wall",
+      "television",
+      "wooden floor",
+      "remote control",
+      "couch"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "remote control",
+        "relation": "in_hand_of",
+        "object": "person"
+      },
+      {
+        "subject": "television",
+        "relation": "on",
+        "object": "couch"
+      },
+      {
+        "subject": "couch",
+        "relation": "next_to",
+        "object": "wooden floor"
+      },
+      {
+        "subject": "wooden floor",
+        "relation": "underneath",
+        "object": "couch"
+      },
+      {
+        "subject": "white wall",
+        "relation": "behind",
+        "object": "television"
+      }
+    ],
+    "furniture_pos": [
+      -0.169999987,
+      8.62
+    ],
+    "mongo_id": "69a7a2ed7b292c7eb561424f",
+    "description": "A person sitting on a couch holding a remote control. remote control in_hand_of person television on couch couch next_to wooden floor wooden floor underneath couch white wall behind television",
+    "memory_text": "User_Dad sitting near sofa with remote control. A person sitting on a couch holding a remote control. remote control in_hand_of person television on couch couch next_to wooden floor wooden floor underneath couch white wall behind television remote control in_hand_of person. television on couch. couch next_to wooden floor. wooden floor underneath couch. white wall behind television.",
+    "timestamp": "2026-03-08T08:36:17.121895"
+  },
+  {
+    "faiss_idx": 54,
+    "user": "User_Dad",
+    "action": "walking",
+    "instance": "sofa",
+    "interacting_items": [
+      "remote control"
+    ],
+    "all_items": [
+      "black shelf",
+      "gray table",
+      "remote control",
+      "white couch",
+      "blue screen"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "remote control",
+        "relation": "in hand of",
+        "object": "person"
+      },
+      {
+        "subject": "blue screen",
+        "relation": "on top of",
+        "object": "white couch"
+      },
+      {
+        "subject": "gray table",
+        "relation": "next to",
+        "object": "sofa"
+      },
+      {
+        "subject": "black shelf",
+        "relation": "above",
+        "object": "gray table"
+      }
+    ],
+    "furniture_pos": [
+      -0.169999987,
+      8.62
+    ],
+    "mongo_id": "69a7a2ed7b292c7eb561424f",
+    "description": "A person walking away from a sofa with a remote control in their hand. remote control in hand of person blue screen on top of white couch gray table next to sofa black shelf above gray table",
+    "memory_text": "User_Dad walking near sofa with remote control. A person walking away from a sofa with a remote control in their hand. remote control in hand of person blue screen on top of white couch gray table next to sofa black shelf above gray table remote control in hand of person. blue screen on top of white couch. gray table next to sofa. black shelf above gray table.",
+    "timestamp": "2026-03-08T08:36:25.583238"
+  },
+  {
+    "faiss_idx": 55,
+    "user": "User_Dad",
+    "action": "sitting",
+    "instance": "sofa",
+    "interacting_items": [
+      "remote control"
+    ],
+    "all_items": [
+      "keyboard",
+      "desk",
+      "table",
+      "remote control",
+      "computer monitor",
+      "couch"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "remote control",
+        "relation": "in_hand_of",
+        "object": "person"
+      },
+      {
+        "subject": "sofa",
+        "relation": "next_to",
+        "object": "couch"
+      },
+      {
+        "subject": "table",
+        "relation": "on",
+        "object": "floor"
+      },
+      {
+        "subject": "couch",
+        "relation": "in",
+        "object": "desk"
+      },
+      {
+        "subject": "computer monitor",
+        "relation": "on",
+        "object": "desk"
+      },
+      {
+        "subject": "keyboard",
+        "relation": "on",
+        "object": "desk"
+      }
+    ],
+    "furniture_pos": [
+      -0.169999987,
+      8.62
+    ],
+    "mongo_id": "69a7a2ed7b292c7eb561424f",
+    "description": "A person sitting on a couch with a remote control in their hand, next to a table and a computer monitor. remote control in_hand_of person sofa next_to couch table on floor couch in desk computer monitor on desk keyboard on desk",
+    "memory_text": "User_Dad sitting near sofa with remote control. A person sitting on a couch with a remote control in their hand, next to a table and a computer monitor. remote control in_hand_of person sofa next_to couch table on floor couch in desk computer monitor on desk keyboard on desk remote control in_hand_of person. sofa next_to couch. table on floor. couch in desk. computer monitor on desk. keyboard on desk.",
+    "timestamp": "2026-03-08T08:36:40.868513"
+  },
+  {
+    "faiss_idx": 56,
+    "user": "User_Mom",
+    "action": "sitting",
+    "instance": "sofa",
+    "interacting_items": [],
+    "all_items": [
+      "bookshelf",
+      "coffee_table",
+      "lamp"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "person",
+        "relation": "on",
+        "object": "sofa"
+      },
+      {
+        "subject": "coffee_table",
+        "relation": "next_to",
+        "object": "sofa"
+      },
+      {
+        "subject": "bookshelf",
+        "relation": "next_to",
+        "object": "sofa"
+      },
+      {
+        "subject": "lamp",
+        "relation": "next_to",
+        "object": "sofa"
+      }
+    ],
+    "furniture_pos": [
+      -0.169999987,
+      8.62
+    ],
+    "mongo_id": "69a7a2ed7b292c7eb561424f",
+    "description": "A person is sitting on a sofa next to a coffee table, bookshelf, and lamp. person on sofa coffee_table next_to sofa bookshelf next_to sofa lamp next_to sofa",
+    "memory_text": "User_Mom sitting near sofa with nothing. A person is sitting on a sofa next to a coffee table, bookshelf, and lamp. person on sofa coffee_table next_to sofa bookshelf next_to sofa lamp next_to sofa person on sofa. coffee_table next_to sofa. bookshelf next_to sofa. lamp next_to sofa.",
+    "timestamp": "2026-03-08T08:41:04.182901"
+  },
+  {
+    "faiss_idx": 57,
+    "user": "User_Mom",
+    "action": "sitting",
+    "instance": "sofa",
+    "interacting_items": [
+      "remote_control"
+    ],
+    "all_items": [
+      "pillows",
+      "remote_control",
+      "coffee_table",
+      "television"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "remote_control",
+        "relation": "in_hand_of",
+        "object": "person"
+      },
+      {
+        "subject": "television",
+        "relation": "next_to",
+        "object": "sofa"
+      },
+      {
+        "subject": "sofa",
+        "relation": "next_to",
+        "object": "coffee_table"
+      },
+      {
+        "subject": "pillows",
+        "relation": "on",
+        "object": "sofa"
+      }
+    ],
+    "furniture_pos": [
+      -0.169999987,
+      8.62
+    ],
+    "mongo_id": "69a7a2ed7b292c7eb561424f",
+    "description": "A person is sitting on a sofa and holding a remote control while a television and pillows are visible in the background. remote_control in_hand_of person television next_to sofa sofa next_to coffee_table pillows on sofa",
+    "memory_text": "User_Mom sitting near sofa with remote_control. A person is sitting on a sofa and holding a remote control while a television and pillows are visible in the background. remote_control in_hand_of person television next_to sofa sofa next_to coffee_table pillows on sofa remote_control in_hand_of person. television next_to sofa. sofa next_to coffee_table. pillows on sofa.",
+    "timestamp": "2026-03-08T08:41:08.869040"
+  },
+  {
+    "faiss_idx": 58,
+    "user": "User_Dad",
+    "action": "sitting",
+    "instance": "sofa",
+    "interacting_items": [],
+    "all_items": [
+      "bookshelf",
+      "coffee_table",
+      "lamp"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "person",
+        "relation": "on",
+        "object": "sofa"
+      },
+      {
+        "subject": "coffee_table",
+        "relation": "next_to",
+        "object": "sofa"
+      },
+      {
+        "subject": "bookshelf",
+        "relation": "next_to",
+        "object": "sofa"
+      },
+      {
+        "subject": "lamp",
+        "relation": "next_to",
+        "object": "sofa"
+      }
+    ],
+    "furniture_pos": [
+      -0.169999987,
+      8.62
+    ],
+    "mongo_id": "69a7a2ed7b292c7eb561424f",
+    "description": "A person is sitting on a sofa next to a coffee table, bookshelf, and lamp. person on sofa coffee_table next_to sofa bookshelf next_to sofa lamp next_to sofa",
+    "memory_text": "User_Dad sitting near sofa with nothing. A person is sitting on a sofa next to a coffee table, bookshelf, and lamp. person on sofa coffee_table next_to sofa bookshelf next_to sofa lamp next_to sofa person on sofa. coffee_table next_to sofa. bookshelf next_to sofa. lamp next_to sofa.",
+    "timestamp": "2026-03-08T08:41:20.183356"
+  },
+  {
+    "faiss_idx": 59,
+    "user": "User_Dad",
+    "action": "reading",
+    "instance": "table",
+    "interacting_items": [
+      "book"
+    ],
+    "all_items": [
+      "book",
+      "appliances",
+      "window",
+      "countertop",
+      "chair"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "book",
+        "relation": "on",
+        "object": "kitchen_table"
+      },
+      {
+        "subject": "chair",
+        "relation": "next_to",
+        "object": "kitchen_table"
+      },
+      {
+        "subject": "window",
+        "relation": "next_to",
+        "object": "kitchen_table"
+      },
+      {
+        "subject": "countertop",
+        "relation": "next_to",
+        "object": "kitchen_table"
+      }
+    ],
+    "furniture_pos": [
+      1.97,
+      2.29
+    ],
+    "mongo_id": "69a7a2ed7b292c7eb5614241",
+    "description": "A person is sitting at a kitchen table, reading a book while looking out the window. book on kitchen_table chair next_to kitchen_table window next_to kitchen_table countertop next_to kitchen_table",
+    "memory_text": "User_Dad reading near table with book. A person is sitting at a kitchen table, reading a book while looking out the window. book on kitchen_table chair next_to kitchen_table window next_to kitchen_table countertop next_to kitchen_table book on kitchen_table. chair next_to kitchen_table. window next_to kitchen_table. countertop next_to kitchen_table.",
+    "timestamp": "2026-03-08T08:41:49.896863"
+  },
+  {
+    "faiss_idx": 60,
+    "user": "User_Dad",
+    "action": "sitting",
+    "instance": "sofa",
+    "interacting_items": [
+      "remote_control"
+    ],
+    "all_items": [
+      "television",
+      "remote_control",
+      "pillows",
+      "coffee_table",
+      "blanket"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "remote_control",
+        "relation": "in_hand_of",
+        "object": "person"
+      },
+      {
+        "subject": "television",
+        "relation": "next_to",
+        "object": "sofa"
+      },
+      {
+        "subject": "sofa",
+        "relation": "next_to",
+        "object": "coffee_table"
+      },
+      {
+        "subject": "pillows",
+        "relation": "on",
+        "object": "sofa"
+      },
+      {
+        "subject": "blanket",
+        "relation": "on",
+        "object": "sofa"
+      }
+    ],
+    "furniture_pos": [
+      -0.169999987,
+      8.62
+    ],
+    "mongo_id": "69a7a2ed7b292c7eb561424f",
+    "description": "A person is sitting on a sofa, holding a remote control and watching television. remote_control in_hand_of person television next_to sofa sofa next_to coffee_table pillows on sofa blanket on sofa",
+    "memory_text": "User_Dad sitting near sofa with remote_control. A person is sitting on a sofa, holding a remote control and watching television. remote_control in_hand_of person television next_to sofa sofa next_to coffee_table pillows on sofa blanket on sofa remote_control in_hand_of person. television next_to sofa. sofa next_to coffee_table. pillows on sofa. blanket on sofa.",
+    "timestamp": "2026-03-08T08:42:03.000483"
+  },
+  {
+    "faiss_idx": 61,
+    "user": "User_Mom",
+    "action": "sitting",
+    "instance": "sofa",
+    "interacting_items": [],
+    "all_items": [
+      "pillows",
+      "bookshelf",
+      "coffee_table"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "person",
+        "relation": "on",
+        "object": "sofa"
+      },
+      {
+        "subject": "sofa",
+        "relation": "next_to",
+        "object": "coffee_table"
+      },
+      {
+        "subject": "coffee_table",
+        "relation": "next_to",
+        "object": "sofa"
+      },
+      {
+        "subject": "bookshelf",
+        "relation": "next_to",
+        "object": "sofa"
+      },
+      {
+        "subject": "pillows",
+        "relation": "on",
+        "object": "sofa"
+      }
+    ],
+    "furniture_pos": [
+      -0.169999987,
+      8.62
+    ],
+    "mongo_id": "69a7a2ed7b292c7eb561424f",
+    "description": "A person is sitting on a sofa next to a coffee table and bookshelf, with pillows on the sofa. person on sofa sofa next_to coffee_table coffee_table next_to sofa bookshelf next_to sofa pillows on sofa",
+    "memory_text": "User_Mom sitting near sofa with nothing. A person is sitting on a sofa next to a coffee table and bookshelf, with pillows on the sofa. person on sofa sofa next_to coffee_table coffee_table next_to sofa bookshelf next_to sofa pillows on sofa person on sofa. sofa next_to coffee_table. coffee_table next_to sofa. bookshelf next_to sofa. pillows on sofa.",
+    "timestamp": "2026-03-08T08:42:37.338551"
+  },
+  {
+    "faiss_idx": 62,
+    "user": "User_Mom",
+    "action": "sitting",
+    "instance": "sofa",
+    "interacting_items": [],
+    "all_items": [
+      "coffee_table",
+      "bookshelf",
+      "lamp"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "person",
+        "relation": "on",
+        "object": "sofa"
+      },
+      {
+        "subject": "coffee_table",
+        "relation": "next_to",
+        "object": "sofa"
+      },
+      {
+        "subject": "bookshelf",
+        "relation": "next_to",
+        "object": "sofa"
+      },
+      {
+        "subject": "lamp",
+        "relation": "next_to",
+        "object": "sofa"
+      }
+    ],
+    "furniture_pos": [
+      -0.169999987,
+      8.62
+    ],
+    "mongo_id": "69a7a2ed7b292c7eb561424f",
+    "description": "A person is sitting on a sofa next to a coffee table, bookshelf, and lamp. person on sofa coffee_table next_to sofa bookshelf next_to sofa lamp next_to sofa",
+    "memory_text": "User_Mom sitting near sofa with nothing. A person is sitting on a sofa next to a coffee table, bookshelf, and lamp. person on sofa coffee_table next_to sofa bookshelf next_to sofa lamp next_to sofa person on sofa. coffee_table next_to sofa. bookshelf next_to sofa. lamp next_to sofa.",
+    "timestamp": "2026-03-08T08:44:16.795003"
   }
 ]

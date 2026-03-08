@@ -49,7 +49,7 @@ mongod --dbpath /data/db
 ```python
 class Config:
     OLLAMA_URL   = "http://127.0.0.1:11434"
-    OLLAMA_MODEL = "llava"
+    OLLAMA_MODEL = "gemma3:4b"
     MONGO_URI    = "mongodb://127.0.0.1:27017/"
     DB_NAME      = "robot_rag_db"
     FLASK_HOST   = "0.0.0.0"

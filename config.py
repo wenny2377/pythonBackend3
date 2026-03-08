@@ -7,7 +7,7 @@ class Config:
 
     # ── Ollama / VLM ──
     OLLAMA_URL   = "http://localhost:11434"
-    OLLAMA_MODEL = "llava-phi3:latest"
+    OLLAMA_MODEL = "gemma3:4b"
 
     # ── MongoDB ──
     MONGO_URI = "mongodb://127.0.0.1:27017/"
