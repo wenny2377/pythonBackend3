@@ -3046,5 +3046,90 @@
     "description": "A person is lying on a sofa and watching TV. person lying_on sofa remote in_hand sofa tv above shelf2 keyboard next to mouse remote on sofa",
     "memory_text": "User_Dad watching near sofa with remote. A person is lying on a sofa and watching TV. person lying_on sofa remote in_hand sofa tv above shelf2 keyboard next to mouse remote on sofa person lying_on sofa. remote in_hand sofa. tv above shelf2. keyboard next to mouse. remote on sofa.",
     "timestamp": "2026-03-08T14:23:09.041275"
+  },
+  {
+    "faiss_idx": 85,
+    "user": "User_Mom",
+    "action": "sitting",
+    "instance": "table",
+    "interacting_items": [
+      "banana"
+    ],
+    "all_items": [
+      "sink",
+      "refrigerator",
+      "banana"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "person",
+        "relation": "lying_on",
+        "object": "table"
+      },
+      {
+        "subject": "banana",
+        "relation": "on",
+        "object": "table"
+      }
+    ],
+    "furniture_pos": [
+      1.97,
+      2.29
+    ],
+    "mongo_id": "69a7a2ed7b292c7eb5614241",
+    "description": "A person sitting at a table with a banana on it. person lying_on table banana on table",
+    "memory_text": "User_Mom sitting near table with banana. A person sitting at a table with a banana on it. person lying_on table banana on table person lying_on table. banana on table.",
+    "timestamp": "2026-03-08T14:34:10.727537"
+  },
+  {
+    "faiss_idx": 86,
+    "user": "User_Dad",
+    "action": "sitting",
+    "instance": "sofa",
+    "interacting_items": [
+      "remote"
+    ],
+    "all_items": [
+      "shelf2",
+      "tv",
+      "remote",
+      "keyboard",
+      "mouse"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "person",
+        "relation": "lying_on",
+        "object": "sofa"
+      },
+      {
+        "subject": "remote",
+        "relation": "in_hand_of",
+        "object": "person"
+      },
+      {
+        "subject": "keyboard",
+        "relation": "next_to",
+        "object": "shelf2"
+      },
+      {
+        "subject": "mouse",
+        "relation": "on",
+        "object": "shelf2"
+      },
+      {
+        "subject": "tv",
+        "relation": "above",
+        "object": "sofa"
+      }
+    ],
+    "furniture_pos": [
+      -0.169999987,
+      8.62
+    ],
+    "mongo_id": "69a7a2ed7b292c7eb561424f",
+    "description": "A person sitting on a sofa holding a remote control. person lying_on sofa remote in_hand_of person keyboard next_to shelf2 mouse on shelf2 tv above sofa",
+    "memory_text": "User_Dad sitting near sofa with remote. A person sitting on a sofa holding a remote control. person lying_on sofa remote in_hand_of person keyboard next_to shelf2 mouse on shelf2 tv above sofa person lying_on sofa. remote in_hand_of person. keyboard next_to shelf2. mouse on shelf2. tv above sofa.",
+    "timestamp": "2026-03-08T14:35:04.670213"
   }
 ]

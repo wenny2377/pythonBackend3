@@ -430,7 +430,7 @@ if __name__ == "__main__":
 
 from modules.interaction import InteractionEngine
 from modules.training_exporter import TrainingExporter
-from modules.cleanup import CleanupManager
+from cleanup import CleanupManager
 
 interaction_engine = InteractionEngine(
     mongo_client=mongo_client,
