@@ -68,24 +68,29 @@ Stage 3: vector_memory.add_memory() + upsert_dynamic_object()
 
 ## 🧠 VLM Model
 
-**Current model: `gemma3:4b` via Ollama**
+**Current model: `llava-phi3` via Ollama**
 
 | | LLaVA-phi3 | Gemma3:4b |
 |---|---|---|
-| JSON 輸出穩定度 | ⚠️ 常跑版 | ✅ 穩定 |
+| JSON 輸出穩定度 | ⚠️ 偶爾跑版 | ✅ 穩定 |
 | 中文指令理解 | ❌ 差 | ✅ 好 |
 | 空間關係描述精度 | ⚠️ 普通 | ✅ 較精準 |
 | Context Window | 短 | ✅ 128K |
 | VRAM 需求 | ~4GB | ~4GB |
+| **CPU 推理速度** | ✅ **~15–30 秒** | ⚠️ ~60–90 秒 |
 | Ollama API 相容 | ✅ | ✅ |
 
+> CPU 模式建議使用 LLaVA-phi3，速度快 2–3 倍，不易 timeout。
+> 換 GPU 或單用戶場景可改回 Gemma3:4b（`config.py` 改一行即可）。
+
 ```bash
-ollama pull gemma3:4b
+ollama pull llava-phi3
 ```
 
 ```python
 # config.py
-OLLAMA_MODEL = "gemma3:4b"
+OLLAMA_MODEL = "llava-phi3"       # CPU 推薦
+# OLLAMA_MODEL = "gemma3:4b"      # GPU 或單用戶可用
 ```
 
 ---
