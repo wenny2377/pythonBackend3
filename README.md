@@ -12,13 +12,15 @@ A multi-stage perception and memory system for home robots. The backend receives
 project/
 ├── app.py                        ← Flask server, all API routes
 ├── config.py                     ← Centralised config (model, DB, paths)
+├── interact_client.py            ← Terminal client for /interact
 └── modules/
     ├── perception.py             ← Stage 1: VLM inference + multi-frame voting
     ├── memory.py                 ← Stage 2: furniture binding + MongoDB writes
-    ├── memory_vector.py          ← Stage 3: FAISS vector memory
-    ├── interaction.py            ← /interact NLU + robot response
+    ├── memory_vector.py          ← Stage 3: FAISS vector memory (habit + dynamic)
+    ├── interaction.py            ← /interact NLU + Gemma3 response + bilingual
     ├── training_exporter.py      ← /export_training → JSONL datasets
-    └── cleanup.py                ← Scheduled data cleanup & weight decay
+    ├── cleanup.py                ← Scheduled data cleanup & weight decay
+    └── spatial.py                ← MiDaS depth estimation（停用中，Unity 模式用 user_pos 替代）
 ```
 
 ---
@@ -27,32 +29,36 @@ project/
 
 ```
 Unity MultiImagePayload
+  { image_list, userID, activity, room_name, user_pos, source_nodes }
         ↓
 preview_images()  →  debug_images/
 
         ↓
 Stage 1: perception.analyze_action_burst()
-  - node_scores で最優 1–3 幀 → Gemma3:4b
-  - 每幀輸出:
+  - room_name → MongoDB scene_snapshots → 注入 VLM prompt 家具清單
+  - Gemma3:4b 每幀輸出:
       action / main_object / interacting_items
       scene_items / spatial_relations / description
   - 多幀投票決定最終結果
 
         ↓
 Stage 2: memory.bind_and_update()
-  A. 家具綁定: est_pos 距離搜尋 + SBERT 語義驗證
-  B. 物品雙軌:
+  A. 家具綁定: est_pos 距離搜尋 + SBERT 語義驗證（限同房間）
+  B. 物品三軌:
      scene_snapshots  ← 所有物品（家具表面有什麼）
      observation_logs ← 互動物品（這個人用了什麼）
+     dynamic_objects  ← 動態物件（seen_count / interact_count / last_seen_on）
   C. 空間關係存入 scene_snapshots.spatial_relations
   D. activity_sequences 即時 append + transition 計算
 
         ↓
-Stage 3: vector_memory.add_memory()
-  向量化文字:
+Stage 3: vector_memory.add_memory() + upsert_dynamic_object()
+  習慣記憶文字:
     "User_Mom drinking near kitchen_counter with cup.
      apple on kitchen_counter. cup in_hand_of user_mom."
-  存入 FAISS index + metadata（含家具座標）
+  動態物件文字:
+    "apple on kitchen_counter in Kitchen. seen 8 times. interacted 3 times."
+  分別存入兩個 FAISS index + metadata
 
         ↓
 回傳 JSON response → Unity / 機器人執行
@@ -104,6 +110,8 @@ OLLAMA_MODEL = "gemma3:4b"
 
 **支援的空間介係詞：** `on` / `in` / `next_to` / `above` / `below` / `in_hand_of` / `on_top_of`
 
+> `activity` 欄位是 Unity 模擬的 ground truth，**只用於評估，不傳給 VLM。**
+
 ---
 
 ## 🗄️ MongoDB Data Structure
@@ -142,6 +150,23 @@ Unity `/scene` 同步建立，每次 `/predict` 累積更新。
 | `last_seen` | 最後觀測時間 |
 | `raw_vlm_desc` | VLM 原始描述 |
 
+### dynamic_objects（動態物件層）
+
+VLM 觀測到的非家具物品，記錄位置與使用頻率。唯一鍵為 `label`，last seen 覆蓋。
+
+| 欄位 | 說明 | 範例 |
+|------|------|------|
+| `label` | 物品名稱（唯一鍵） | `apple` |
+| `room` | last seen 的房間 | `Kitchen` |
+| `last_seen_on` | last seen 的家具 | `kitchen_counter` |
+| `spatial_rel` | 與家具的空間關係 | `on` |
+| `furniture_pos` | 家具座標（導航用） | `[3.2, 1.5]` |
+| `seen_count` | 在畫面中出現次數 | `8` |
+| `interact_count` | 被人直接使用次數 | `3` |
+| `interacted_by` | 使用過的用戶（addToSet） | `["User_Mom"]` |
+| `first_seen` | 首次觀測時間 | `2026-01-01T...` |
+| `last_seen` | 最後觀測時間 | `2026-03-08T...` |
+
 ### semantic_memories（感知日誌）
 
 每次 `/predict` 的完整感知快照，只增不改，用於訓練資料匯出。
@@ -150,18 +175,35 @@ Unity `/scene` 同步建立，每次 `/predict` 累積更新。
 
 每天一份文件，記錄用戶當天的行為序列與行為轉換（transitions）。用於滑動視窗訓練資料生成。
 
+### conversation_logs（對話紀錄）
+
+每次 `/interact` 的完整對話快照，記錄 query、answer、nav_target、用戶選擇。
+
 ---
 
 ## 🔍 FAISS Vector Memory
 
-**向量化文字格式：**
+兩個獨立 FAISS index：
+
+**習慣記憶（robot_memory.index）**
 
 ```
 "User_Mom drinking near kitchen_counter with cup.
  apple on kitchen_counter. cup in_hand_of user_mom."
 ```
 
-**Metadata 欄位：**
+**動態物件（dynamic_memory.index）**
+
+```
+"apple on kitchen_counter in Kitchen. seen 8 times. interacted 3 times. used by User_Mom."
+```
+
+查詢範例：
+- `search_habit("媽媽喝水的地方")` → 行為記憶
+- `search_dynamic("甜的東西在哪")` → apple / cookie 向量召回
+- `search_dynamic("媽媽常用的東西", user_filter="User_Mom")` → 只回傳 User_Mom 互動過的
+
+**Metadata 欄位（習慣記憶）：**
 
 | 欄位 | 用途 |
 |------|------|
@@ -173,6 +215,38 @@ Unity `/scene` 同步建立，每次 `/predict` 累積更新。
 | `mongo_id` | 對應 MongoDB document |
 | `memory_text` | 完整向量化文字 |
 | `timestamp` | 寫入時間 |
+
+---
+
+## 💬 Interaction Engine
+
+Terminal 啟動方式：
+
+```bash
+python3 interact_client.py
+```
+
+**流程：**
+
+```
+用戶輸入問題
+    ↓
+POST /interact
+    ↓
+FAISS search_habit()    → 行為記憶
+FAISS search_dynamic()  → 物品位置
+MongoDB 補最新座標
+Gemma3:4b 生成回答（中英文化，問中回中，問英回英）
+    ↓
+顯示回答 + 選項：
+  1. 導航到位置
+  2. 只告訴我位置
+  3. 取消
+    ↓
+POST /interact/confirm { choice }
+    ↓
+記錄進 conversation_logs
+```
 
 ---
 
@@ -214,11 +288,10 @@ L1 · Items     🍎apple 🥤cup  📺remote 📖magazine
 | L4 · Agents | 用戶 | `observation_logs` |
 | L3 · Rooms | 房間 | `scene_snapshots.room` |
 | L2 · Furniture | 家具 | `scene_snapshots` |
-| L1 · Items | 物品 | `spatial_relations` |
+| L1 · Items | 物品 | `dynamic_objects` + `spatial_relations` |
 
-**Edge 類型：** `in_room` / `contains` / `on` / `in_hand_of` / `next_to`  
-**Edge 粗細：** 代表習慣 weight  
-**視覺化工具：** React (StackBlitz) / Neo4j Browser  
+**Edge 類型：** `in_room` / `contains` / `on` / `in_hand_of` / `next_to`
+**Edge 粗細：** 代表習慣 weight
 
 ---
 
@@ -235,13 +308,8 @@ L1 · Items     🍎apple 🥤cup  📺remote 📖magazine
 | `habit_sequence_data.jsonl` | 行為序列預測 | 滑動視窗 window=3 |
 
 ```bash
-# 全部匯出
 POST /export_training  { "type": "all" }
-
-# 指定類型
 POST /export_training  { "type": "habit" }
-
-# 指定用戶
 POST /export_training  { "userID": "User_Mom" }
 ```
 
@@ -254,7 +322,8 @@ POST /export_training  { "userID": "User_Mom" }
 | `/predict` | POST | 主感知路由：影像 → VLM → MongoDB → FAISS |
 | `/scene` | POST | Unity 場景同步，建立 scene_snapshots |
 | `/query` | POST | RAG 查詢：FAISS 搜尋 + MongoDB 補最新座標 |
-| `/interact` | POST | 人機對話：NLU 意圖識別 + 機器人回應 |
+| `/interact` | POST | 人機對話：NLU + Gemma3 回答 + 選項 |
+| `/interact/confirm` | POST | 用戶選擇確認（導航 / 僅告知 / 取消） |
 | `/log_navigation` | POST | 接收 Unity 導航路徑 → navigation_logs |
 | `/export_training` | POST | 匯出 JSONL 訓練資料 |
 | `/cleanup` | POST | 手動觸發資料清理與 weight decay |
@@ -269,24 +338,26 @@ POST /export_training  { "userID": "User_Mom" }
 
 # VLM
 OLLAMA_URL   = "http://localhost:11434"
-OLLAMA_MODEL = "gemma3:4b"           # ← 支援 vision 的模型
+OLLAMA_MODEL = "gemma3:4b"
 
 # MongoDB
 MONGO_URI = "mongodb://127.0.0.1:27017/"
 DB_NAME   = "robot_rag_db"
 
 # FAISS
-FAISS_INDEX_PATH  = "robot_memory.index"
-FAISS_META_PATH   = "robot_memory_meta.json"
-MAX_FAISS_VECTORS = 5000
+FAISS_INDEX_PATH         = "robot_memory.index"
+FAISS_META_PATH          = "robot_memory_meta.json"
+DYNAMIC_INDEX_PATH       = "dynamic_memory.index"
+DYNAMIC_META_PATH        = "dynamic_memory_meta.json"
+MAX_FAISS_VECTORS        = 5000
 
 # Cleanup
-CLEANUP_RETAIN_DAYS    = 90     # semantic_memories 保留天數
-CLEANUP_INTERVAL_HOURS = 24     # 自動清理間隔
+CLEANUP_RETAIN_DAYS      = 90
+CLEANUP_INTERVAL_HOURS   = 24
 
 # Habit Weight Decay
-HABIT_DECAY_FACTOR = 0.95       # 每次清理衰減係數
-HABIT_MIN_WEIGHT   = 1.0        # 低於此值自動刪除
+HABIT_DECAY_FACTOR       = 0.95
+HABIT_MIN_WEIGHT         = 1.0
 ```
 
 ---
@@ -295,7 +366,7 @@ HABIT_MIN_WEIGHT   = 1.0        # 低於此值自動刪除
 
 ```bash
 # 1. 安裝 Python 依賴
-pip install flask pymongo faiss-cpu sentence-transformers numpy opencv-python
+pip install flask pymongo faiss-cpu sentence-transformers numpy opencv-python requests
 
 # 2. 啟動 Ollama 並下載模型
 ollama serve
@@ -305,6 +376,9 @@ ollama pull gemma3:4b
 
 # 4. 啟動 Flask server
 python app.py
+
+# 5. （選用）啟動 terminal 對話介面
+python interact_client.py
 ```
 
 Unity 端先送 `/scene` 同步場景，再送 `/predict` 開始感知。
