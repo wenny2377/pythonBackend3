@@ -1,0 +1,27 @@
+═══════════════════════════════════════
+  論文實驗結果總結報告
+  產生時間：2026-03-09 13:27:57
+═══════════════════════════════════════
+
+MongoDB 資料量統計：
+  eval_logs         :    277 筆
+  observation_logs  :     32 筆
+  dynamic_objects   :     18 筆
+  conversation_logs :    105 筆
+  activity_sequences:      6 筆
+  exp_checkpoints   :     15 筆
+
+產出圖表：
+  results/exp1_accuracy.png
+  results/exp1_confusion_matrix.png
+  results/exp2_binding_accuracy.png
+  results/exp3a_weight_curve.png
+  results/exp3b_transition_heatmap.png
+  results/exp4_dialogue_scores.png
+  results/exp5_latency_pie.png
+  results/exp6_intent_accuracy.png
+
+需要人工填寫的評分表：
+  eval_exp4_scores.csv  （實驗四：對話品質 1-5 分）
+  eval_exp5_results.csv （實驗五：端到端成功率）
+  eval_exp6_scores.csv  （實驗六：模糊需求準確率）
