@@ -12,27 +12,27 @@
     "interact_count": 0,
     "interacted_by": [],
     "memory_text": "table next to mom's bed in BedRoom(mom). seen 3 times. interacted 0 times.",
-    "timestamp": "2026-03-10T13:52:59.454054",
+    "timestamp": "2026-03-10T14:00:38.412563",
     "faiss_idx": 7
   },
   {
     "label": "remote",
     "room": "LivingRoom",
-    "last_seen_on": "shelf",
-    "spatial_rel": "in_hand_of",
+    "last_seen_on": "sofa",
+    "spatial_rel": "near",
     "furniture_pos": [
-      5.41,
-      6.07
+      -0.169999987,
+      8.62
     ],
-    "seen_count": 6,
-    "interact_count": 6,
+    "seen_count": 7,
+    "interact_count": 7,
     "interacted_by": [
       "User_Dad",
       "User_Mom"
     ],
-    "memory_text": "remote in_hand_of shelf in LivingRoom. seen 6 times. interacted 6 times. used by User_Dad, User_Mom.",
-    "timestamp": "2026-03-10T13:54:12.914693",
-    "faiss_idx": 14
+    "memory_text": "remote near sofa in LivingRoom. seen 7 times. interacted 7 times. used by User_Dad, User_Mom.",
+    "timestamp": "2026-03-10T14:00:38.412956",
+    "faiss_idx": 15
   },
   {
     "label": "shelf2",
@@ -47,7 +47,7 @@
     "interact_count": 0,
     "interacted_by": [],
     "memory_text": "shelf2 near sofa in LivingRoom. seen 3 times. interacted 0 times.",
-    "timestamp": "2026-03-10T13:54:49.773985",
+    "timestamp": "2026-03-10T14:00:38.551937",
     "faiss_idx": 4
   },
   {
@@ -63,7 +63,7 @@
     "interact_count": 0,
     "interacted_by": [],
     "memory_text": "tv above shelf2 in LivingRoom. seen 2 times. interacted 0 times.",
-    "timestamp": "2026-03-10T13:54:49.774525",
+    "timestamp": "2026-03-10T14:00:38.552289",
     "faiss_idx": 9
   },
   {
@@ -79,7 +79,7 @@
     "interact_count": 0,
     "interacted_by": [],
     "memory_text": "shelf near tv in LivingRoom. seen 1 times. interacted 0 times.",
-    "timestamp": "2026-03-10T13:53:36.361370",
+    "timestamp": "2026-03-10T14:00:38.551466",
     "faiss_idx": 8
   },
   {
@@ -97,7 +97,7 @@
       "User_Mom"
     ],
     "memory_text": "blue jeans near sofa in LivingRoom. seen 1 times. interacted 1 times. used by User_Mom.",
-    "timestamp": "2026-03-10T13:51:06.396558",
+    "timestamp": "2026-03-10T14:00:38.552527",
     "faiss_idx": 11
   },
   {
@@ -115,7 +115,7 @@
       "User_Mom"
     ],
     "memory_text": "banana on table in Kitchen. seen 1 times. interacted 1 times. used by User_Mom.",
-    "timestamp": "2026-03-10T13:51:43.254045",
+    "timestamp": "2026-03-10T14:00:38.552757",
     "faiss_idx": 12
   }
 ]
