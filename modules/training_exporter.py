@@ -1,402 +1,187 @@
 import json
 import os
 import datetime
-from pymongo import MongoClient
+from bson import ObjectId
 from config import Config
 
-
 class TrainingExporter:
-    """
-    統一訓練資料匯出器
-    從 MongoDB 各 collection 匯出 JSONL 格式訓練資料
-
-    輸出類型：
-    A. perception_data.jsonl    → VLM fine-tuning（影像 + 標注）
-    B. dialogue_data.jsonl      → 對話模型訓練（意圖 + 回應對）
-    C. navigation_data.jsonl    → 路徑規劃訓練（起點 + 終點 + 完整路徑）
-    D. scene_graph_data.jsonl   → 場景理解（空間關係圖）
-    E. habit_sequence_data.jsonl→ 用戶行為序列（習慣預測）
-    """
-
     def __init__(self, mongo_client, output_dir="training_data"):
         self.db         = mongo_client[Config.DB_NAME]
         self.output_dir = output_dir
         os.makedirs(output_dir, exist_ok=True)
 
-    # ─────────────────────────────────────────────
-    # 全量匯出
-    # ─────────────────────────────────────────────
-    def export_all(self, user_id_filter=None):
-        stats = {}
-        stats["perception"]     = self.export_perception(user_id_filter)
-        stats["dialogue"]       = self.export_dialogue(user_id_filter)
-        stats["navigation"]     = self.export_navigation(user_id_filter)
-        stats["scene_graph"]    = self.export_scene_graph()
-        stats["habit_sequence"] = self.export_habit_sequence(user_id_filter)
-        return stats
+    def _format_time(self, dt):
+        """統一時間格式處理"""
+        if isinstance(dt, datetime.datetime):
+            return dt.isoformat()
+        return str(dt)
 
     # ─────────────────────────────────────────────
-    # A. 感知資料（semantic_memories → VLM fine-tuning）
+    # A. 感知資料：優化 VLM 描述邏輯
     # ─────────────────────────────────────────────
     def export_perception(self, user_id_filter=None):
-        """
-        格式：LLaVA instruction fine-tuning 標準格式
-        {
-          "id": "...",
-          "conversations": [
-            {"from": "human", "value": "<image>\nWhat is the person doing?"},
-            {"from": "gpt",   "value": "The person is drinking water near the kitchen counter..."}
-          ],
-          "metadata": { "user", "action", "bound_to", "spatial_relations" }
-        }
-        """
         collection = self.db["semantic_memories"]
         query      = {"user": user_id_filter} if user_id_filter else {}
         docs       = list(collection.find(query))
 
-        path  = os.path.join(self.output_dir, "perception_data.jsonl")
+        path = os.path.join(self.output_dir, "perception_data.jsonl")
         count = 0
 
         with open(path, 'w', encoding='utf-8') as f:
             for doc in docs:
                 details  = doc.get("details", {})
-                action   = doc.get("action", "")
-                bound_to = doc.get("bound_to", "")
+                action   = doc.get("action", "performing an activity")
+                bound_to = doc.get("bound_to", "an area")
                 interact = details.get("interacting_items", [])
                 spatial  = details.get("spatial_relations", [])
-                context  = details.get("context", "")
-
-                # 組合完整標注答案
-                spatial_desc = "; ".join(
-                    [f"{r['subject']} is {r['relation']} {r['object']}" for r in spatial]
-                ) if spatial else ""
-
-                answer = context
+                
+                # 構建更自然的描述
+                answer = f"The person is {action} near the {bound_to}."
                 if interact:
-                    answer += f" The person is using: {', '.join(interact)}."
-                if spatial_desc:
-                    answer += f" Spatial context: {spatial_desc}."
+                    answer += f" They are currently interacting with {', '.join(interact)}."
+                
+                if spatial:
+                    rel_desc = ", ".join([f"a {r['subject']} is {r['relation']} the {r['object']}" for r in spatial])
+                    answer += f" In the surroundings, {rel_desc}."
 
                 entry = {
                     "id": str(doc["_id"]),
+                    "image": doc.get("image_path", "placeholder.jpg"), # 確保有影像路徑對應
                     "conversations": [
-                        {
-                            "from":  "human",
-                            "value": "<image>\nDescribe what the person is doing and the spatial arrangement of objects in the scene."
-                        },
-                        {
-                            "from":  "gpt",
-                            "value": answer
-                        }
+                        {"from": "human", "value": "<image>\nWhat is happening in this scene?"},
+                        {"from": "gpt", "value": answer}
                     ],
                     "metadata": {
-                        "user":              doc.get("user"),
-                        "action":            action,
-                        "bound_to":          bound_to,
-                        "interacting_items": interact,
-                        "spatial_relations": spatial,
-                        "source_nodes":      doc.get("source_nodes", []),
-                        "timestamp":         str(doc.get("timestamp"))
+                        "user": doc.get("user"),
+                        "action": action,
+                        "location": bound_to,
+                        "timestamp": self._format_time(doc.get("timestamp"))
                     }
                 }
-
                 f.write(json.dumps(entry, ensure_ascii=False) + "\n")
                 count += 1
-
-        print(f"✅ [Export] perception_data.jsonl → {count} 筆")
         return count
 
     # ─────────────────────────────────────────────
-    # B. 對話資料（interaction_logs → 對話模型訓練）
+    # B. 對話資料：強化個人化 Prompt
     # ─────────────────────────────────────────────
     def export_dialogue(self, user_id_filter=None):
-        """
-        格式：OpenAI chat fine-tuning 格式
-        {
-          "messages": [
-            {"role": "system",    "content": "You are a home robot assistant..."},
-            {"role": "user",      "content": "我累了"},
-            {"role": "assistant", "content": "媽媽，您通常喜歡在沙發休息，我帶您過去。"}
-          ],
-          "metadata": { intent, need_type, nav_target, habit_used }
-        }
-        """
         collection = self.db["interaction_logs"]
         query      = {"user_id": user_id_filter} if user_id_filter else {}
         docs       = list(collection.find(query))
 
-        path  = os.path.join(self.output_dir, "dialogue_data.jsonl")
+        path = os.path.join(self.output_dir, "dialogue_data.jsonl")
         count = 0
-
-        system_prompt = (
-            "You are a personalized home robot assistant. "
-            "You know the habits and preferences of each household member. "
-            "Respond in a warm, helpful manner and provide navigation guidance when needed."
-        )
 
         with open(path, 'w', encoding='utf-8') as f:
             for doc in docs:
+                # 這裡可以根據 intent_type 加入不同的 System Prompt
+                intent = doc.get("intent_type", "general")
+                system_msg = "You are a personalized home robot. You remember user habits to provide better help."
+                
                 entry = {
                     "messages": [
-                        {"role": "system",    "content": system_prompt},
-                        {"role": "user",      "content": doc.get("query", "")},
+                        {"role": "system", "content": system_msg},
+                        {"role": "user", "content": doc.get("query", "")},
                         {"role": "assistant", "content": doc.get("answer", "")}
                     ],
-                    "metadata": {
-                        "user_id":        doc.get("user_id"),
-                        "intent":         doc.get("intent"),
-                        "need_type":      doc.get("need_type"),
-                        "nav_target":     doc.get("nav_target"),
-                        "target_label":   doc.get("target_label"),
-                        "habit_used":     doc.get("habit_used"),
-                        "habit_instance": doc.get("habit_instance"),
-                        "room":           doc.get("room"),
-                        "timestamp":      str(doc.get("timestamp"))
+                    "context": {
+                        "intent": intent,
+                        "recommended": doc.get("nav_label"),
+                        "is_personalized": doc.get("is_personalized", False)
                     }
                 }
                 f.write(json.dumps(entry, ensure_ascii=False) + "\n")
                 count += 1
-
-        print(f"✅ [Export] dialogue_data.jsonl → {count} 筆")
         return count
 
     # ─────────────────────────────────────────────
-    # C. 導航資料（navigation_logs → 路徑規劃訓練）
+    # C. 導航資料：標準化座標系
     # ─────────────────────────────────────────────
     def export_navigation(self, user_id_filter=None):
-        """
-        格式：
-        {
-          "user_id":        "User_Mom",
-          "intent":         "tired",
-          "start":          [0.0, 0.0],
-          "goal":           [2.5, 3.1],
-          "waypoints":      [[x,z,t], [x,z,t], ...],
-          "waypoint_count": 24,
-          "success":        true,
-          "total_time":     8.3,
-          "total_distance": 4.2,
-          "timestamp":      "..."
-        }
-        """
         collection = self.db["navigation_logs"]
         query      = {"user_id": user_id_filter} if user_id_filter else {}
         docs       = list(collection.find(query))
 
-        path  = os.path.join(self.output_dir, "navigation_data.jsonl")
+        path = os.path.join(self.output_dir, "navigation_data.jsonl")
         count = 0
 
         with open(path, 'w', encoding='utf-8') as f:
             for doc in docs:
+                # 確保座標為 float 列表
+                def clean_pos(p): return [float(p[0]), float(p[1])] if p else None
+
                 entry = {
-                    "user_id":        doc.get("user_id"),
-                    "intent":         doc.get("intent"),
-                    "start":          doc.get("start_pos"),
-                    "goal":           doc.get("goal_pos"),
-                    "waypoints":      doc.get("waypoints", []),
-                    "waypoint_count": doc.get("waypoint_count", 0),
-                    "success":        doc.get("success", False),
-                    "fail_reason":    doc.get("fail_reason", ""),
-                    "total_time":     doc.get("total_time", 0),
-                    "total_distance": doc.get("total_distance", 0),
-                    "timestamp":      str(doc.get("timestamp"))
+                    "user": doc.get("user_id"),
+                    "task": doc.get("intent"),
+                    "path_geometry": {
+                        "start": clean_pos(doc.get("start_pos")),
+                        "goal": clean_pos(doc.get("goal_pos")),
+                        "trajectory": doc.get("waypoints", [])
+                    },
+                    "performance": {
+                        "success": doc.get("success", False),
+                        "distance": round(doc.get("total_distance", 0), 2),
+                        "time": round(doc.get("total_time", 0), 2)
+                    },
+                    "timestamp": self._format_time(doc.get("timestamp"))
                 }
                 f.write(json.dumps(entry, ensure_ascii=False) + "\n")
                 count += 1
-
-        print(f"✅ [Export] navigation_data.jsonl → {count} 筆")
         return count
 
     # ─────────────────────────────────────────────
-    # D. 場景圖（scene_snapshots → 空間理解訓練）
-    # ─────────────────────────────────────────────
-    def export_scene_graph(self):
-        """
-        格式：場景圖 QA 對
-        {
-          "question": "What items are on the kitchen counter?",
-          "answer":   "apple, cup, cutting board",
-          "graph": [
-            {"subject": "apple", "relation": "on", "object": "kitchen_counter"},
-            ...
-          ],
-          "furniture": "kitchen_counter",
-          "pos": [3.2, 1.5]
-        }
-        """
-        docs  = list(self.db["scene_snapshots"].find({}))
-        path  = os.path.join(self.output_dir, "scene_graph_data.jsonl")
-        count = 0
-
-        with open(path, 'w', encoding='utf-8') as f:
-            for doc in docs:
-                label    = doc.get("label", "")
-                items    = doc.get("items", [])
-                spatial  = doc.get("spatial_relations", [])
-                pos      = doc.get("pos")
-
-                if not label:
-                    continue
-
-                # 物品清單 QA
-                if items:
-                    entry = {
-                        "question":  f"What items are associated with the {label}?",
-                        "answer":    ", ".join(items),
-                        "graph":     spatial,
-                        "furniture": label,
-                        "room":      doc.get("room", ""),
-                        "pos":       pos,
-                        "type":      "item_query"
-                    }
-                    f.write(json.dumps(entry, ensure_ascii=False) + "\n")
-                    count += 1
-
-                # 空間關係 QA
-                for rel in spatial:
-                    entry = {
-                        "question":  f"Where is the {rel.get('subject')}?",
-                        "answer":    f"The {rel.get('subject')} is {rel.get('relation')} the {rel.get('object')}.",
-                        "graph":     [rel],
-                        "furniture": label,
-                        "pos":       pos,
-                        "type":      "spatial_query"
-                    }
-                    f.write(json.dumps(entry, ensure_ascii=False) + "\n")
-                    count += 1
-
-        print(f"✅ [Export] scene_graph_data.jsonl → {count} 筆")
-        return count
-
-    # ─────────────────────────────────────────────
-    # E. 習慣序列（activity_sequences → 行為預測）
-    # 滑動視窗 window=3：前 3 個行為預測下一個
+    # E. 習慣序列：滑動視窗預測 (LSTM/Transformer 格式)
     # ─────────────────────────────────────────────
     def export_habit_sequence(self, user_id_filter=None, window_size=3):
-        """
-        從 activity_sequences 用滑動視窗產生預測訓練資料。
-
-        輸出兩種格式：
-
-        1. 滑動視窗預測格式（給序列模型 / LSTM / Transformer）
-        {
-          "user_id":       "User_Mom",
-          "date":          "2025-01-01",
-          "context": [
-            {"action": "cooking",  "instance": "stove",           "items": ["knife"],  "time": "12:00"},
-            {"action": "drinking", "instance": "kitchen_counter", "items": ["cup"],    "time": "12:30"},
-            {"action": "sitting",  "instance": "dining_table",    "items": [],         "time": "12:35"}
-          ],
-          "next_action":    "sleeping",
-          "next_instance":  "bed",
-          "time_gap":       45.0,
-          "context_str":    "cooking@stove → drinking@kitchen_counter → sitting@dining_table",
-          "type":           "sequence_prediction"
-        }
-
-        2. 轉換頻率摘要（給習慣推薦）
-        {
-          "user_id":     "User_Mom",
-          "from_action": "cooking",
-          "to_action":   "drinking",
-          "count":       8,
-          "avg_gap_min": 15.3,
-          "type":        "transition_summary"
-        }
-        """
         collection = self.db["activity_sequences"]
         query      = {"user_id": user_id_filter} if user_id_filter else {}
         docs       = list(collection.find(query).sort("date", 1))
 
-        path  = os.path.join(self.output_dir, "habit_sequence_data.jsonl")
+        path = os.path.join(self.output_dir, "habit_sequence_data.jsonl")
         count = 0
 
-        # 轉換頻率統計
-        transition_counter = {}
+        
 
         with open(path, 'w', encoding='utf-8') as f:
             for doc in docs:
-                user_id   = doc.get("user_id")
-                date      = doc.get("date")
-                sequence  = doc.get("sequence", [])
-                transitions = doc.get("transitions", [])
+                user_id = doc.get("user_id")
+                date = doc.get("date")
+                seq = doc.get("sequence", [])
 
-                # ── 滑動視窗預測 ──
-                # 需要至少 window_size + 1 個行為
-                if len(sequence) >= window_size + 1:
-                    for i in range(len(sequence) - window_size):
-                        context  = sequence[i : i + window_size]
-                        next_act = sequence[i + window_size]
+                if len(seq) < window_size + 1:
+                    continue
 
-                        # 計算最後一個 context 到 next 的時間差
-                        try:
-                            last_time = datetime.datetime.strptime(
-                                f"{date} {context[-1]['time']}", "%Y-%m-%d %H:%M:%S"
-                            )
-                            next_time = datetime.datetime.strptime(
-                                f"{date} {next_act['time']}", "%Y-%m-%d %H:%M:%S"
-                            )
-                            gap = round((next_time - last_time).total_seconds() / 60, 1)
-                        except Exception:
-                            gap = 0.0
+                for i in range(len(seq) - window_size):
+                    window = seq[i : i + window_size]
+                    target = seq[i + window_size]
 
-                        context_str = " → ".join(
-                            [f"{s['action']}@{s['instance']}" for s in context]
-                        )
-
-                        entry = {
-                            "user_id":      user_id,
-                            "date":         date,
-                            "context":      [
-                                {
-                                    "action":   s.get("action"),
-                                    "instance": s.get("instance"),
-                                    "items":    s.get("items", []),
-                                    "time":     s.get("time")
-                                }
-                                for s in context
-                            ],
-                            "next_action":   next_act.get("action"),
-                            "next_instance": next_act.get("instance"),
-                            "next_items":    next_act.get("items", []),
-                            "time_gap":      gap,
-                            "context_str":   context_str,
-                            "type":          "sequence_prediction"
+                    # 格式化訓練用字串
+                    # 範例: "sitting@sofa -> drinking@table"
+                    history_str = " -> ".join([f"{s['action']}@{s['instance']}" for s in window])
+                    
+                    entry = {
+                        "user": user_id,
+                        "history": history_str,
+                        "predict_action": target['action'],
+                        "predict_location": target['instance'],
+                        "time_of_day": target['time'],
+                        "metadata": {
+                            "date": date,
+                            "window_items": [s.get("items", []) for s in window]
                         }
-                        f.write(json.dumps(entry, ensure_ascii=False) + "\n")
-                        count += 1
-
-                # ── 轉換頻率統計 ──
-                for t in transitions:
-                    key = f"{user_id}|{t.get('from')}|{t.get('to')}"
-                    if key not in transition_counter:
-                        transition_counter[key] = {
-                            "user_id":    user_id,
-                            "from_action":t.get("from"),
-                            "from_instance": t.get("from_instance"),
-                            "to_action":  t.get("to"),
-                            "to_instance":t.get("to_instance"),
-                            "count":      0,
-                            "gap_sum":    0.0
-                        }
-                    transition_counter[key]["count"]   += 1
-                    transition_counter[key]["gap_sum"] += t.get("gap_minutes", 0)
-
-            # 寫入轉換頻率摘要
-            for key, tc in transition_counter.items():
-                avg_gap = round(tc["gap_sum"] / tc["count"], 1) if tc["count"] > 0 else 0
-                entry = {
-                    "user_id":        tc["user_id"],
-                    "from_action":    tc["from_action"],
-                    "from_instance":  tc["from_instance"],
-                    "to_action":      tc["to_action"],
-                    "to_instance":    tc["to_instance"],
-                    "count":          tc["count"],
-                    "avg_gap_min":    avg_gap,
-                    "type":           "transition_summary"
-                }
-                f.write(json.dumps(entry, ensure_ascii=False) + "\n")
-                count += 1
-
-        print(f"✅ [Export] habit_sequence_data.jsonl → {count} 筆（window={window_size}）")
+                    }
+                    f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+                    count += 1
         return count
+
+    # ─────────────────────────────────────────────
+    # 全量執行
+    # ─────────────────────────────────────────────
+    def export_all(self, user_id_filter=None):
+        return {
+            "perception": self.export_perception(user_id_filter),
+            "dialogue":   self.export_dialogue(user_id_filter),
+            "navigation": self.export_navigation(user_id_filter),
+            "habit":      self.export_habit_sequence(user_id_filter)
+        }

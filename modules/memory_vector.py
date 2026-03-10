@@ -1,3 +1,14 @@
+"""
+VectorMemory v2
+兩個 FAISS index：
+  1. habit index     → observation_logs 行為記憶（模糊需求推理用）
+  2. dynamic index   → dynamic_objects 物件位置（推薦交叉比對用）
+
+新增：
+  sync_from_mongo()  → 啟動時把 MongoDB dynamic_objects 同步進 FAISS
+                       （支援同事的 sensor 資料 + VLM 資料）
+"""
+
 import numpy as np
 import faiss
 import json
@@ -7,11 +18,14 @@ from sentence_transformers import SentenceTransformer
 
 
 class VectorMemory:
-    def __init__(self, index_path="robot_memory.index", meta_path="robot_memory_meta.json",
-                 dynamic_index_path="dynamic_memory.index",
-                 dynamic_meta_path="dynamic_memory_meta.json"):
 
-        self.model = SentenceTransformer('paraphrase-MiniLM-L6-v2', device='cpu')
+    def __init__(self, index_path         = "robot_memory.index",
+                       meta_path          = "robot_memory_meta.json",
+                       dynamic_index_path = "dynamic_memory.index",
+                       dynamic_meta_path  = "dynamic_memory_meta.json",
+                       device             = "cuda"):
+
+        self.model = SentenceTransformer('paraphrase-MiniLM-L6-v2', device=device)
         self.dim   = 384
 
         # ── 習慣記憶索引（行為層）──
@@ -22,7 +36,7 @@ class VectorMemory:
             print(f"✅ [FAISS] 習慣索引載入，共 {self.index.ntotal} 筆")
         else:
             self.index = faiss.IndexFlatIP(self.dim)
-            print("✅ [FAISS] 習慣索引建立（IndexFlatIP）")
+            print("✅ [FAISS] 習慣索引建立")
 
         if os.path.exists(meta_path):
             with open(meta_path, 'r', encoding='utf-8') as f:
@@ -38,13 +52,44 @@ class VectorMemory:
             print(f"✅ [FAISS] 動態物件索引載入，共 {self.dynamic_index.ntotal} 筆")
         else:
             self.dynamic_index = faiss.IndexFlatIP(self.dim)
-            print("✅ [FAISS] 動態物件索引建立（IndexFlatIP）")
+            print("✅ [FAISS] 動態物件索引建立")
 
         if os.path.exists(dynamic_meta_path):
             with open(dynamic_meta_path, 'r', encoding='utf-8') as f:
                 self.dynamic_metadata = json.load(f)
         else:
             self.dynamic_metadata = []
+
+    # ─────────────────────────────────────────────
+    # 啟動同步：把 MongoDB dynamic_objects 載入 FAISS
+    # 支援兩種來源：
+    #   source: "vlm"    → 你的 pipeline 寫入的
+    #   source: "sensor" → 同事的感測器寫入的
+    # ─────────────────────────────────────────────
+    def sync_from_mongo(self, dynamic_objects_collection):
+        """
+        啟動時呼叫一次，把 MongoDB 裡的動態物件全部載入 FAISS。
+        已存在的 label 會更新，新的 label 會新增。
+        """
+        docs  = list(dynamic_objects_collection.find({}))
+        count = 0
+        for doc in docs:
+            label = doc.get("label", "").lower().strip()
+            if not label:
+                continue
+            self.upsert_dynamic_object(
+                label          = label,
+                room           = doc.get("room", ""),
+                last_seen_on   = doc.get("last_seen_on", "unknown"),
+                spatial_rel    = doc.get("spatial_rel", "near"),
+                furniture_pos  = doc.get("furniture_pos") or doc.get("position"),
+                seen_count     = doc.get("seen_count", 1),
+                interact_count = doc.get("interact_count", 0),
+                interacted_by  = doc.get("interacted_by", []),
+            )
+            count += 1
+        print(f"✅ [FAISS] sync_from_mongo: {count} 筆動態物件已同步")
+        return count
 
     # ─────────────────────────────────────────────
     # 習慣記憶：新增
@@ -96,35 +141,41 @@ class VectorMemory:
     # ─────────────────────────────────────────────
     # 動態物件：新增 or 更新 FAISS
     # 向量文字格式：
-    #   "apple on kitchen_counter in Kitchen. seen 8 times. used by User_Mom."
+    #   "apple on kitchen_table in Kitchen. seen 8 times.
+    #    interacted 8 times. used by User_Mom."
     # ─────────────────────────────────────────────
     def upsert_dynamic_object(self, label: str, room: str, last_seen_on: str,
                                spatial_rel: str, furniture_pos,
                                seen_count: int, interact_count: int,
                                interacted_by: list):
         """
-        每次 dynamic_objects 更新後呼叫，用 label 找到現有向量並更新，
-        或新增一筆。
+        事件驅動 encode：
+          - 物件第一次出現                    → encode + 寫入 FAISS
+          - last_seen_on 或 room 改變（移動）→ 重新 encode + 寫入 FAISS
+          - 只有計數變化（seen/interact）     → 只更新 metadata，不 encode
         """
-        label = label.lower().strip()
-
-        # 組合向量化文字
+        label    = label.lower().strip()
         used_str = f"used by {', '.join(interacted_by)}." if interacted_by else ""
+
         memory_text = (
             f"{label} {spatial_rel} {last_seen_on} in {room}. "
             f"seen {seen_count} times. interacted {interact_count} times. "
             f"{used_str}"
         ).strip()
 
-        vec = self.model.encode([memory_text]).astype('float32')
-        faiss.normalize_L2(vec)
+        # 找現有 metadata
+        existing_idx = next(
+            (i for i, m in enumerate(self.dynamic_metadata) if m.get("label") == label),
+            None
+        )
+        old = self.dynamic_metadata[existing_idx] if existing_idx is not None else None
 
-        # 找現有 index（用 label 查）
-        existing_idx = None
-        for i, m in enumerate(self.dynamic_metadata):
-            if m.get("label") == label:
-                existing_idx = i
-                break
+        # 判斷位置是否改變（觸發 encode 的唯一條件）
+        position_changed = (
+            old is None or
+            old.get("last_seen_on") != last_seen_on or
+            old.get("room")         != room
+        )
 
         entry = {
             "label":          label,
@@ -136,36 +187,41 @@ class VectorMemory:
             "interact_count": interact_count,
             "interacted_by":  interacted_by,
             "memory_text":    memory_text,
-            "timestamp":      datetime.datetime.now().isoformat()
+            "timestamp":      datetime.datetime.now().isoformat(),
         }
 
-        if existing_idx is not None:
-            # 更新：直接替換 metadata（FAISS 不支援原地更新，重建向量）
-            # 簡化處理：append 新向量，metadata 指向新 idx
+        if position_changed:
+            # 位置有變 → 重新 encode，寫入新向量
+            vec = self.model.encode([memory_text]).astype('float32')
+            faiss.normalize_L2(vec)
             faiss_idx = self.dynamic_index.ntotal
             self.dynamic_index.add(vec)
             entry["faiss_idx"] = faiss_idx
+            reason = "new" if old is None else f"moved: {old.get('last_seen_on')} → {last_seen_on}"
+            print(f"   🧩 [FAISS Dynamic] '{label}' encode triggered ({reason})")
+        else:
+            # 位置沒變 → 沿用舊 faiss_idx，只更新 metadata（不 encode）
+            entry["faiss_idx"] = old["faiss_idx"]
+            print(f"   🧩 [FAISS Dynamic] '{label}' metadata only (no position change)")
+
+        if existing_idx is not None:
             self.dynamic_metadata[existing_idx] = entry
         else:
-            faiss_idx = self.dynamic_index.ntotal
-            self.dynamic_index.add(vec)
-            entry["faiss_idx"] = faiss_idx
             self.dynamic_metadata.append(entry)
 
         self._save_dynamic()
-        print(f"   🧩 [FAISS Dynamic] '{label}' @ {last_seen_on} updated")
 
     # ─────────────────────────────────────────────
     # 習慣記憶：搜尋
     # ─────────────────────────────────────────────
-    def search_habit(self, query, user_id=None, top_k=3):
+    def search_habit(self, query, user_id=None, top_k=5):
         if self.index.ntotal == 0:
             return []
 
         vec = self.model.encode([query]).astype('float32')
         faiss.normalize_L2(vec)
 
-        k = min(top_k * 3, self.index.ntotal)
+        k = min(top_k * 5, self.index.ntotal)
         scores, indices = self.index.search(vec, k)
 
         results = []
@@ -194,8 +250,9 @@ class VectorMemory:
         return results
 
     # ─────────────────────────────────────────────
-    # 動態物件：搜尋
-    # 範例查詢：「甜的東西在哪」「媽媽常用的東西」「廚房桌上有什麼」
+    # 動態物件：語意搜尋
+    # 用途：「我餓了」→ 找家裡有什麼食物
+    #       「甜的東西」→ 找 apple/banana/candy
     # ─────────────────────────────────────────────
     def search_dynamic(self, query, top_k=5, user_filter=None):
         if self.dynamic_index.ntotal == 0:
@@ -204,30 +261,28 @@ class VectorMemory:
         vec = self.model.encode([query]).astype('float32')
         faiss.normalize_L2(vec)
 
-        k = min(top_k * 3, self.dynamic_index.ntotal)
+        k = min(top_k * 5, self.dynamic_index.ntotal)
         scores, indices = self.dynamic_index.search(vec, k)
 
-        # label → 最新 metadata（避免重複 label 的舊向量干擾）
         seen_labels = set()
         results     = []
 
         for score, idx in zip(scores[0], indices[0]):
             if idx < 0:
                 continue
-            # 找 faiss_idx == idx 的 metadata
-            entry = next(
-                (m for m in self.dynamic_metadata if m.get("faiss_idx") == idx),
-                None
-            )
-            if not entry:
+            # 找最新的 metadata（label 可能有多筆，取最新的）
+            candidates = [
+                m for m in self.dynamic_metadata if m.get("faiss_idx") == idx
+            ]
+            if not candidates:
                 continue
+            entry = candidates[-1]  # 取最新
 
             label = entry.get("label")
             if label in seen_labels:
                 continue
             seen_labels.add(label)
 
-            # 可選：只回傳特定用戶互動過的
             if user_filter and user_filter not in entry.get("interacted_by", []):
                 continue
 
@@ -284,7 +339,7 @@ class VectorMemory:
         return top[0] if top_k == 1 else top
 
     # ─────────────────────────────────────────────
-    # 語意擴散
+    # 語意擴散（供 interaction.py 使用）
     # ─────────────────────────────────────────────
     def expand_query(self, query: str, candidate_items: list,
                      top_k=10, threshold=0.35) -> list:
@@ -316,7 +371,6 @@ class VectorMemory:
                 items.add(item.lower())
             for item in m.get('all_items', []):
                 items.add(item.lower())
-        # 也加入 dynamic_objects 的 label
         for m in self.dynamic_metadata:
             if m.get("label"):
                 items.add(m["label"].lower())

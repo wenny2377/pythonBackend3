@@ -2,7 +2,10 @@ import cv2
 import numpy as np
 import base64
 import os
+import time
 import datetime
+import threading
+import atexit
 from flask import Flask, request, jsonify
 from pymongo import MongoClient
 
@@ -13,31 +16,52 @@ from modules.memory_vector import VectorMemory
 
 from sentence_transformers import SentenceTransformer
 
-app = Flask(__name__)
+app    = Flask(__name__)
 CONFIG = Config
 
-sbert_model  = SentenceTransformer('paraphrase-MiniLM-L6-v2', device='cpu')
-mongo_client = MongoClient(CONFIG.MONGO_URI)
+# ──────────────────────────────────────────────────────
+# GPU 設定
+# ──────────────────────────────────────────────────────
+sbert_model = SentenceTransformer('paraphrase-MiniLM-L6-v2', device='cuda')
+print("✅ SBERT loaded on CUDA")
 
-db = mongo_client[CONFIG.DB_NAME]
+mongo_client = MongoClient(CONFIG.MONGO_URI)
+db           = mongo_client[CONFIG.DB_NAME]
+
 try:
     db.scene_snapshots.create_index([("pos", "2d")])
     print("✅ MongoDB 2D Index ready")
 except Exception as e:
     print(f"ℹ️ Index notice: {e}")
 
+# ── FIX: 移除 spatial_module=None（perception v4 已移除此參數）──
 perception = PerceptionEngine(
-    ollama_url=CONFIG.OLLAMA_URL,
-    model_name=CONFIG.OLLAMA_MODEL,
-    face_analyzer=None,
-    face_bank=None,
-    spatial_module=None
+    ollama_url       = CONFIG.OLLAMA_URL,
+    model_name       = CONFIG.OLLAMA_MODEL,
+    face_analyzer    = None,
+    face_bank        = None,
+    mongo_uri        = CONFIG.MONGO_URI,
+    db_name          = CONFIG.DB_NAME,
+    sbert_model_name = 'paraphrase-MiniLM-L6-v2',
 )
 
 memory        = MemoryManager(mongo_client, embedding_model=sbert_model)
-vector_memory = VectorMemory()
+vector_memory = VectorMemory(device='cuda')
+
+# 啟動時把 MongoDB dynamic_objects 同步進 FAISS
+# 支援同事的 sensor 資料 + 自己的 VLM 資料
+vector_memory.sync_from_mongo(db.dynamic_objects)
+
+# 程式結束時確保 BulkWriteBuffer 全部寫入
+atexit.register(perception.shutdown)
+
+# Ollama 單執行緒鎖（GPU 模式仍建議保留，避免顯存衝突）
+_ollama_lock = threading.Lock()
 
 
+# ──────────────────────────────────────────────────────
+# 工具函式
+# ──────────────────────────────────────────────────────
 def preview_images(image_list, source_nodes, hint_user_id, activity):
     save_dir = "debug_images"
     os.makedirs(save_dir, exist_ok=True)
@@ -56,6 +80,27 @@ def preview_images(image_list, source_nodes, hint_user_id, activity):
             print(f"⚠️ [Preview Skip] {e}")
 
 
+def log_eval(experiment, ground_truth, vlm_output, bound_label,
+             user_id, room, vlm_ms, binding_results=None):
+    doc = {
+        "experiment":       experiment,
+        "ground_truth":     ground_truth,
+        "vlm_output":       vlm_output,
+        "is_correct":       ground_truth.lower() == vlm_output.lower() if ground_truth else None,
+        "bound_label":      bound_label,
+        "user_id":          user_id,
+        "room":             room,
+        "vlm_inference_ms": vlm_ms,
+        "timestamp":        datetime.datetime.now(),
+    }
+    if binding_results:
+        doc["binding_results"] = binding_results
+    db["eval_logs"].insert_one(doc)
+
+
+# ──────────────────────────────────────────────────────
+# /predict  主感知路由
+# ──────────────────────────────────────────────────────
 @app.route('/predict', methods=['POST'])
 def predict():
     try:
@@ -93,7 +138,17 @@ def predict():
 
         data['room_name'] = room_name
 
-        perception_res = perception.analyze_action_burst(data)
+        # ── VLM 推理（計時供 eval_logs）──
+        acquired = _ollama_lock.acquire(timeout=180)
+        t0 = time.time()
+        try:
+            # perception v4：內部已處理 dynamic_objects 更新
+            perception_res = perception.analyze_action_burst(data)
+        finally:
+            if acquired:
+                _ollama_lock.release()
+        vlm_ms = int((time.time() - t0) * 1000)
+
         user_id        = perception_res["user"]
         action         = perception_res["action"]
         detected_items = perception_res["items"]
@@ -102,9 +157,7 @@ def predict():
         vlm_desc       = perception_res["result"].get("context", "Observed behavior.")
         vlm_object     = perception_res["bound_instance"]
 
-        print(f"[VLM] action={action} | object={vlm_object}")
-        print(f"[VLM] interacting={detected_items} | scene={all_items}")
-        print(f"[VLM] spatial_relations={spatial_rels}")
+        print(f"[VLM] action={action} | object={vlm_object} | {vlm_ms}ms")
 
         if action == "none":
             print("[Skip] VLM no valid action")
@@ -116,18 +169,31 @@ def predict():
                 "reason":   "VLM returned no valid action"
             }), 200
 
+        # ── memory.bind_and_update：只更新 observation_logs + activity_sequences
+        # ── dynamic_objects 已由 perception v4 處理，不重複更新
         final_bound_label = memory.bind_and_update(
-            user_id=user_id,
-            action=action,
-            est_pos=est_pos,
-            vlm_description=vlm_desc,
-            detected_items=detected_items,
-            all_items=all_items,
-            spatial_relations=spatial_rels,
-            target_label=vlm_object,
-            room_name=room_name,
+            user_id           = user_id,
+            action            = action,
+            est_pos           = est_pos,
+            vlm_description   = vlm_desc,
+            detected_items    = detected_items,
+            all_items         = all_items,
+            spatial_relations = spatial_rels,
+            target_label      = vlm_object,
+            room_name         = room_name,
         )
         print(f"[Bind] '{vlm_object}' -> '{final_bound_label}'")
+
+        # ── 實驗一、二自動記錄 ──
+        log_eval(
+            experiment   = "exp1_exp2",
+            ground_truth = activity,
+            vlm_output   = action,
+            bound_label  = final_bound_label,
+            user_id      = user_id,
+            room         = room_name,
+            vlm_ms       = vlm_ms,
+        )
 
         furniture_pos = None
         mongo_id      = None
@@ -143,17 +209,18 @@ def predict():
             ) if spatial_rels else ""
 
             vector_memory.add_memory(
-                user_id=user_id,
-                action=action,
-                furniture_label=final_bound_label,
-                vlm_description=f"{vlm_desc} {spatial_text}".strip(),
-                detected_items=detected_items,
-                all_items=all_items,
-                spatial_relations=spatial_rels,
-                furniture_pos=furniture_pos,
-                mongo_id=mongo_id
+                user_id         = user_id,
+                action          = action,
+                furniture_label = final_bound_label,
+                vlm_description = f"{vlm_desc} {spatial_text}".strip(),
+                detected_items  = detected_items,
+                all_items       = all_items,
+                spatial_relations = spatial_rels,
+                furniture_pos   = furniture_pos,
+                mongo_id        = mongo_id
             )
 
+            # ── FAISS 同步最新 dynamic_objects（從 DB 讀取 perception 剛寫入的結果）──
             scene_items       = [i for i in all_items if i not in detected_items]
             all_dynamic_items = list(set(detected_items + scene_items))
             for item_label in all_dynamic_items:
@@ -172,7 +239,7 @@ def predict():
         else:
             print("[Skip FAISS] bind failed")
 
-        print(f"[Done] {user_id} @ {final_bound_label} -> {action}")
+        print(f"[Done] {user_id} @ {final_bound_label} -> {action} | {vlm_ms}ms")
 
         return jsonify({
             "status":            "Success",
@@ -184,7 +251,8 @@ def predict():
             "spatial_relations": spatial_rels,
             "description":       vlm_desc,
             "estimated_pos":     est_pos,
-            "furniture_pos":     furniture_pos
+            "furniture_pos":     furniture_pos,
+            "vlm_inference_ms":  vlm_ms,
         }), 200
 
     except Exception as e:
@@ -193,6 +261,71 @@ def predict():
         return jsonify({"error": str(e)}), 500
 
 
+# ──────────────────────────────────────────────────────
+# /exp_checkpoint  實驗三A/B checkpoint 記錄
+# ──────────────────────────────────────────────────────
+@app.route('/exp_checkpoint', methods=['GET'])
+def exp_checkpoint():
+    try:
+        experiment = request.args.get('experiment', '')
+        step       = request.args.get('step', 0, type=int)
+        day        = request.args.get('day', 0, type=int)
+        user       = request.args.get('user', 'User_Mom')
+        action     = request.args.get('action', 'drinking')
+
+        checkpoint_doc = {
+            "experiment": experiment,
+            "step":       step,
+            "day":        day,
+            "timestamp":  datetime.datetime.now(),
+        }
+
+        if experiment == "exp3a":
+            obs = db.observation_logs.find_one(
+                {"user": user, "action": action},
+                sort=[("weight", -1)]
+            )
+            weight = obs["weight"] if obs else 0
+
+            similarity = 0.0
+            try:
+                results    = vector_memory.search_habit(f"{user} {action}", user_id=user, top_k=1)
+                similarity = float(results[0].get("similarity", 0.0)) if results else 0.0
+            except Exception as fe:
+                print(f"[Checkpoint] FAISS skipped: {fe}")
+
+            checkpoint_doc.update({
+                "user":       user,
+                "action":     action,
+                "weight":     weight,
+                "similarity": round(similarity, 4),
+            })
+            print(f"[Checkpoint Exp3A] step={step} weight={weight} sim={similarity:.4f}")
+
+        elif experiment == "exp3b":
+            try:
+                pipeline = [
+                    {"$match": {"timestamp": {"$gte": datetime.datetime.now() - datetime.timedelta(hours=2)}}},
+                    {"$group": {"_id": {"user": "$user", "action": "$action"}, "count": {"$sum": 1}}}
+                ]
+                today_obs = list(db.observation_logs.aggregate(pipeline))
+                checkpoint_doc["today_observations"] = today_obs
+                print(f"[Checkpoint Exp3B] day={day} obs={len(today_obs)}")
+            except Exception as pe:
+                print(f"[Checkpoint Exp3B] aggregate skipped: {pe}")
+                checkpoint_doc["today_observations"] = []
+
+        db["exp_checkpoints"].insert_one(checkpoint_doc)
+        return jsonify({"status": "ok", "checkpoint": checkpoint_doc}), 200
+
+    except Exception as e:
+        print(f"[Checkpoint Error] {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+# ──────────────────────────────────────────────────────
+# 其餘 routes
+# ──────────────────────────────────────────────────────
 @app.route('/scene', methods=['POST'])
 def handle_scene():
     try:
@@ -249,7 +382,6 @@ def query_habit():
                 f"(seen {top_habit['count']} times), "
                 f"typically interacting with: {interact_str}."
             )
-
         elif results:
             best       = results[0]
             nav_target = best.get('furniture_pos')
@@ -326,20 +458,11 @@ def export_training():
             return jsonify({"error": f"Unknown type: {export_type}"}), 400
 
         total = sum(stats.values())
-        print(f"[Export] {stats} | total={total}")
-
         return jsonify({
             "status":     "Success",
             "stats":      stats,
             "total":      total,
             "output_dir": training_exporter.output_dir,
-            "files": [
-                "perception_data.jsonl",
-                "dialogue_data.jsonl",
-                "navigation_data.jsonl",
-                "scene_graph_data.jsonl",
-                "habit_sequence_data.jsonl"
-            ]
         }), 200
 
     except Exception as e:
@@ -347,22 +470,6 @@ def export_training():
         print(f"[Export Error] {e}\n{traceback.format_exc()}")
         return jsonify({"error": str(e)}), 500
 
-
-@app.route('/cleanup', methods=['POST'])
-def manual_cleanup():
-    try:
-        stats = cleanup_manager.run_all(auto=False)
-        return jsonify({"status": "Success", "cleaned": stats}), 200
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-
-@app.route('/cleanup/status', methods=['GET'])
-def cleanup_status():
-    try:
-        return jsonify(cleanup_manager.status()), 200
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
 
 
 @app.route('/interact', methods=['POST'])
@@ -381,13 +488,12 @@ def interact():
         print(f"\n[Interact] user={user_id} | query='{query}' | room={room}")
 
         result = interaction_engine.process(
-            query=query,
-            user_id=user_id,
-            robot_pos=robot_pos,
-            user_pos=user_pos,
-            room=room
+            query     = query,
+            user_id   = user_id,
+            robot_pos = robot_pos,
+            user_pos  = user_pos,
+            room      = room
         )
-
         return jsonify(result), 200
 
     except Exception as e:
@@ -407,11 +513,11 @@ def interact_confirm():
         query      = data.get('query', '')
 
         result = interaction_engine.confirm(
-            choice=choice,
-            nav_target=nav_target,
-            nav_label=nav_label,
-            user_id=user_id,
-            query=query,
+            choice     = choice,
+            nav_target = nav_target,
+            nav_label  = nav_label,
+            user_id    = user_id,
+            query      = query,
         )
         return jsonify(result), 200
 
@@ -421,24 +527,26 @@ def interact_confirm():
         return jsonify({"error": str(e)}), 500
 
 
+# ──────────────────────────────────────────────────────
+# 延遲載入（避免 circular import）
+# ──────────────────────────────────────────────────────
+from modules.interaction import InteractionEngine
+from modules.training_exporter import TrainingExporter
+
+interaction_engine = InteractionEngine(
+    mongo_client = mongo_client,
+    vector_memory = vector_memory,
+    ollama_url   = CONFIG.OLLAMA_URL,
+    model_name   = CONFIG.OLLAMA_MODEL
+)
+training_exporter = TrainingExporter(mongo_client)
+
+
+
 if __name__ == "__main__":
     host = getattr(CONFIG, 'FLASK_HOST', '0.0.0.0')
     port = int(getattr(CONFIG, 'FLASK_PORT', 5000))
-    print(f"\nRobot Brain Server Running on {host}:{port}")
+    print(f"\n🚀 Robot Brain Server on {host}:{port}")
+    print(f"   SBERT device : cuda")
+    print(f"   Ollama model : {CONFIG.OLLAMA_MODEL}")
     app.run(host=host, port=port, debug=False)
-
-
-from modules.interaction import InteractionEngine
-from modules.training_exporter import TrainingExporter
-from cleanup import CleanupManager
-
-interaction_engine = InteractionEngine(
-    mongo_client=mongo_client,
-    vector_memory=vector_memory,
-    ollama_url=CONFIG.OLLAMA_URL,
-    model_name=CONFIG.OLLAMA_MODEL
-)
-training_exporter = TrainingExporter(mongo_client)
-cleanup_manager   = CleanupManager(mongo_client)
-
-cleanup_manager.start_scheduler(interval_hours=24)
