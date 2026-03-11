@@ -434,14 +434,18 @@ User said: "{query}"
     # 確認導航
     # ─────────────────────────────────────────────
     def confirm(self, choice, nav_target, nav_label, user_id, query):
-        self.conv_logs.update_one(
-            {"user_id": user_id, "query": query},
-            {"$set": {
-                "user_choice":  choice,
-                "confirmed_at": datetime.datetime.now()
-            }},
-            sort=[("timestamp", -1)]
-        )
+        # update_one 不支援 sort，改用 find_one_and_update
+        try:
+            self.conv_logs.find_one_and_update(
+                {"user_id": user_id, "query": query},
+                {"$set": {
+                    "user_choice":  choice,
+                    "confirmed_at": datetime.datetime.now()
+                }},
+                sort=[("timestamp", -1)]
+            )
+        except Exception as e:
+            print(f"[Confirm] conv_log update skipped: {e}")
         if choice == 1:
             return {
                 "status":     "navigate",

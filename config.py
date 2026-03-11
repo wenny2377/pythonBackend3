@@ -7,7 +7,10 @@ class Config:
 
     # ── Ollama / VLM ──
     OLLAMA_URL   = "http://localhost:11434"
-    OLLAMA_MODEL = "llava-phi3"
+    OLLAMA_MODEL = "gemma3:4b"       # 向下相容保留
+
+    VLM_MODEL = "llava-phi3"         # 視覺辨識 → perception.py
+    LLM_MODEL = "gemma3:4b"          # 語言推理 → interaction.py / RAG
 
     # ── MongoDB ──
     MONGO_URI = "mongodb://127.0.0.1:27017/"

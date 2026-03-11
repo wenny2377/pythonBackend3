@@ -1,0 +1,392 @@
+[
+  {
+    "faiss_idx": 0,
+    "user": "User_Mom",
+    "action": "sleeping",
+    "instance": "mom's bed",
+    "interacting_items": [],
+    "all_items": [],
+    "spatial_relations": [
+      {
+        "subject": "pillow",
+        "relation": "on",
+        "object": "bed"
+      }
+    ],
+    "furniture_pos": [
+      -7.019,
+      9.31
+    ],
+    "mongo_id": "69b0e889040731fe60e11b80",
+    "description": "A person is sleeping on a bed. pillow on bed",
+    "memory_text": "User_Mom sleeping near mom's bed with nothing. A person is sleeping on a bed. pillow on bed pillow on bed.",
+    "timestamp": "2026-03-11T11:59:08.515147"
+  },
+  {
+    "faiss_idx": 1,
+    "user": "User_Mom",
+    "action": "watching",
+    "instance": "chair",
+    "interacting_items": [
+      "computer"
+    ],
+    "all_items": [
+      "computer"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "computer",
+        "relation": "on",
+        "object": "desk"
+      }
+    ],
+    "furniture_pos": [
+      -8.592,
+      9.515
+    ],
+    "mongo_id": "69b0e889040731fe60e11b83",
+    "description": "A person sitting in a chair watching something on the computer. computer on desk",
+    "memory_text": "User_Mom watching near chair with computer. A person sitting in a chair watching something on the computer. computer on desk computer on desk.",
+    "timestamp": "2026-03-11T11:59:39.548166"
+  },
+  {
+    "faiss_idx": 2,
+    "user": "User_Mom",
+    "action": "watching",
+    "instance": "sofa",
+    "interacting_items": [
+      "remote"
+    ],
+    "all_items": [
+      "remote"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "remote control",
+        "relation": "in hand of person",
+        "object": "sofa"
+      }
+    ],
+    "furniture_pos": [
+      -0.169999987,
+      8.62
+    ],
+    "mongo_id": "69b0e889040731fe60e11b86",
+    "description": "A woman is sitting on a sofa and watching TV. remote control in hand of person sofa",
+    "memory_text": "User_Mom watching near sofa with remote. A woman is sitting on a sofa and watching TV. remote control in hand of person sofa remote control in hand of person sofa.",
+    "timestamp": "2026-03-11T12:00:16.044309"
+  },
+  {
+    "faiss_idx": 3,
+    "user": "User_Mom",
+    "action": "eating",
+    "instance": "table",
+    "interacting_items": [
+      "banana"
+    ],
+    "all_items": [
+      "apple",
+      "banana"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "banana",
+        "relation": "on",
+        "object": "kitchen_table"
+      },
+      {
+        "subject": "apple",
+        "relation": "next to",
+        "object": "banana"
+      }
+    ],
+    "furniture_pos": [
+      1.97,
+      2.29
+    ],
+    "mongo_id": "69b0e889040731fe60e11b84",
+    "description": "A person is eating a banana and an apple on the kitchen table. banana on kitchen_table apple next to banana",
+    "memory_text": "User_Mom eating near table with banana. A person is eating a banana and an apple on the kitchen table. banana on kitchen_table apple next to banana banana on kitchen_table. apple next to banana.",
+    "timestamp": "2026-03-11T12:00:53.124577"
+  },
+  {
+    "faiss_idx": 4,
+    "user": "User_Mom",
+    "action": "watching",
+    "instance": "chair",
+    "interacting_items": [
+      "computer"
+    ],
+    "all_items": [
+      "computer"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "computer",
+        "relation": "on",
+        "object": "desk"
+      }
+    ],
+    "furniture_pos": [
+      -8.592,
+      9.515
+    ],
+    "mongo_id": "69b0e889040731fe60e11b83",
+    "description": "A person sitting in a chair watching something on the computer. computer on desk",
+    "memory_text": "User_Mom watching near chair with computer. A person sitting in a chair watching something on the computer. computer on desk computer on desk.",
+    "timestamp": "2026-03-11T12:01:29.069944"
+  },
+  {
+    "faiss_idx": 5,
+    "user": "User_Mom",
+    "action": "sleeping",
+    "instance": "mom's bed",
+    "interacting_items": [],
+    "all_items": [],
+    "spatial_relations": [
+      {
+        "subject": "blue pillow",
+        "relation": "on",
+        "object": "mom's bed"
+      }
+    ],
+    "furniture_pos": [
+      -7.019,
+      9.31
+    ],
+    "mongo_id": "69b0e889040731fe60e11b80",
+    "description": "A person is sleeping on a blue bed. blue pillow on mom's bed",
+    "memory_text": "User_Mom sleeping near mom's bed with nothing. A person is sleeping on a blue bed. blue pillow on mom's bed blue pillow on mom's bed.",
+    "timestamp": "2026-03-11T12:02:05.912688"
+  },
+  {
+    "faiss_idx": 6,
+    "user": "User_Dad",
+    "action": "sleeping",
+    "instance": "dad's bed",
+    "interacting_items": [],
+    "all_items": [],
+    "spatial_relations": [
+      {
+        "subject": "person",
+        "relation": "on",
+        "object": "dad's bed"
+      },
+      {
+        "subject": "dad's bed",
+        "relation": "above ground level",
+        "object": "floor"
+      }
+    ],
+    "furniture_pos": [
+      -1.618,
+      0.439999968
+    ],
+    "mongo_id": "69b0e889040731fe60e11b7f",
+    "description": "A person is sleeping on a blue bed. person on dad's bed dad's bed above ground level floor",
+    "memory_text": "User_Dad sleeping near dad's bed with nothing. A person is sleeping on a blue bed. person on dad's bed dad's bed above ground level floor person on dad's bed. dad's bed above ground level floor.",
+    "timestamp": "2026-03-11T12:02:45.496794"
+  },
+  {
+    "faiss_idx": 7,
+    "user": "User_Mom",
+    "action": "sleeping",
+    "instance": "mom's bed",
+    "interacting_items": [],
+    "all_items": [],
+    "spatial_relations": [
+      {
+        "subject": "pillow",
+        "relation": "on",
+        "object": "mom's bed"
+      }
+    ],
+    "furniture_pos": [
+      -7.019,
+      9.31
+    ],
+    "mongo_id": "69b0e889040731fe60e11b80",
+    "description": "A person is sleeping on mom's bed. pillow on mom's bed",
+    "memory_text": "User_Mom sleeping near mom's bed with nothing. A person is sleeping on mom's bed. pillow on mom's bed pillow on mom's bed.",
+    "timestamp": "2026-03-11T12:06:32.142214"
+  },
+  {
+    "faiss_idx": 8,
+    "user": "User_Dad",
+    "action": "sleeping",
+    "instance": "dad's bed",
+    "interacting_items": [],
+    "all_items": [],
+    "spatial_relations": [
+      {
+        "subject": "person",
+        "relation": "on",
+        "object": "dad's bed"
+      },
+      {
+        "subject": "dad's bed",
+        "relation": "above",
+        "object": "shelf2"
+      }
+    ],
+    "furniture_pos": [
+      -1.618,
+      0.439999968
+    ],
+    "mongo_id": "69b0e889040731fe60e11b7f",
+    "description": "person on dad's bed dad's bed above shelf2",
+    "memory_text": "User_Dad sleeping near dad's bed with nothing. person on dad's bed dad's bed above shelf2 person on dad's bed. dad's bed above shelf2.",
+    "timestamp": "2026-03-11T12:06:45.359434"
+  },
+  {
+    "faiss_idx": 9,
+    "user": "User_Dad",
+    "action": "watching",
+    "instance": "sofa",
+    "interacting_items": [],
+    "all_items": [],
+    "spatial_relations": [
+      {
+        "subject": "person",
+        "relation": "on",
+        "object": "sofa"
+      }
+    ],
+    "furniture_pos": [
+      -0.169999987,
+      8.62
+    ],
+    "mongo_id": "69b0e889040731fe60e11b86",
+    "description": "A person is sitting on a sofa and watching something. person on sofa",
+    "memory_text": "User_Dad watching near sofa with nothing. A person is sitting on a sofa and watching something. person on sofa person on sofa.",
+    "timestamp": "2026-03-11T12:06:49.572387"
+  },
+  {
+    "faiss_idx": 10,
+    "user": "User_Mom",
+    "action": "watching",
+    "instance": "sofa",
+    "interacting_items": [
+      "remote"
+    ],
+    "all_items": [
+      "remote"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "person",
+        "relation": "on",
+        "object": "sofa"
+      }
+    ],
+    "furniture_pos": [
+      -0.169999987,
+      8.62
+    ],
+    "mongo_id": "69b0e889040731fe60e11b86",
+    "description": "A person is watching TV on the sofa. person on sofa",
+    "memory_text": "User_Mom watching near sofa with remote. A person is watching TV on the sofa. person on sofa person on sofa.",
+    "timestamp": "2026-03-11T12:07:01.740985"
+  },
+  {
+    "faiss_idx": 11,
+    "user": "User_Dad",
+    "action": "watching",
+    "instance": "sofa",
+    "interacting_items": [],
+    "all_items": [],
+    "spatial_relations": [
+      {
+        "subject": "person",
+        "relation": "on",
+        "object": "sofa"
+      }
+    ],
+    "furniture_pos": [
+      -0.169999987,
+      8.62
+    ],
+    "mongo_id": "69b0e889040731fe60e11b86",
+    "description": "A person is sitting on a sofa and watching something. person on sofa",
+    "memory_text": "User_Dad watching near sofa with nothing. A person is sitting on a sofa and watching something. person on sofa person on sofa.",
+    "timestamp": "2026-03-11T12:08:26.325318"
+  },
+  {
+    "faiss_idx": 12,
+    "user": "User_Dad",
+    "action": "sleeping",
+    "instance": "tv",
+    "interacting_items": [
+      "banana"
+    ],
+    "all_items": [
+      "banana"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "banana",
+        "relation": "on",
+        "object": "tv"
+      }
+    ],
+    "furniture_pos": [
+      5.41,
+      8.02
+    ],
+    "mongo_id": "69b0e889040731fe60e11b8a",
+    "description": "A person is sleeping on a sofa. banana on tv",
+    "memory_text": "User_Dad sleeping near tv with banana. A person is sleeping on a sofa. banana on tv banana on tv.",
+    "timestamp": "2026-03-11T12:09:09.390703"
+  },
+  {
+    "faiss_idx": 13,
+    "user": "User_Dad",
+    "action": "watching",
+    "instance": "sofa",
+    "interacting_items": [],
+    "all_items": [],
+    "spatial_relations": [
+      {
+        "subject": "person",
+        "relation": "on",
+        "object": "sofa"
+      }
+    ],
+    "furniture_pos": [
+      -0.169999987,
+      8.62
+    ],
+    "mongo_id": "69b0e889040731fe60e11b86",
+    "description": "A person is sitting on a sofa and watching something. person on sofa",
+    "memory_text": "User_Dad watching near sofa with nothing. A person is sitting on a sofa and watching something. person on sofa person on sofa.",
+    "timestamp": "2026-03-11T12:09:29.891723"
+  },
+  {
+    "faiss_idx": 14,
+    "user": "User_Dad",
+    "action": "watching",
+    "instance": "sofa",
+    "interacting_items": [],
+    "all_items": [],
+    "spatial_relations": [
+      {
+        "subject": "skateboard",
+        "relation": "on",
+        "object": "sofa"
+      },
+      {
+        "subject": "person",
+        "relation": "standing on",
+        "object": "sofa"
+      }
+    ],
+    "furniture_pos": [
+      -0.169999987,
+      8.62
+    ],
+    "mongo_id": "69b0e889040731fe60e11b86",
+    "description": "A person standing on a sofa holding a skateboard. skateboard on sofa person standing on sofa",
+    "memory_text": "User_Dad watching near sofa with nothing. A person standing on a sofa holding a skateboard. skateboard on sofa person standing on sofa skateboard on sofa. person standing on sofa.",
+    "timestamp": "2026-03-11T12:21:48.239471"
+  }
+]

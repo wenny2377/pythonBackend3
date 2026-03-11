@@ -1,0 +1,164 @@
+[
+  {
+    "label": "computer",
+    "room": "BedRoom(mom)",
+    "last_seen_on": "desk",
+    "spatial_rel": "on",
+    "furniture_pos": [
+      -8.68,
+      10.69
+    ],
+    "seen_count": 1,
+    "interact_count": 1,
+    "interacted_by": [
+      "User_Mom"
+    ],
+    "memory_text": "computer on desk in BedRoom(mom). seen 1 times. interacted 1 times. used by User_Mom.",
+    "timestamp": "2026-03-11T12:20:41.925114",
+    "faiss_idx": 0
+  },
+  {
+    "label": "remote",
+    "room": "LivingRoom",
+    "last_seen_on": "sofa",
+    "spatial_rel": "near",
+    "furniture_pos": [
+      -0.169999987,
+      8.62
+    ],
+    "seen_count": 1,
+    "interact_count": 1,
+    "interacted_by": [
+      "User_Mom"
+    ],
+    "memory_text": "remote near sofa in LivingRoom. seen 1 times. interacted 1 times. used by User_Mom.",
+    "timestamp": "2026-03-11T12:20:41.925350",
+    "faiss_idx": 1
+  },
+  {
+    "label": "apple",
+    "room": "Kitchen",
+    "last_seen_on": "table",
+    "spatial_rel": "next to",
+    "furniture_pos": [
+      1.97,
+      2.29
+    ],
+    "seen_count": 4,
+    "interact_count": 0,
+    "interacted_by": [],
+    "memory_text": "apple next to table in Kitchen. seen 4 times. interacted 0 times.",
+    "timestamp": "2026-03-11T12:20:41.771072",
+    "faiss_idx": 5
+  },
+  {
+    "label": "banana",
+    "room": "LivingRoom",
+    "last_seen_on": "tv",
+    "spatial_rel": "on",
+    "furniture_pos": [
+      5.41,
+      8.02
+    ],
+    "seen_count": 5,
+    "interact_count": 2,
+    "interacted_by": [
+      "User_Mom",
+      "User_Dad"
+    ],
+    "memory_text": "banana on tv in LivingRoom. seen 5 times. interacted 2 times. used by User_Mom, User_Dad.",
+    "timestamp": "2026-03-11T12:20:41.770708",
+    "faiss_idx": 4
+  },
+  {
+    "label": "stand_plane.001",
+    "room": "BedRoom(mom)",
+    "last_seen_on": "floor",
+    "spatial_rel": "at",
+    "furniture_pos": null,
+    "seen_count": 3,
+    "interact_count": 0,
+    "interacted_by": [],
+    "memory_text": "stand_plane.001 at floor in BedRoom(mom). seen 3 times. interacted 0 times.",
+    "timestamp": "2026-03-11T12:20:41.905162",
+    "faiss_idx": 6
+  },
+  {
+    "label": "mouse_plane",
+    "room": "BedRoom(mom)",
+    "last_seen_on": "floor",
+    "spatial_rel": "at",
+    "furniture_pos": null,
+    "seen_count": 3,
+    "interact_count": 0,
+    "interacted_by": [],
+    "memory_text": "mouse_plane at floor in BedRoom(mom). seen 3 times. interacted 0 times.",
+    "timestamp": "2026-03-11T12:20:41.909325",
+    "faiss_idx": 7
+  },
+  {
+    "label": "monitor_cube",
+    "room": "BedRoom(mom)",
+    "last_seen_on": "floor",
+    "spatial_rel": "at",
+    "furniture_pos": null,
+    "seen_count": 3,
+    "interact_count": 0,
+    "interacted_by": [],
+    "memory_text": "monitor_cube at floor in BedRoom(mom). seen 3 times. interacted 0 times.",
+    "timestamp": "2026-03-11T12:20:41.912916",
+    "faiss_idx": 8
+  },
+  {
+    "label": "keyboard_plane",
+    "room": "BedRoom(mom)",
+    "last_seen_on": "floor",
+    "spatial_rel": "at",
+    "furniture_pos": null,
+    "seen_count": 3,
+    "interact_count": 0,
+    "interacted_by": [],
+    "memory_text": "keyboard_plane at floor in BedRoom(mom). seen 3 times. interacted 0 times.",
+    "timestamp": "2026-03-11T12:20:41.917665",
+    "faiss_idx": 9
+  },
+  {
+    "label": "computer_cube",
+    "room": "BedRoom(mom)",
+    "last_seen_on": "floor",
+    "spatial_rel": "at",
+    "furniture_pos": null,
+    "seen_count": 3,
+    "interact_count": 0,
+    "interacted_by": [],
+    "memory_text": "computer_cube at floor in BedRoom(mom). seen 3 times. interacted 0 times.",
+    "timestamp": "2026-03-11T12:20:41.921194",
+    "faiss_idx": 10
+  },
+  {
+    "label": "juicebottle",
+    "room": "LivingRoom",
+    "last_seen_on": "floor",
+    "spatial_rel": "at",
+    "furniture_pos": null,
+    "seen_count": 11,
+    "interact_count": 0,
+    "interacted_by": [],
+    "memory_text": "juicebottle at floor in LivingRoom. seen 11 times. interacted 0 times.",
+    "timestamp": "2026-03-11T12:20:41.925586",
+    "faiss_idx": 11
+  },
+  {
+    "label": "soda",
+    "room": "LivingRoom",
+    "last_seen_on": "floor",
+    "spatial_rel": "at",
+    "furniture_pos": null,
+    "seen_count": 32,
+    "interact_count": 0,
+    "interacted_by": [],
+    "memory_text": "soda at floor in LivingRoom. seen 32 times. interacted 0 times.",
+    "timestamp": "2026-03-11T12:20:41.929643",
+    "faiss_idx": 12
+  }
+]

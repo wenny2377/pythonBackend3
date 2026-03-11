@@ -632,9 +632,12 @@ class PerceptionEngine:
                 "room":         room_name,
                 "last_seen":    now,
                 "source":       "vlm",
+                # furniture_pos = 最近家具的座標（VLM binding 結果）
+                # sensor_pos    = 物件真實座標（sensor 存的，不覆蓋）
             }
             if resolved_pos:
                 base_set["furniture_pos"] = resolved_pos
+            # ⚠️ 不覆蓋 sensor_pos（sensor 存的真實座標保留）
 
             inc_ops = {"seen_count": 1}
             if is_interacting:
@@ -731,38 +734,55 @@ class PerceptionEngine:
     def _build_prompt(self, room_name, room_furniture, coord_label, coord_dist) -> str:
         furniture_ctx = ""
         if room_furniture:
+            furniture_list = ", ".join(room_furniture)
             furniture_ctx = (
-                f"\nFURNITURE in this room: {', '.join(room_furniture)}.\n"
-                "Use these exact names for main_object.\n"
+                f"\nFURNITURE in this room: {furniture_list}.\n"
+                "IMPORTANT: main_object MUST be one of these exact names.\n"
             )
         coord_ctx = ""
         if coord_label and coord_dist < 3.0:
             coord_ctx = (
-                f"\nSPATIAL FACT: Person is {coord_dist:.1f}m from '{coord_label}'.\n"
+                f"\nSPATIAL FACT: Person is {coord_dist:.1f}m from '{coord_label}'."
+                f" Strongly prefer '{coord_label}' as main_object.\n"
             )
 
-        return f"""Analyze this home camera image. Room: "{room_name}".
-{furniture_ctx}{coord_ctx}
-Reply ONLY in valid JSON, no markdown, no extra text.
+        action_hint = (
+            "\nACTION→FURNITURE mapping hints (use as reference):\n"
+            "- sleeping / resting / lying → bed / sofa / couch\n"
+            "- eating / drinking          → table / desk / kitchen_table\n"
+            "- typing / working           → desk / table\n"
+            "- watching                   → sofa / couch / chair\n"
+            "- cooking                    → stove / kitchen_table\n"
+            "- sitting                    → chair / sofa / bed\n"
+        )
+
+        return f"""You are analyzing a home security camera image.
+Room: "{room_name}".
+{furniture_ctx}{coord_ctx}{action_hint}
+Reply ONLY in valid JSON. No markdown, no explanation, no extra text.
 
 {{
-  "action": "most specific single verb (sleeping/eating/cooking/typing/sitting/standing/watching/drinking/swinging/...)",
-  "main_object": "furniture the person is at",
-  "interacting_items": ["items person physically holds or uses — [] if none"],
-  "scene_items": ["background items visible on surfaces — [] if none"],
+  "action": "single most specific verb observed (sleeping/eating/drinking/cooking/typing/sitting/standing/watching/swinging/exercising/...)",
+  "main_object": "the furniture item the person is primarily at or using — MUST be from FURNITURE list",
+  "interacting_items": ["portable items the person is physically holding or directly using — empty list [] if none"],
+  "scene_items": ["portable items visible on furniture surfaces — empty list [] if none, do NOT repeat interacting_items"],
   "spatial_relations": [
-    {{"subject": "item_or_person", "relation": "on/in/next_to/above/below/in_hand_of/lying_on", "object": "furniture_or_person"}}
+    {{"subject": "item_name", "relation": "on/in/next_to/above/in_hand_of/lying_on", "object": "furniture_name_from_list"}}
   ],
-  "description": "one natural sentence"
+  "description": "one natural sentence describing what the person is doing"
 }}
 
-RULES:
-- action: be specific. "sleeping" not "lying". "drinking" not "standing".
-- main_object: must come from FURNITURE list if provided.
-- interacting_items: only items physically held or operated. [] if none.
-- scene_items: items on surfaces. Do NOT repeat interacting_items.
-- Use "lying_on" for horizontal person. "in_hand_of" for held items.
-- Do NOT include wall/floor/ceiling in any list.
+STRICT RULES:
+- action: be specific. Use "sleeping" not "lying". "drinking" not "holding".
+- main_object: MUST come from the FURNITURE list above. Never use "floor", "wall", "unknown".
+  If person is sleeping → use "bed" or "sofa". If eating/drinking → use table.
+- interacting_items: ONLY items the person physically holds or directly operates.
+  Example: cup in hand = interacting. Banana on table = scene_item.
+- scene_items: items resting on furniture surfaces. Each MUST have a matching spatial_relation.
+- spatial_relations: EVERY item in scene_items MUST appear here with its furniture anchor.
+  Example: banana on kitchen_table → {{"subject":"banana","relation":"on","object":"kitchen_table"}}
+- NEVER output wall/floor/ceiling/carpet in any field.
+- If unsure about an item's exact furniture, use the closest furniture from the list.
 """
 
     # ─────────────────────────────────────────────
@@ -781,6 +801,12 @@ RULES:
 
         # 1. 事件驅動：切房間才重建 Room Cache
         self.room_cache.switch_room(room_name, self.col_scene)
+        # RoomCache 是空的時直接全量載入（scene_snapshots 尚未建立時的 fallback）
+        if not self.room_cache.all_docs:
+            print(f"   ⚠️  [RoomCache] Empty for room={room_name}, fallback to full DB load")
+            self.room_cache._room = None  # 強制重建
+            self.room_cache.switch_room("", self.col_scene)
+
 
         # 座標預查（給 prompt 用，從記憶體讀）
         coord_doc, coord_dist = self._nearest_by_coord(user_pos, room_name)
@@ -806,7 +832,7 @@ RULES:
                     "model":    self.model,
                     "messages": [{"role": "user", "content": prompt, "images": [img_clean]}],
                     "stream":   False,
-                    "options":  {"temperature": 0.05, "num_predict": 512},
+                    "options":  {"temperature": 0.05, "num_predict": 800},
                 }
                 resp      = requests.post(f"{self.url}/api/chat", json=api_body, timeout=120)
                 raw       = resp.json().get("message", {}).get("content", "").strip()
@@ -923,7 +949,26 @@ RULES:
     def _extract_json(self, raw: str) -> str:
         cleaned = re.sub(r'```(?:json)?\s*', '', raw).strip()
         m = re.search(r'\{.*\}', cleaned, re.DOTALL)
-        return m.group(0) if m else cleaned
+        if not m:
+            return cleaned
+        text = m.group(0)
+        # VLM 輸出截斷時嘗試修復：補齊缺少的括號
+        try:
+            json.loads(text)
+            return text
+        except json.JSONDecodeError:
+            # 截斷修復：移除最後一個不完整的 field，補上 }
+            # 找最後一個完整的 , 或 { 之前的位置
+            for i in range(len(text) - 1, 0, -1):
+                if text[i] in (',', '{'):
+                    candidate = text[:i].rstrip(',') + '}}'
+                    try:
+                        json.loads(candidate)
+                        print(f"   🔧 [JSON Repair] Truncated JSON fixed")
+                        return candidate
+                    except Exception:
+                        continue
+            return text
 
     def _merge_spatial(self, pool: list) -> list:
         seen, out = set(), []

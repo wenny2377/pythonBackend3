@@ -38,7 +38,7 @@ except Exception as e:
 # ── FIX: 移除 spatial_module=None（perception v4 已移除此參數）──
 perception = PerceptionEngine(
     ollama_url       = CONFIG.OLLAMA_URL,
-    model_name       = CONFIG.OLLAMA_MODEL,
+    model_name       = CONFIG.VLM_MODEL,   # llava-phi3：視覺辨識
     face_analyzer    = None,
     face_bank        = None,
     mongo_uri        = CONFIG.MONGO_URI,
@@ -82,6 +82,18 @@ def preview_images(image_list, source_nodes, hint_user_id, activity):
         except Exception as e:
             print(f"⚠️ [Preview Skip] {e}")
 
+
+def _wait_for_scene(max_wait: float = 12.0, poll: float = 1.0):
+    """scene_snapshots 還空時最多等 max_wait 秒，等 classifier 跑完"""
+    import time as _time
+    waited = 0.0
+    while waited < max_wait:
+        if db.scene_snapshots.count_documents({}) > 0:
+            return
+        print(f"   ⏳ [WaitScene] scene_snapshots empty, waited {waited:.0f}s...")
+        _time.sleep(poll)
+        waited += poll
+    print("   ⚠️  [WaitScene] Timeout, proceeding without scene data")
 
 def log_eval(experiment, ground_truth, vlm_output, bound_label,
              user_id, room, vlm_ms, binding_results=None):
@@ -138,8 +150,20 @@ def predict():
                 "x": float(user_pos_raw.get("x", 0)),
                 "z": float(user_pos_raw.get("z", 0))
             }
+        # user_pos 存進 DB，讓 classifier 知道人在哪（held_by 判斷用）
+        if est_pos and hint_user_id:
+            db.user_positions.update_one(
+                {"user_id": hint_user_id},
+                {"$set": {"user_id": hint_user_id, "x": est_pos["x"], "z": est_pos["z"],
+                           "room": room_name, "updated_at": datetime.datetime.utcnow()}},
+                upsert=True
+            )
+
 
         data['room_name'] = room_name
+        # scene_snapshots 尚未建立時等待（/scene 和 /predict 幾乎同時到）
+        _wait_for_scene(max_wait=12.0)
+
 
         # ── VLM 推理（計時供 eval_logs）──
         acquired = _ollama_lock.acquire(timeout=180)
@@ -311,8 +335,8 @@ def exp_checkpoint():
                     {"$match": {"timestamp": {"$gte": datetime.datetime.now() - datetime.timedelta(hours=2)}}},
                     {"$group": {"_id": {"user": "$user", "action": "$action"}, "count": {"$sum": 1}}}
                 ]
-                today_obs = list(db.observation_logs.aggregate(pipeline))
-                checkpoint_doc["today_observations"] = today_obs
+                today_obs_raw = list(db.observation_logs.aggregate(pipeline))
+                today_obs = [{"user": r["_id"].get("user",""), "action": r["_id"].get("action",""), "count": r["count"]} for r in today_obs_raw]
                 print(f"[Checkpoint Exp3B] day={day} obs={len(today_obs)}")
             except Exception as pe:
                 print(f"[Checkpoint Exp3B] aggregate skipped: {pe}")
@@ -358,6 +382,7 @@ def handle_scene():
                 "room":      obj.get('room', ''),
                 "image":     obj.get('image', ''),
                 "source":    obj.get('source', 'sensor'),
+                "held_by":   obj.get('held_by', ''),  # Unity 送來的持有者
                 "processed": False,
                 "received_at": now,
             })
@@ -641,10 +666,10 @@ from modules.interaction import InteractionEngine
 from modules.training_exporter import TrainingExporter
 
 interaction_engine = InteractionEngine(
-    mongo_client = mongo_client,
+    mongo_client  = mongo_client,
     vector_memory = vector_memory,
-    ollama_url   = CONFIG.OLLAMA_URL,
-    model_name   = CONFIG.OLLAMA_MODEL
+    ollama_url    = CONFIG.OLLAMA_URL,
+    model_name    = CONFIG.LLM_MODEL,      # gemma3:4b：語言推理
 )
 training_exporter = TrainingExporter(mongo_client)
 
@@ -655,5 +680,6 @@ if __name__ == "__main__":
     port = int(getattr(CONFIG, 'FLASK_PORT', 5000))
     print(f"\n🚀 Robot Brain Server on {host}:{port}")
     print(f"   SBERT device : cuda")
-    print(f"   Ollama model : {CONFIG.OLLAMA_MODEL}")
+    print(f"   VLM model    : {CONFIG.VLM_MODEL}   ← perception")
+    print(f"   LLM model    : {CONFIG.LLM_MODEL}  ← interaction/RAG")
     app.run(host=host, port=port, debug=False)
