@@ -34,6 +34,7 @@ cols = [
     "exp_checkpoints",
     "activity_sequences",
     "conversation_logs",
+    "raw_objects",
     "dynamic_objects",
     "scene_snapshots",
     "semantic_memories",

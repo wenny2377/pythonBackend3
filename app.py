@@ -13,6 +13,7 @@ from config import Config
 from modules.perception import PerceptionEngine
 from modules.memory import MemoryManager
 from modules.memory_vector import VectorMemory
+from classifier import ObjectClassifier
 
 from sentence_transformers import SentenceTransformer
 
@@ -47,6 +48,8 @@ perception = PerceptionEngine(
 
 memory        = MemoryManager(mongo_client, embedding_model=sbert_model)
 vector_memory = VectorMemory(device='cuda')
+classifier    = ObjectClassifier(db)
+classifier.start()
 
 # 啟動時把 MongoDB dynamic_objects 同步進 FAISS
 # 支援同事的 sensor 資料 + 自己的 VLM 資料
@@ -328,16 +331,120 @@ def exp_checkpoint():
 # ──────────────────────────────────────────────────────
 @app.route('/scene', methods=['POST'])
 def handle_scene():
+    """
+    收到 Unity / 同事 sensor 的物件資料
+    全部存進 raw_objects（不在這裡分類）
+    classifier.py 背景執行緒每 5 秒讀取 raw_objects → 分類
+    """
     try:
-        data    = request.get_json()
-        objects = data.get('objects', [])
-        count   = memory.sync_scene(objects)
-        print(f"[Scene Sync] {count}")
-        return jsonify({"status": "Success", "synced_count": count}), 200
+        data      = request.get_json()
+        objects   = data.get('objects', [])
+        timestamp = data.get('timestamp', '')
+
+        if not objects:
+            return jsonify({"status": "empty"}), 200
+
+        now = datetime.datetime.utcnow()
+        docs = []
+        for obj in objects:
+            label = obj.get('label', '').lower().strip()
+            if not label:
+                continue
+            docs.append({
+                "label":     label,
+                "x":         obj.get('x', 0),
+                "y":         obj.get('y', 0),
+                "z":         obj.get('z', 0),
+                "room":      obj.get('room', ''),
+                "image":     obj.get('image', ''),
+                "source":    obj.get('source', 'sensor'),
+                "processed": False,
+                "received_at": now,
+            })
+
+        if docs:
+            db.raw_objects.insert_many(docs)
+
+        print(f"[Scene] 收到 {len(docs)} 個物件 → raw_objects（等待分類）")
+        return jsonify({"status": "Success", "received": len(docs)}), 200
+
     except Exception as e:
         print(f"[Scene Error] {e}")
         return jsonify({"error": str(e)}), 500
 
+
+
+@app.route('/dynamic_sync', methods=['POST'])
+def dynamic_sync():
+    """
+    接收 Unity DynamicObjectSync 傳來的動態物件位置更新。
+    source: "sensor"（同事 or Unity 模擬）
+    直接寫進 dynamic_objects，並同步 FAISS。
+    """
+    try:
+        data    = request.get_json()
+        objects = data.get('objects', [])
+        if not objects:
+            return jsonify({"status": "empty"}), 200
+
+        count = 0
+        for obj in objects:
+            label = obj.get('label', '').lower().strip()
+            if not label:
+                continue
+
+            room         = obj.get('room', '')
+            position     = obj.get('position', [0, 0])
+            source       = obj.get('source', 'sensor')
+            # last_seen_on / spatial_rel 由 VLM perception.py 補充
+            # sensor 端只有 label / room / position
+            last_seen_on = obj.get('last_seen_on', 'unknown')
+            spatial_rel  = obj.get('spatial_rel', 'near')
+
+            # 寫進 MongoDB
+            # sensor_pos = 物件真實世界座標（sensor 提供）
+            # furniture_pos = 最近家具座標（VLM binding 後補充）
+            db.dynamic_objects.update_one(
+                {"label": label},
+                {
+                    "$set": {
+                        "room":        room,
+                        "sensor_pos":  position,   # 真實座標，只有 sensor 寫
+                        "last_seen":   datetime.datetime.utcnow(),
+                        "source":      source,
+                    },
+                    "$inc":         {"seen_count": 1},
+                    "$setOnInsert": {
+                        "first_seen":  datetime.datetime.utcnow(),
+                        "last_seen_on": "unknown",
+                        "spatial_rel":  "unknown",
+                    },
+                },
+                upsert=True
+            )
+
+            # 同步 FAISS
+            dyn_doc = db.dynamic_objects.find_one({"label": label})
+            if dyn_doc:
+                vector_memory.upsert_dynamic_object(
+                    label          = label,
+                    room           = room,
+                    last_seen_on   = last_seen_on,
+                    spatial_rel    = spatial_rel,
+                    furniture_pos  = position,
+                    seen_count     = dyn_doc.get("seen_count", 1),
+                    interact_count = dyn_doc.get("interact_count", 0),
+                    interacted_by  = dyn_doc.get("interacted_by", []),
+                )
+            count += 1
+
+        print(f"[DynamicSync] {count} 個物件已更新（source=sensor）")
+        return jsonify({"status": "Success", "updated": count}), 200
+
+    except Exception as e:
+        import traceback
+        print(f"[DynamicSync Error] {e}\n{traceback.format_exc()}")
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/query', methods=['POST'])
 def query_habit():
