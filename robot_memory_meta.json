@@ -2,52 +2,68 @@
   {
     "faiss_idx": 0,
     "user": "User_Mom",
-    "action": "sleeping",
-    "instance": "mom's bed",
+    "action": "watching",
+    "instance": "desk",
     "interacting_items": [],
-    "all_items": [],
+    "all_items": [
+      "pillow",
+      "tv"
+    ],
     "spatial_relations": [
       {
+        "subject": "tv",
+        "relation": "above",
+        "object": "desk",
+        "_confidence": 1.0
+      },
+      {
         "subject": "pillow",
-        "relation": "on",
-        "object": "bed"
+        "relation": "next to",
+        "object": "desk",
+        "_confidence": 1.0
       }
     ],
     "furniture_pos": [
-      -7.019,
-      9.31
+      -8.68,
+      10.69
     ],
-    "mongo_id": "69b0e889040731fe60e11b80",
-    "description": "A person is sleeping on a bed. pillow on bed",
-    "memory_text": "User_Mom sleeping near mom's bed with nothing. A person is sleeping on a bed. pillow on bed pillow on bed.",
-    "timestamp": "2026-03-11T11:59:08.515147"
+    "mongo_id": "69b140faa821571f40b42ee5",
+    "description": "A person sitting in a chair at a desk watching television. tv above desk pillow next to desk",
+    "memory_text": "User_Mom watching near desk with nothing. A person sitting in a chair at a desk watching television. tv above desk pillow next to desk tv above desk. pillow next to desk.",
+    "timestamp": "2026-03-11T18:16:29.869962"
   },
   {
     "faiss_idx": 1,
     "user": "User_Mom",
     "action": "watching",
-    "instance": "chair",
-    "interacting_items": [
-      "computer"
-    ],
+    "instance": "desk",
+    "interacting_items": [],
     "all_items": [
-      "computer"
+      "tv",
+      "pillow"
     ],
     "spatial_relations": [
       {
-        "subject": "computer",
-        "relation": "on",
-        "object": "desk"
+        "subject": "tv",
+        "relation": "above",
+        "object": "desk",
+        "_confidence": 1.0
+      },
+      {
+        "subject": "pillow",
+        "relation": "next to",
+        "object": "desk",
+        "_confidence": 1.0
       }
     ],
     "furniture_pos": [
-      -8.592,
-      9.515
+      -8.68,
+      10.69
     ],
-    "mongo_id": "69b0e889040731fe60e11b83",
-    "description": "A person sitting in a chair watching something on the computer. computer on desk",
-    "memory_text": "User_Mom watching near chair with computer. A person sitting in a chair watching something on the computer. computer on desk computer on desk.",
-    "timestamp": "2026-03-11T11:59:39.548166"
+    "mongo_id": "69b140faa821571f40b42ee5",
+    "description": "A person sitting in a chair at a desk watching television. tv above desk pillow next to desk",
+    "memory_text": "User_Mom watching near desk with nothing. A person sitting in a chair at a desk watching television. tv above desk pillow next to desk tv above desk. pillow next to desk.",
+    "timestamp": "2026-03-11T18:22:27.537431"
   },
   {
     "faiss_idx": 2,
@@ -55,26 +71,33 @@
     "action": "watching",
     "instance": "sofa",
     "interacting_items": [
-      "remote"
+      "juicebottle"
     ],
     "all_items": [
-      "remote"
+      "tv",
+      "juicebottle"
     ],
     "spatial_relations": [
       {
-        "subject": "remote control",
-        "relation": "in hand of person",
-        "object": "sofa"
+        "subject": "tv",
+        "relation": "above",
+        "object": "shelf2",
+        "_confidence": 1.0
+      },
+      {
+        "subject": "bottle",
+        "relation": "in_hand_of",
+        "object": "User_Mom"
       }
     ],
     "furniture_pos": [
       -0.169999987,
       8.62
     ],
-    "mongo_id": "69b0e889040731fe60e11b86",
-    "description": "A woman is sitting on a sofa and watching TV. remote control in hand of person sofa",
-    "memory_text": "User_Mom watching near sofa with remote. A woman is sitting on a sofa and watching TV. remote control in hand of person sofa remote control in hand of person sofa.",
-    "timestamp": "2026-03-11T12:00:16.044309"
+    "mongo_id": "69b140faa821571f40b42ee9",
+    "description": "A person is standing in front of a sofa and holding a bottle, watching the tv on the shelf. tv above shelf2 bottle in_hand_of User_Mom",
+    "memory_text": "User_Mom watching near sofa with juicebottle. A person is standing in front of a sofa and holding a bottle, watching the tv on the shelf. tv above shelf2 bottle in_hand_of User_Mom tv above shelf2. bottle in_hand_of User_Mom.",
+    "timestamp": "2026-03-11T18:22:31.921039"
   },
   {
     "faiss_idx": 3,
@@ -90,51 +113,58 @@
     ],
     "spatial_relations": [
       {
-        "subject": "banana",
-        "relation": "on",
-        "object": "kitchen_table"
-      },
-      {
         "subject": "apple",
         "relation": "next to",
-        "object": "banana"
+        "object": "table",
+        "_confidence": "high"
+      },
+      {
+        "subject": "banana",
+        "relation": "in_hand_of",
+        "object": "User_Mom"
       }
     ],
     "furniture_pos": [
       1.97,
       2.29
     ],
-    "mongo_id": "69b0e889040731fe60e11b84",
-    "description": "A person is eating a banana and an apple on the kitchen table. banana on kitchen_table apple next to banana",
-    "memory_text": "User_Mom eating near table with banana. A person is eating a banana and an apple on the kitchen table. banana on kitchen_table apple next to banana banana on kitchen_table. apple next to banana.",
-    "timestamp": "2026-03-11T12:00:53.124577"
+    "mongo_id": "69b140faa821571f40b42ee7",
+    "description": "A person is eating a banana and an apple on the table. apple next to table banana in_hand_of User_Mom",
+    "memory_text": "User_Mom eating near table with banana. A person is eating a banana and an apple on the table. apple next to table banana in_hand_of User_Mom apple next to table. banana in_hand_of User_Mom.",
+    "timestamp": "2026-03-11T18:22:41.877362"
   },
   {
     "faiss_idx": 4,
     "user": "User_Mom",
     "action": "watching",
-    "instance": "chair",
-    "interacting_items": [
-      "computer"
-    ],
+    "instance": "desk",
+    "interacting_items": [],
     "all_items": [
-      "computer"
+      "tv",
+      "pillow"
     ],
     "spatial_relations": [
       {
-        "subject": "computer",
-        "relation": "on",
-        "object": "desk"
+        "subject": "tv",
+        "relation": "above",
+        "object": "desk",
+        "_confidence": 1.0
+      },
+      {
+        "subject": "pillow",
+        "relation": "next to",
+        "object": "desk",
+        "_confidence": 1.0
       }
     ],
     "furniture_pos": [
-      -8.592,
-      9.515
+      -8.68,
+      10.69
     ],
-    "mongo_id": "69b0e889040731fe60e11b83",
-    "description": "A person sitting in a chair watching something on the computer. computer on desk",
-    "memory_text": "User_Mom watching near chair with computer. A person sitting in a chair watching something on the computer. computer on desk computer on desk.",
-    "timestamp": "2026-03-11T12:01:29.069944"
+    "mongo_id": "69b140faa821571f40b42ee5",
+    "description": "A person sitting in a chair at a desk watching television. tv above desk pillow next to desk",
+    "memory_text": "User_Mom watching near desk with nothing. A person sitting in a chair at a desk watching television. tv above desk pillow next to desk tv above desk. pillow next to desk.",
+    "timestamp": "2026-03-11T18:23:08.437045"
   },
   {
     "faiss_idx": 5,
@@ -142,124 +172,168 @@
     "action": "sleeping",
     "instance": "mom's bed",
     "interacting_items": [],
-    "all_items": [],
-    "spatial_relations": [
-      {
-        "subject": "blue pillow",
-        "relation": "on",
-        "object": "mom's bed"
-      }
+    "all_items": [
+      "pillow",
+      "white shelf"
     ],
-    "furniture_pos": [
-      -7.019,
-      9.31
-    ],
-    "mongo_id": "69b0e889040731fe60e11b80",
-    "description": "A person is sleeping on a blue bed. blue pillow on mom's bed",
-    "memory_text": "User_Mom sleeping near mom's bed with nothing. A person is sleeping on a blue bed. blue pillow on mom's bed blue pillow on mom's bed.",
-    "timestamp": "2026-03-11T12:02:05.912688"
-  },
-  {
-    "faiss_idx": 6,
-    "user": "User_Dad",
-    "action": "sleeping",
-    "instance": "dad's bed",
-    "interacting_items": [],
-    "all_items": [],
-    "spatial_relations": [
-      {
-        "subject": "person",
-        "relation": "on",
-        "object": "dad's bed"
-      },
-      {
-        "subject": "dad's bed",
-        "relation": "above ground level",
-        "object": "floor"
-      }
-    ],
-    "furniture_pos": [
-      -1.618,
-      0.439999968
-    ],
-    "mongo_id": "69b0e889040731fe60e11b7f",
-    "description": "A person is sleeping on a blue bed. person on dad's bed dad's bed above ground level floor",
-    "memory_text": "User_Dad sleeping near dad's bed with nothing. A person is sleeping on a blue bed. person on dad's bed dad's bed above ground level floor person on dad's bed. dad's bed above ground level floor.",
-    "timestamp": "2026-03-11T12:02:45.496794"
-  },
-  {
-    "faiss_idx": 7,
-    "user": "User_Mom",
-    "action": "sleeping",
-    "instance": "mom's bed",
-    "interacting_items": [],
-    "all_items": [],
     "spatial_relations": [
       {
         "subject": "pillow",
-        "relation": "on",
-        "object": "mom's bed"
+        "relation": "next to person",
+        "object": "mom's bed",
+        "_confidence": 1.0
+      },
+      {
+        "subject": "white shelf",
+        "relation": "above person",
+        "object": "dad's bed",
+        "_confidence": 1.0
       }
     ],
     "furniture_pos": [
       -7.019,
       9.31
     ],
-    "mongo_id": "69b0e889040731fe60e11b80",
-    "description": "A person is sleeping on mom's bed. pillow on mom's bed",
-    "memory_text": "User_Mom sleeping near mom's bed with nothing. A person is sleeping on mom's bed. pillow on mom's bed pillow on mom's bed.",
-    "timestamp": "2026-03-11T12:06:32.142214"
+    "mongo_id": "69b140faa821571f40b42ee3",
+    "description": "A man is sleeping on a blue bed. pillow next to person mom's bed white shelf above person dad's bed",
+    "memory_text": "User_Mom sleeping near mom's bed with nothing. A man is sleeping on a blue bed. pillow next to person mom's bed white shelf above person dad's bed pillow next to person mom's bed. white shelf above person dad's bed.",
+    "timestamp": "2026-03-11T18:23:11.197315"
   },
   {
-    "faiss_idx": 8,
-    "user": "User_Dad",
-    "action": "sleeping",
-    "instance": "dad's bed",
-    "interacting_items": [],
-    "all_items": [],
-    "spatial_relations": [
-      {
-        "subject": "person",
-        "relation": "on",
-        "object": "dad's bed"
-      },
-      {
-        "subject": "dad's bed",
-        "relation": "above",
-        "object": "shelf2"
-      }
-    ],
-    "furniture_pos": [
-      -1.618,
-      0.439999968
-    ],
-    "mongo_id": "69b0e889040731fe60e11b7f",
-    "description": "person on dad's bed dad's bed above shelf2",
-    "memory_text": "User_Dad sleeping near dad's bed with nothing. person on dad's bed dad's bed above shelf2 person on dad's bed. dad's bed above shelf2.",
-    "timestamp": "2026-03-11T12:06:45.359434"
-  },
-  {
-    "faiss_idx": 9,
-    "user": "User_Dad",
+    "faiss_idx": 6,
+    "user": "User_Mom",
     "action": "watching",
     "instance": "sofa",
-    "interacting_items": [],
-    "all_items": [],
+    "interacting_items": [
+      "juicebottle"
+    ],
+    "all_items": [
+      "tv",
+      "juicebottle"
+    ],
     "spatial_relations": [
       {
-        "subject": "person",
-        "relation": "on",
-        "object": "sofa"
+        "subject": "tv",
+        "relation": "above",
+        "object": "shelf2",
+        "_confidence": 1.0
+      },
+      {
+        "subject": "bottle",
+        "relation": "in_hand_of",
+        "object": "User_Mom"
       }
     ],
     "furniture_pos": [
       -0.169999987,
       8.62
     ],
-    "mongo_id": "69b0e889040731fe60e11b86",
-    "description": "A person is sitting on a sofa and watching something. person on sofa",
-    "memory_text": "User_Dad watching near sofa with nothing. A person is sitting on a sofa and watching something. person on sofa person on sofa.",
-    "timestamp": "2026-03-11T12:06:49.572387"
+    "mongo_id": "69b140faa821571f40b42ee9",
+    "description": "A woman holding a bottle and standing in front of the television on the shelf. tv above shelf2 bottle in_hand_of User_Mom",
+    "memory_text": "User_Mom watching near sofa with juicebottle. A woman holding a bottle and standing in front of the television on the shelf. tv above shelf2 bottle in_hand_of User_Mom tv above shelf2. bottle in_hand_of User_Mom.",
+    "timestamp": "2026-03-13T09:45:57.278643"
+  },
+  {
+    "faiss_idx": 7,
+    "user": "User_Mom",
+    "action": "watching",
+    "instance": "sofa",
+    "interacting_items": [
+      "juicebottle"
+    ],
+    "all_items": [
+      "tv",
+      "juicebottle"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "tv",
+        "relation": "above",
+        "object": "shelf2",
+        "_confidence": 1.0
+      },
+      {
+        "subject": "bottle",
+        "relation": "in_hand_of",
+        "object": "User_Mom"
+      }
+    ],
+    "furniture_pos": [
+      -0.169999987,
+      8.62
+    ],
+    "mongo_id": "69b140faa821571f40b42ee9",
+    "description": "A woman holding a bottle and watching TV on the shelf. tv above shelf2 bottle in_hand_of User_Mom",
+    "memory_text": "User_Mom watching near sofa with juicebottle. A woman holding a bottle and watching TV on the shelf. tv above shelf2 bottle in_hand_of User_Mom tv above shelf2. bottle in_hand_of User_Mom.",
+    "timestamp": "2026-03-13T09:45:59.855113"
+  },
+  {
+    "faiss_idx": 8,
+    "user": "User_Mom",
+    "action": "watching",
+    "instance": "sofa",
+    "interacting_items": [
+      "juicebottle"
+    ],
+    "all_items": [
+      "tv",
+      "juicebottle"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "tv",
+        "relation": "above",
+        "object": "shelf2",
+        "_confidence": 1.0
+      },
+      {
+        "subject": "bottle",
+        "relation": "in_hand_of",
+        "object": "User_Mom"
+      }
+    ],
+    "furniture_pos": [
+      -0.169999987,
+      8.62
+    ],
+    "mongo_id": "69b140faa821571f40b42ee9",
+    "description": "A woman standing in front of a sofa holding a bottle and watching the tv. tv above shelf2 bottle in_hand_of User_Mom",
+    "memory_text": "User_Mom watching near sofa with juicebottle. A woman standing in front of a sofa holding a bottle and watching the tv. tv above shelf2 bottle in_hand_of User_Mom tv above shelf2. bottle in_hand_of User_Mom.",
+    "timestamp": "2026-03-13T09:46:09.424671"
+  },
+  {
+    "faiss_idx": 9,
+    "user": "User_Mom",
+    "action": "watching",
+    "instance": "sofa",
+    "interacting_items": [
+      "juicebottle"
+    ],
+    "all_items": [
+      "tv",
+      "juicebottle"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "tv",
+        "relation": "above",
+        "object": "shelf2",
+        "_confidence": 1.0
+      },
+      {
+        "subject": "bottle",
+        "relation": "in_hand_of",
+        "object": "User_Mom"
+      }
+    ],
+    "furniture_pos": [
+      -0.169999987,
+      8.62
+    ],
+    "mongo_id": "69b140faa821571f40b42ee9",
+    "description": "A person is standing in front of a sofa and holding a bottle, watching the tv on the shelf. tv above shelf2 bottle in_hand_of User_Mom",
+    "memory_text": "User_Mom watching near sofa with juicebottle. A person is standing in front of a sofa and holding a bottle, watching the tv on the shelf. tv above shelf2 bottle in_hand_of User_Mom tv above shelf2. bottle in_hand_of User_Mom.",
+    "timestamp": "2026-03-13T09:46:19.010844"
   },
   {
     "faiss_idx": 10,
@@ -267,126 +341,2371 @@
     "action": "watching",
     "instance": "sofa",
     "interacting_items": [
-      "remote"
+      "juicebottle"
     ],
     "all_items": [
-      "remote"
+      "tv",
+      "juicebottle"
     ],
     "spatial_relations": [
       {
-        "subject": "person",
-        "relation": "on",
-        "object": "sofa"
+        "subject": "tv",
+        "relation": "above",
+        "object": "shelf2",
+        "_confidence": 1.0
+      },
+      {
+        "subject": "bottle",
+        "relation": "in_hand_of",
+        "object": "User_Mom"
       }
     ],
     "furniture_pos": [
       -0.169999987,
       8.62
     ],
-    "mongo_id": "69b0e889040731fe60e11b86",
-    "description": "A person is watching TV on the sofa. person on sofa",
-    "memory_text": "User_Mom watching near sofa with remote. A person is watching TV on the sofa. person on sofa person on sofa.",
-    "timestamp": "2026-03-11T12:07:01.740985"
+    "mongo_id": "69b140faa821571f40b42ee9",
+    "description": "A woman is standing in front of a tv on a shelf. tv above shelf2 bottle in_hand_of User_Mom",
+    "memory_text": "User_Mom watching near sofa with juicebottle. A woman is standing in front of a tv on a shelf. tv above shelf2 bottle in_hand_of User_Mom tv above shelf2. bottle in_hand_of User_Mom.",
+    "timestamp": "2026-03-13T09:46:28.393633"
   },
   {
     "faiss_idx": 11,
-    "user": "User_Dad",
+    "user": "User_Mom",
     "action": "watching",
     "instance": "sofa",
-    "interacting_items": [],
-    "all_items": [],
+    "interacting_items": [
+      "juicebottle"
+    ],
+    "all_items": [
+      "tv",
+      "juicebottle"
+    ],
     "spatial_relations": [
       {
-        "subject": "person",
-        "relation": "on",
-        "object": "sofa"
+        "subject": "tv",
+        "relation": "above",
+        "object": "shelf2",
+        "_confidence": 1.0
+      },
+      {
+        "subject": "bottle",
+        "relation": "in_hand_of",
+        "object": "User_Mom"
       }
     ],
     "furniture_pos": [
       -0.169999987,
       8.62
     ],
-    "mongo_id": "69b0e889040731fe60e11b86",
-    "description": "A person is sitting on a sofa and watching something. person on sofa",
-    "memory_text": "User_Dad watching near sofa with nothing. A person is sitting on a sofa and watching something. person on sofa person on sofa.",
-    "timestamp": "2026-03-11T12:08:26.325318"
+    "mongo_id": "69b140faa821571f40b42ee9",
+    "description": "A person is standing in front of a sofa and holding a bottle, watching the tv on the shelf. tv above shelf2 bottle in_hand_of User_Mom",
+    "memory_text": "User_Mom watching near sofa with juicebottle. A person is standing in front of a sofa and holding a bottle, watching the tv on the shelf. tv above shelf2 bottle in_hand_of User_Mom tv above shelf2. bottle in_hand_of User_Mom.",
+    "timestamp": "2026-03-13T09:46:38.041736"
   },
   {
     "faiss_idx": 12,
-    "user": "User_Dad",
-    "action": "sleeping",
-    "instance": "tv",
+    "user": "User_Mom",
+    "action": "watching",
+    "instance": "sofa",
+    "interacting_items": [
+      "juicebottle"
+    ],
+    "all_items": [
+      "tv",
+      "juicebottle"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "tv",
+        "relation": "above",
+        "object": "shelf2",
+        "_confidence": 1.0
+      },
+      {
+        "subject": "bottle",
+        "relation": "in_hand_of",
+        "object": "User_Mom"
+      }
+    ],
+    "furniture_pos": [
+      -0.169999987,
+      8.62
+    ],
+    "mongo_id": "69b140faa821571f40b42ee9",
+    "description": "A woman holding a bottle and standing in front of a sofa. tv above shelf2 bottle in_hand_of User_Mom",
+    "memory_text": "User_Mom watching near sofa with juicebottle. A woman holding a bottle and standing in front of a sofa. tv above shelf2 bottle in_hand_of User_Mom tv above shelf2. bottle in_hand_of User_Mom.",
+    "timestamp": "2026-03-13T09:46:47.369614"
+  },
+  {
+    "faiss_idx": 13,
+    "user": "User_Mom",
+    "action": "watching",
+    "instance": "sofa",
+    "interacting_items": [
+      "juicebottle"
+    ],
+    "all_items": [
+      "tv",
+      "juicebottle"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "tv",
+        "relation": "above",
+        "object": "shelf2",
+        "_confidence": 1.0
+      },
+      {
+        "subject": "bottle",
+        "relation": "in_hand_of",
+        "object": "User_Mom"
+      }
+    ],
+    "furniture_pos": [
+      -0.169999987,
+      8.62
+    ],
+    "mongo_id": "69b140faa821571f40b42ee9",
+    "description": "A woman holding a bottle and watching TV on the shelf. tv above shelf2 bottle in_hand_of User_Mom",
+    "memory_text": "User_Mom watching near sofa with juicebottle. A woman holding a bottle and watching TV on the shelf. tv above shelf2 bottle in_hand_of User_Mom tv above shelf2. bottle in_hand_of User_Mom.",
+    "timestamp": "2026-03-13T09:46:56.890256"
+  },
+  {
+    "faiss_idx": 14,
+    "user": "User_Mom",
+    "action": "watching",
+    "instance": "sofa",
+    "interacting_items": [
+      "juicebottle"
+    ],
+    "all_items": [
+      "tv",
+      "juicebottle"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "tv",
+        "relation": "above",
+        "object": "shelf2",
+        "_confidence": 1.0
+      },
+      {
+        "subject": "bottle",
+        "relation": "in_hand_of",
+        "object": "User_Mom"
+      }
+    ],
+    "furniture_pos": [
+      -0.169999987,
+      8.62
+    ],
+    "mongo_id": "69b140faa821571f40b42ee9",
+    "description": "A woman standing in front of a sofa holding a bottle and watching TV. tv above shelf2 bottle in_hand_of User_Mom",
+    "memory_text": "User_Mom watching near sofa with juicebottle. A woman standing in front of a sofa holding a bottle and watching TV. tv above shelf2 bottle in_hand_of User_Mom tv above shelf2. bottle in_hand_of User_Mom.",
+    "timestamp": "2026-03-13T09:47:06.442875"
+  },
+  {
+    "faiss_idx": 15,
+    "user": "User_Mom",
+    "action": "watching",
+    "instance": "sofa",
+    "interacting_items": [
+      "juicebottle"
+    ],
+    "all_items": [
+      "tv",
+      "juicebottle"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "tv",
+        "relation": "above",
+        "object": "shelf2",
+        "_confidence": 1.0
+      },
+      {
+        "subject": "bottle",
+        "relation": "in_hand_of",
+        "object": "User_Mom"
+      }
+    ],
+    "furniture_pos": [
+      -0.169999987,
+      8.62
+    ],
+    "mongo_id": "69b140faa821571f40b42ee9",
+    "description": "A woman holding a bottle and standing in front of a sofa. tv above shelf2 bottle in_hand_of User_Mom",
+    "memory_text": "User_Mom watching near sofa with juicebottle. A woman holding a bottle and standing in front of a sofa. tv above shelf2 bottle in_hand_of User_Mom tv above shelf2. bottle in_hand_of User_Mom.",
+    "timestamp": "2026-03-13T09:47:15.859951"
+  },
+  {
+    "faiss_idx": 16,
+    "user": "User_Mom",
+    "action": "eating",
+    "instance": "table",
     "interacting_items": [
       "banana"
     ],
     "all_items": [
+      "apple",
       "banana"
     ],
     "spatial_relations": [
       {
+        "subject": "apple",
+        "relation": "next to",
+        "object": "table",
+        "_confidence": "high"
+      },
+      {
         "subject": "banana",
-        "relation": "on",
-        "object": "tv"
+        "relation": "in_hand_of",
+        "object": "User_Mom"
+      }
+    ],
+    "furniture_pos": [
+      1.97,
+      2.29
+    ],
+    "mongo_id": "69b140faa821571f40b42ee7",
+    "description": "A person is eating a banana and an apple on the table. apple next to table banana in_hand_of User_Mom",
+    "memory_text": "User_Mom eating near table with banana. A person is eating a banana and an apple on the table. apple next to table banana in_hand_of User_Mom apple next to table. banana in_hand_of User_Mom.",
+    "timestamp": "2026-03-13T09:47:28.288759"
+  },
+  {
+    "faiss_idx": 17,
+    "user": "User_Mom",
+    "action": "eating",
+    "instance": "table",
+    "interacting_items": [
+      "banana"
+    ],
+    "all_items": [
+      "apple",
+      "banana"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "apple",
+        "relation": "next to",
+        "object": "table",
+        "_confidence": "high"
+      },
+      {
+        "subject": "banana",
+        "relation": "in_hand_of",
+        "object": "User_Mom"
+      }
+    ],
+    "furniture_pos": [
+      1.97,
+      2.29
+    ],
+    "mongo_id": "69b140faa821571f40b42ee7",
+    "description": "A person is eating a banana and an apple on the table. apple next to table banana in_hand_of User_Mom",
+    "memory_text": "User_Mom eating near table with banana. A person is eating a banana and an apple on the table. apple next to table banana in_hand_of User_Mom apple next to table. banana in_hand_of User_Mom.",
+    "timestamp": "2026-03-13T09:47:37.783072"
+  },
+  {
+    "faiss_idx": 18,
+    "user": "User_Mom",
+    "action": "eating",
+    "instance": "table",
+    "interacting_items": [
+      "banana"
+    ],
+    "all_items": [
+      "apple",
+      "banana"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "apple",
+        "relation": "next to",
+        "object": "table",
+        "_confidence": "high"
+      },
+      {
+        "subject": "banana",
+        "relation": "in_hand_of",
+        "object": "User_Mom"
+      }
+    ],
+    "furniture_pos": [
+      1.97,
+      2.29
+    ],
+    "mongo_id": "69b140faa821571f40b42ee7",
+    "description": "A person is eating a banana and an apple on the table. apple next to table banana in_hand_of User_Mom",
+    "memory_text": "User_Mom eating near table with banana. A person is eating a banana and an apple on the table. apple next to table banana in_hand_of User_Mom apple next to table. banana in_hand_of User_Mom.",
+    "timestamp": "2026-03-13T09:47:47.549662"
+  },
+  {
+    "faiss_idx": 19,
+    "user": "User_Mom",
+    "action": "eating",
+    "instance": "table",
+    "interacting_items": [
+      "banana"
+    ],
+    "all_items": [
+      "apple",
+      "banana"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "apple",
+        "relation": "next to",
+        "object": "table",
+        "_confidence": "high"
+      },
+      {
+        "subject": "banana",
+        "relation": "in_hand_of",
+        "object": "User_Mom"
+      }
+    ],
+    "furniture_pos": [
+      1.97,
+      2.29
+    ],
+    "mongo_id": "69b140faa821571f40b42ee7",
+    "description": "A person is eating a banana and an apple on the table. apple next to table banana in_hand_of User_Mom",
+    "memory_text": "User_Mom eating near table with banana. A person is eating a banana and an apple on the table. apple next to table banana in_hand_of User_Mom apple next to table. banana in_hand_of User_Mom.",
+    "timestamp": "2026-03-13T09:47:56.821547"
+  },
+  {
+    "faiss_idx": 20,
+    "user": "User_Mom",
+    "action": "eating",
+    "instance": "table",
+    "interacting_items": [
+      "banana"
+    ],
+    "all_items": [
+      "apple",
+      "banana"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "apple",
+        "relation": "next to",
+        "object": "table",
+        "_confidence": "high"
+      },
+      {
+        "subject": "banana",
+        "relation": "in_hand_of",
+        "object": "User_Mom"
+      }
+    ],
+    "furniture_pos": [
+      1.97,
+      2.29
+    ],
+    "mongo_id": "69b140faa821571f40b42ee7",
+    "description": "A person is eating a banana and an apple on the table. apple next to table banana in_hand_of User_Mom",
+    "memory_text": "User_Mom eating near table with banana. A person is eating a banana and an apple on the table. apple next to table banana in_hand_of User_Mom apple next to table. banana in_hand_of User_Mom.",
+    "timestamp": "2026-03-13T09:48:06.334030"
+  },
+  {
+    "faiss_idx": 21,
+    "user": "User_Mom",
+    "action": "eating",
+    "instance": "table",
+    "interacting_items": [
+      "banana"
+    ],
+    "all_items": [
+      "apple",
+      "banana"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "apple",
+        "relation": "next to",
+        "object": "table",
+        "_confidence": "high"
+      },
+      {
+        "subject": "banana",
+        "relation": "in_hand_of",
+        "object": "User_Mom"
+      }
+    ],
+    "furniture_pos": [
+      1.97,
+      2.29
+    ],
+    "mongo_id": "69b140faa821571f40b42ee7",
+    "description": "A person is eating a banana and an apple on the table. apple next to table banana in_hand_of User_Mom",
+    "memory_text": "User_Mom eating near table with banana. A person is eating a banana and an apple on the table. apple next to table banana in_hand_of User_Mom apple next to table. banana in_hand_of User_Mom.",
+    "timestamp": "2026-03-13T09:48:15.873059"
+  },
+  {
+    "faiss_idx": 22,
+    "user": "User_Mom",
+    "action": "eating",
+    "instance": "table",
+    "interacting_items": [
+      "banana"
+    ],
+    "all_items": [
+      "apple",
+      "banana"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "apple",
+        "relation": "next to",
+        "object": "table",
+        "_confidence": "high"
+      },
+      {
+        "subject": "banana",
+        "relation": "in_hand_of",
+        "object": "User_Mom"
+      }
+    ],
+    "furniture_pos": [
+      1.97,
+      2.29
+    ],
+    "mongo_id": "69b140faa821571f40b42ee7",
+    "description": "A person is eating a banana and an apple on the table. apple next to table banana in_hand_of User_Mom",
+    "memory_text": "User_Mom eating near table with banana. A person is eating a banana and an apple on the table. apple next to table banana in_hand_of User_Mom apple next to table. banana in_hand_of User_Mom.",
+    "timestamp": "2026-03-13T09:48:25.543111"
+  },
+  {
+    "faiss_idx": 23,
+    "user": "User_Mom",
+    "action": "eating",
+    "instance": "table",
+    "interacting_items": [
+      "banana"
+    ],
+    "all_items": [
+      "apple",
+      "banana"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "apple",
+        "relation": "next to",
+        "object": "table",
+        "_confidence": "high"
+      },
+      {
+        "subject": "banana",
+        "relation": "in_hand_of",
+        "object": "User_Mom"
+      }
+    ],
+    "furniture_pos": [
+      1.97,
+      2.29
+    ],
+    "mongo_id": "69b140faa821571f40b42ee7",
+    "description": "A person is eating a banana and an apple on the table. apple next to table banana in_hand_of User_Mom",
+    "memory_text": "User_Mom eating near table with banana. A person is eating a banana and an apple on the table. apple next to table banana in_hand_of User_Mom apple next to table. banana in_hand_of User_Mom.",
+    "timestamp": "2026-03-13T09:48:35.042267"
+  },
+  {
+    "faiss_idx": 24,
+    "user": "User_Mom",
+    "action": "eating",
+    "instance": "table",
+    "interacting_items": [
+      "banana"
+    ],
+    "all_items": [
+      "apple",
+      "banana"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "apple",
+        "relation": "next to",
+        "object": "table",
+        "_confidence": "high"
+      },
+      {
+        "subject": "banana",
+        "relation": "in_hand_of",
+        "object": "User_Mom"
+      }
+    ],
+    "furniture_pos": [
+      1.97,
+      2.29
+    ],
+    "mongo_id": "69b140faa821571f40b42ee7",
+    "description": "A person is eating a banana and an apple on the table. apple next to table banana in_hand_of User_Mom",
+    "memory_text": "User_Mom eating near table with banana. A person is eating a banana and an apple on the table. apple next to table banana in_hand_of User_Mom apple next to table. banana in_hand_of User_Mom.",
+    "timestamp": "2026-03-13T09:48:44.330187"
+  },
+  {
+    "faiss_idx": 25,
+    "user": "User_Mom",
+    "action": "eating",
+    "instance": "table",
+    "interacting_items": [
+      "banana"
+    ],
+    "all_items": [
+      "apple",
+      "banana"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "apple",
+        "relation": "next to",
+        "object": "table",
+        "_confidence": "high"
+      },
+      {
+        "subject": "banana",
+        "relation": "in_hand_of",
+        "object": "User_Mom"
+      }
+    ],
+    "furniture_pos": [
+      1.97,
+      2.29
+    ],
+    "mongo_id": "69b140faa821571f40b42ee7",
+    "description": "A person is eating a banana and an apple on the table. apple next to table banana in_hand_of User_Mom",
+    "memory_text": "User_Mom eating near table with banana. A person is eating a banana and an apple on the table. apple next to table banana in_hand_of User_Mom apple next to table. banana in_hand_of User_Mom.",
+    "timestamp": "2026-03-13T09:48:53.128657"
+  },
+  {
+    "faiss_idx": 26,
+    "user": "User_Mom",
+    "action": "sleeping",
+    "instance": "mom's bed",
+    "interacting_items": [],
+    "all_items": [
+      "pillow",
+      "white shelf"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "pillow",
+        "relation": "next to person",
+        "object": "mom's bed",
+        "_confidence": 1.0
+      },
+      {
+        "subject": "white shelf",
+        "relation": "above person",
+        "object": "dad's bed",
+        "_confidence": 1.0
+      }
+    ],
+    "furniture_pos": [
+      -7.019,
+      9.31
+    ],
+    "mongo_id": "69b140faa821571f40b42ee3",
+    "description": "A man is sleeping on a blue bed with a white pillow. pillow next to person mom's bed white shelf above person dad's bed",
+    "memory_text": "User_Mom sleeping near mom's bed with nothing. A man is sleeping on a blue bed with a white pillow. pillow next to person mom's bed white shelf above person dad's bed pillow next to person mom's bed. white shelf above person dad's bed.",
+    "timestamp": "2026-03-13T09:49:06.988066"
+  },
+  {
+    "faiss_idx": 27,
+    "user": "User_Mom",
+    "action": "sleeping",
+    "instance": "mom's bed",
+    "interacting_items": [],
+    "all_items": [
+      "pillow",
+      "white shelf"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "pillow",
+        "relation": "next to person",
+        "object": "mom's bed",
+        "_confidence": 1.0
+      },
+      {
+        "subject": "white shelf",
+        "relation": "above person",
+        "object": "dad's bed",
+        "_confidence": 1.0
+      }
+    ],
+    "furniture_pos": [
+      -7.019,
+      9.31
+    ],
+    "mongo_id": "69b140faa821571f40b42ee3",
+    "description": "A man is sleeping on a blue bed. pillow next to person mom's bed white shelf above person dad's bed",
+    "memory_text": "User_Mom sleeping near mom's bed with nothing. A man is sleeping on a blue bed. pillow next to person mom's bed white shelf above person dad's bed pillow next to person mom's bed. white shelf above person dad's bed.",
+    "timestamp": "2026-03-13T09:49:16.397398"
+  },
+  {
+    "faiss_idx": 28,
+    "user": "User_Mom",
+    "action": "sleeping",
+    "instance": "mom's bed",
+    "interacting_items": [],
+    "all_items": [
+      "pillow",
+      "white shelf"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "pillow",
+        "relation": "next to person",
+        "object": "mom's bed",
+        "_confidence": 1.0
+      },
+      {
+        "subject": "white shelf",
+        "relation": "above person",
+        "object": "dad's bed",
+        "_confidence": 1.0
+      }
+    ],
+    "furniture_pos": [
+      -7.019,
+      9.31
+    ],
+    "mongo_id": "69b140faa821571f40b42ee3",
+    "description": "A man is sleeping on a blue bed. pillow next to person mom's bed white shelf above person dad's bed",
+    "memory_text": "User_Mom sleeping near mom's bed with nothing. A man is sleeping on a blue bed. pillow next to person mom's bed white shelf above person dad's bed pillow next to person mom's bed. white shelf above person dad's bed.",
+    "timestamp": "2026-03-13T09:49:25.889564"
+  },
+  {
+    "faiss_idx": 29,
+    "user": "User_Mom",
+    "action": "sleeping",
+    "instance": "mom's bed",
+    "interacting_items": [],
+    "all_items": [
+      "pillow",
+      "white shelf"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "pillow",
+        "relation": "next to person",
+        "object": "mom's bed",
+        "_confidence": 1.0
+      },
+      {
+        "subject": "white shelf",
+        "relation": "above person",
+        "object": "dad's bed",
+        "_confidence": 1.0
+      }
+    ],
+    "furniture_pos": [
+      -7.019,
+      9.31
+    ],
+    "mongo_id": "69b140faa821571f40b42ee3",
+    "description": "A man is sleeping on a blue bed. pillow next to person mom's bed white shelf above person dad's bed",
+    "memory_text": "User_Mom sleeping near mom's bed with nothing. A man is sleeping on a blue bed. pillow next to person mom's bed white shelf above person dad's bed pillow next to person mom's bed. white shelf above person dad's bed.",
+    "timestamp": "2026-03-13T09:49:35.396142"
+  },
+  {
+    "faiss_idx": 30,
+    "user": "User_Mom",
+    "action": "sleeping",
+    "instance": "mom's bed",
+    "interacting_items": [],
+    "all_items": [
+      "pillow",
+      "white shelf"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "pillow",
+        "relation": "next to person",
+        "object": "mom's bed",
+        "_confidence": 1.0
+      },
+      {
+        "subject": "white shelf",
+        "relation": "above person",
+        "object": "dad's bed",
+        "_confidence": 1.0
+      }
+    ],
+    "furniture_pos": [
+      -7.019,
+      9.31
+    ],
+    "mongo_id": "69b140faa821571f40b42ee3",
+    "description": "A man is sleeping on a blue bed with a white pillow. pillow next to person mom's bed white shelf above person dad's bed",
+    "memory_text": "User_Mom sleeping near mom's bed with nothing. A man is sleeping on a blue bed with a white pillow. pillow next to person mom's bed white shelf above person dad's bed pillow next to person mom's bed. white shelf above person dad's bed.",
+    "timestamp": "2026-03-13T09:49:45.018708"
+  },
+  {
+    "faiss_idx": 31,
+    "user": "User_Mom",
+    "action": "sleeping",
+    "instance": "mom's bed",
+    "interacting_items": [],
+    "all_items": [
+      "pillow",
+      "white shelf"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "pillow",
+        "relation": "next to person",
+        "object": "mom's bed",
+        "_confidence": 1.0
+      },
+      {
+        "subject": "white shelf",
+        "relation": "above person",
+        "object": "dad's bed",
+        "_confidence": 1.0
+      }
+    ],
+    "furniture_pos": [
+      -7.019,
+      9.31
+    ],
+    "mongo_id": "69b140faa821571f40b42ee3",
+    "description": "A man is sleeping on a blue bed with a white pillow. pillow next to person mom's bed white shelf above person dad's bed",
+    "memory_text": "User_Mom sleeping near mom's bed with nothing. A man is sleeping on a blue bed with a white pillow. pillow next to person mom's bed white shelf above person dad's bed pillow next to person mom's bed. white shelf above person dad's bed.",
+    "timestamp": "2026-03-13T09:49:54.527170"
+  },
+  {
+    "faiss_idx": 32,
+    "user": "User_Mom",
+    "action": "sleeping",
+    "instance": "mom's bed",
+    "interacting_items": [],
+    "all_items": [
+      "pillow",
+      "white shelf"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "pillow",
+        "relation": "next to person",
+        "object": "mom's bed",
+        "_confidence": 1.0
+      },
+      {
+        "subject": "white shelf",
+        "relation": "above person",
+        "object": "dad's bed",
+        "_confidence": 1.0
+      }
+    ],
+    "furniture_pos": [
+      -7.019,
+      9.31
+    ],
+    "mongo_id": "69b140faa821571f40b42ee3",
+    "description": "A man is sleeping on a blue bed with a white pillow. pillow next to person mom's bed white shelf above person dad's bed",
+    "memory_text": "User_Mom sleeping near mom's bed with nothing. A man is sleeping on a blue bed with a white pillow. pillow next to person mom's bed white shelf above person dad's bed pillow next to person mom's bed. white shelf above person dad's bed.",
+    "timestamp": "2026-03-13T09:50:04.028538"
+  },
+  {
+    "faiss_idx": 33,
+    "user": "User_Mom",
+    "action": "sleeping",
+    "instance": "mom's bed",
+    "interacting_items": [],
+    "all_items": [
+      "pillow",
+      "white shelf"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "pillow",
+        "relation": "next to person",
+        "object": "mom's bed",
+        "_confidence": 1.0
+      },
+      {
+        "subject": "white shelf",
+        "relation": "above person",
+        "object": "dad's bed",
+        "_confidence": 1.0
+      }
+    ],
+    "furniture_pos": [
+      -7.019,
+      9.31
+    ],
+    "mongo_id": "69b140faa821571f40b42ee3",
+    "description": "A man is sleeping on a blue bed. pillow next to person mom's bed white shelf above person dad's bed",
+    "memory_text": "User_Mom sleeping near mom's bed with nothing. A man is sleeping on a blue bed. pillow next to person mom's bed white shelf above person dad's bed pillow next to person mom's bed. white shelf above person dad's bed.",
+    "timestamp": "2026-03-13T09:50:13.434031"
+  },
+  {
+    "faiss_idx": 34,
+    "user": "User_Mom",
+    "action": "sleeping",
+    "instance": "mom's bed",
+    "interacting_items": [],
+    "all_items": [
+      "pillow",
+      "white shelf"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "pillow",
+        "relation": "next to person",
+        "object": "mom's bed",
+        "_confidence": 1.0
+      },
+      {
+        "subject": "white shelf",
+        "relation": "above person",
+        "object": "dad's bed",
+        "_confidence": 1.0
+      }
+    ],
+    "furniture_pos": [
+      -7.019,
+      9.31
+    ],
+    "mongo_id": "69b140faa821571f40b42ee3",
+    "description": "A man is sleeping on a blue bed with a white pillow. pillow next to person mom's bed white shelf above person dad's bed",
+    "memory_text": "User_Mom sleeping near mom's bed with nothing. A man is sleeping on a blue bed with a white pillow. pillow next to person mom's bed white shelf above person dad's bed pillow next to person mom's bed. white shelf above person dad's bed.",
+    "timestamp": "2026-03-13T09:50:23.032997"
+  },
+  {
+    "faiss_idx": 35,
+    "user": "User_Mom",
+    "action": "sleeping",
+    "instance": "mom's bed",
+    "interacting_items": [],
+    "all_items": [
+      "pillow",
+      "white shelf"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "pillow",
+        "relation": "next to person",
+        "object": "mom's bed",
+        "_confidence": 1.0
+      },
+      {
+        "subject": "white shelf",
+        "relation": "above person",
+        "object": "dad's bed",
+        "_confidence": 1.0
+      }
+    ],
+    "furniture_pos": [
+      -7.019,
+      9.31
+    ],
+    "mongo_id": "69b140faa821571f40b42ee3",
+    "description": "A man is sleeping on a blue bed. pillow next to person mom's bed white shelf above person dad's bed",
+    "memory_text": "User_Mom sleeping near mom's bed with nothing. A man is sleeping on a blue bed. pillow next to person mom's bed white shelf above person dad's bed pillow next to person mom's bed. white shelf above person dad's bed.",
+    "timestamp": "2026-03-13T09:50:32.428233"
+  },
+  {
+    "faiss_idx": 36,
+    "user": "User_Mom",
+    "action": "watching",
+    "instance": "desk",
+    "interacting_items": [],
+    "all_items": [
+      "pillow",
+      "tv"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "tv",
+        "relation": "above",
+        "object": "desk",
+        "_confidence": 1.0
+      },
+      {
+        "subject": "pillow",
+        "relation": "next to",
+        "object": "desk",
+        "_confidence": 1.0
+      }
+    ],
+    "furniture_pos": [
+      -8.68,
+      10.69
+    ],
+    "mongo_id": "69b140faa821571f40b42ee5",
+    "description": "A person sitting in a chair at a desk watching television. tv above desk pillow next to desk",
+    "memory_text": "User_Mom watching near desk with nothing. A person sitting in a chair at a desk watching television. tv above desk pillow next to desk tv above desk. pillow next to desk.",
+    "timestamp": "2026-03-13T09:50:44.736493"
+  },
+  {
+    "faiss_idx": 37,
+    "user": "User_Mom",
+    "action": "watching",
+    "instance": "desk",
+    "interacting_items": [],
+    "all_items": [
+      "pillow",
+      "tv"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "tv",
+        "relation": "above",
+        "object": "desk",
+        "_confidence": 1.0
+      },
+      {
+        "subject": "pillow",
+        "relation": "next to",
+        "object": "desk",
+        "_confidence": 1.0
+      }
+    ],
+    "furniture_pos": [
+      -8.68,
+      10.69
+    ],
+    "mongo_id": "69b140faa821571f40b42ee5",
+    "description": "A person sitting in a chair at a desk watching television. tv above desk pillow next to desk",
+    "memory_text": "User_Mom watching near desk with nothing. A person sitting in a chair at a desk watching television. tv above desk pillow next to desk tv above desk. pillow next to desk.",
+    "timestamp": "2026-03-13T09:50:54.234791"
+  },
+  {
+    "faiss_idx": 38,
+    "user": "User_Mom",
+    "action": "watching",
+    "instance": "desk",
+    "interacting_items": [],
+    "all_items": [
+      "pillow",
+      "tv"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "tv",
+        "relation": "above",
+        "object": "desk",
+        "_confidence": 1.0
+      },
+      {
+        "subject": "pillow",
+        "relation": "next to",
+        "object": "desk",
+        "_confidence": 1.0
+      }
+    ],
+    "furniture_pos": [
+      -8.68,
+      10.69
+    ],
+    "mongo_id": "69b140faa821571f40b42ee5",
+    "description": "A person sitting in a chair at a desk watching television. tv above desk pillow next to desk",
+    "memory_text": "User_Mom watching near desk with nothing. A person sitting in a chair at a desk watching television. tv above desk pillow next to desk tv above desk. pillow next to desk.",
+    "timestamp": "2026-03-13T09:51:03.745402"
+  },
+  {
+    "faiss_idx": 39,
+    "user": "User_Mom",
+    "action": "watching",
+    "instance": "desk",
+    "interacting_items": [],
+    "all_items": [
+      "pillow",
+      "tv"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "tv",
+        "relation": "above",
+        "object": "desk",
+        "_confidence": 1.0
+      },
+      {
+        "subject": "pillow",
+        "relation": "next to",
+        "object": "desk",
+        "_confidence": 1.0
+      }
+    ],
+    "furniture_pos": [
+      -8.68,
+      10.69
+    ],
+    "mongo_id": "69b140faa821571f40b42ee5",
+    "description": "A person sitting in a chair at a desk watching television. tv above desk pillow next to desk",
+    "memory_text": "User_Mom watching near desk with nothing. A person sitting in a chair at a desk watching television. tv above desk pillow next to desk tv above desk. pillow next to desk.",
+    "timestamp": "2026-03-13T09:51:13.248159"
+  },
+  {
+    "faiss_idx": 40,
+    "user": "User_Mom",
+    "action": "watching",
+    "instance": "desk",
+    "interacting_items": [],
+    "all_items": [
+      "pillow",
+      "tv"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "tv",
+        "relation": "above",
+        "object": "desk",
+        "_confidence": 1.0
+      },
+      {
+        "subject": "pillow",
+        "relation": "next to",
+        "object": "desk",
+        "_confidence": 1.0
+      }
+    ],
+    "furniture_pos": [
+      -8.68,
+      10.69
+    ],
+    "mongo_id": "69b140faa821571f40b42ee5",
+    "description": "A person sitting in a chair at a desk watching television. tv above desk pillow next to desk",
+    "memory_text": "User_Mom watching near desk with nothing. A person sitting in a chair at a desk watching television. tv above desk pillow next to desk tv above desk. pillow next to desk.",
+    "timestamp": "2026-03-13T09:51:22.740495"
+  },
+  {
+    "faiss_idx": 41,
+    "user": "User_Mom",
+    "action": "watching",
+    "instance": "desk",
+    "interacting_items": [],
+    "all_items": [
+      "pillow",
+      "tv"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "tv",
+        "relation": "above",
+        "object": "desk",
+        "_confidence": 1.0
+      },
+      {
+        "subject": "pillow",
+        "relation": "next to",
+        "object": "desk",
+        "_confidence": 1.0
+      }
+    ],
+    "furniture_pos": [
+      -8.68,
+      10.69
+    ],
+    "mongo_id": "69b140faa821571f40b42ee5",
+    "description": "A person sitting in a chair at a desk watching television. tv above desk pillow next to desk",
+    "memory_text": "User_Mom watching near desk with nothing. A person sitting in a chair at a desk watching television. tv above desk pillow next to desk tv above desk. pillow next to desk.",
+    "timestamp": "2026-03-13T09:51:32.243872"
+  },
+  {
+    "faiss_idx": 42,
+    "user": "User_Mom",
+    "action": "watching",
+    "instance": "desk",
+    "interacting_items": [],
+    "all_items": [
+      "pillow",
+      "tv"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "tv",
+        "relation": "above",
+        "object": "desk",
+        "_confidence": 1.0
+      },
+      {
+        "subject": "pillow",
+        "relation": "next to",
+        "object": "desk",
+        "_confidence": 1.0
+      }
+    ],
+    "furniture_pos": [
+      -8.68,
+      10.69
+    ],
+    "mongo_id": "69b140faa821571f40b42ee5",
+    "description": "A person sitting at a desk watching television. tv above desk pillow next to desk",
+    "memory_text": "User_Mom watching near desk with nothing. A person sitting at a desk watching television. tv above desk pillow next to desk tv above desk. pillow next to desk.",
+    "timestamp": "2026-03-13T09:51:41.724154"
+  },
+  {
+    "faiss_idx": 43,
+    "user": "User_Mom",
+    "action": "watching",
+    "instance": "desk",
+    "interacting_items": [],
+    "all_items": [
+      "pillow",
+      "tv"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "tv",
+        "relation": "above",
+        "object": "desk",
+        "_confidence": 1.0
+      },
+      {
+        "subject": "pillow",
+        "relation": "next to",
+        "object": "desk",
+        "_confidence": 1.0
+      }
+    ],
+    "furniture_pos": [
+      -8.68,
+      10.69
+    ],
+    "mongo_id": "69b140faa821571f40b42ee5",
+    "description": "A person sitting in a chair at a desk watching television. tv above desk pillow next to desk",
+    "memory_text": "User_Mom watching near desk with nothing. A person sitting in a chair at a desk watching television. tv above desk pillow next to desk tv above desk. pillow next to desk.",
+    "timestamp": "2026-03-13T09:51:51.265704"
+  },
+  {
+    "faiss_idx": 44,
+    "user": "User_Mom",
+    "action": "watching",
+    "instance": "desk",
+    "interacting_items": [],
+    "all_items": [
+      "pillow",
+      "tv"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "tv",
+        "relation": "above",
+        "object": "desk",
+        "_confidence": 1.0
+      },
+      {
+        "subject": "pillow",
+        "relation": "next to",
+        "object": "desk",
+        "_confidence": 1.0
+      }
+    ],
+    "furniture_pos": [
+      -8.68,
+      10.69
+    ],
+    "mongo_id": "69b140faa821571f40b42ee5",
+    "description": "A person sitting in a chair at a desk watching television. tv above desk pillow next to desk",
+    "memory_text": "User_Mom watching near desk with nothing. A person sitting in a chair at a desk watching television. tv above desk pillow next to desk tv above desk. pillow next to desk.",
+    "timestamp": "2026-03-13T09:52:00.761625"
+  },
+  {
+    "faiss_idx": 45,
+    "user": "User_Mom",
+    "action": "watching",
+    "instance": "desk",
+    "interacting_items": [],
+    "all_items": [
+      "pillow",
+      "tv"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "tv",
+        "relation": "above",
+        "object": "desk",
+        "_confidence": 1.0
+      },
+      {
+        "subject": "pillow",
+        "relation": "next to",
+        "object": "desk",
+        "_confidence": 1.0
+      }
+    ],
+    "furniture_pos": [
+      -8.68,
+      10.69
+    ],
+    "mongo_id": "69b140faa821571f40b42ee5",
+    "description": "A person is sitting in a chair and watching television. tv above desk pillow next to desk",
+    "memory_text": "User_Mom watching near desk with nothing. A person is sitting in a chair and watching television. tv above desk pillow next to desk tv above desk. pillow next to desk.",
+    "timestamp": "2026-03-13T09:52:10.233612"
+  },
+  {
+    "faiss_idx": 46,
+    "user": "User_Dad",
+    "action": "the person is standing next to a white sofa.",
+    "instance": "sofa",
+    "interacting_items": [
+      "red and blue skateboard"
+    ],
+    "all_items": [
+      "red and blue skateboard",
+      "skateboard"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "skateboard",
+        "relation": "next to",
+        "object": "sofa",
+        "_confidence": 1.0
+      },
+      {
+        "subject": "red and blue skateboard",
+        "relation": "in_hand_of",
+        "object": "User_Dad"
+      }
+    ],
+    "furniture_pos": [
+      -0.169999987,
+      8.62
+    ],
+    "mongo_id": "69b140faa821571f40b42ee9",
+    "description": "A person holding a skateboard standing next to a white sofa. skateboard next to sofa red and blue skateboard in_hand_of User_Dad",
+    "memory_text": "User_Dad the person is standing next to a white sofa. near sofa with red and blue skateboard. A person holding a skateboard standing next to a white sofa. skateboard next to sofa red and blue skateboard in_hand_of User_Dad skateboard next to sofa. red and blue skateboard in_hand_of User_Dad.",
+    "timestamp": "2026-03-13T09:52:22.686129"
+  },
+  {
+    "faiss_idx": 47,
+    "user": "User_Dad",
+    "action": "the person is standing next to a white sofa.",
+    "instance": "sofa",
+    "interacting_items": [
+      "red and blue skateboard"
+    ],
+    "all_items": [
+      "red and blue skateboard"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "red and blue skateboard",
+        "relation": "next to",
+        "object": "sofa",
+        "_confidence": 1.0
+      },
+      {
+        "subject": "red and white skateboard",
+        "relation": "in_hand_of",
+        "object": "User_Dad"
+      }
+    ],
+    "furniture_pos": [
+      -0.169999987,
+      8.62
+    ],
+    "mongo_id": "69b140faa821571f40b42ee9",
+    "description": "A person holding a red and white skateboard standing next to a sofa. red and blue skateboard next to sofa red and white skateboard in_hand_of User_Dad",
+    "memory_text": "User_Dad the person is standing next to a white sofa. near sofa with red and blue skateboard. A person holding a red and white skateboard standing next to a sofa. red and blue skateboard next to sofa red and white skateboard in_hand_of User_Dad red and blue skateboard next to sofa. red and white skateboard in_hand_of User_Dad.",
+    "timestamp": "2026-03-13T09:52:32.200415"
+  },
+  {
+    "faiss_idx": 48,
+    "user": "User_Dad",
+    "action": "the person is standing next to a white sofa.",
+    "instance": "sofa",
+    "interacting_items": [
+      "red and blue skateboard"
+    ],
+    "all_items": [
+      "red and blue skateboard"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "red and blue skateboard",
+        "relation": "next to",
+        "object": "sofa",
+        "_confidence": 1.0
+      },
+      {
+        "subject": "skateboard",
+        "relation": "in_hand_of",
+        "object": "User_Dad"
+      }
+    ],
+    "furniture_pos": [
+      -0.169999987,
+      8.62
+    ],
+    "mongo_id": "69b140faa821571f40b42ee9",
+    "description": "A person is standing next to a white sofa with a skateboard in their hand. red and blue skateboard next to sofa skateboard in_hand_of User_Dad",
+    "memory_text": "User_Dad the person is standing next to a white sofa. near sofa with red and blue skateboard. A person is standing next to a white sofa with a skateboard in their hand. red and blue skateboard next to sofa skateboard in_hand_of User_Dad red and blue skateboard next to sofa. skateboard in_hand_of User_Dad.",
+    "timestamp": "2026-03-13T09:52:41.695755"
+  },
+  {
+    "faiss_idx": 49,
+    "user": "User_Dad",
+    "action": "the person is standing next to a white sofa.",
+    "instance": "sofa",
+    "interacting_items": [
+      "red and blue skateboard"
+    ],
+    "all_items": [
+      "red and blue skateboard"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "red and blue skateboard",
+        "relation": "next to",
+        "object": "sofa",
+        "_confidence": 1.0
+      },
+      {
+        "subject": "skateboard",
+        "relation": "in_hand_of",
+        "object": "User_Dad"
+      }
+    ],
+    "furniture_pos": [
+      -0.169999987,
+      8.62
+    ],
+    "mongo_id": "69b140faa821571f40b42ee9",
+    "description": "A person is standing next to a white sofa holding a skateboard. red and blue skateboard next to sofa skateboard in_hand_of User_Dad",
+    "memory_text": "User_Dad the person is standing next to a white sofa. near sofa with red and blue skateboard. A person is standing next to a white sofa holding a skateboard. red and blue skateboard next to sofa skateboard in_hand_of User_Dad red and blue skateboard next to sofa. skateboard in_hand_of User_Dad.",
+    "timestamp": "2026-03-13T09:52:51.147675"
+  },
+  {
+    "faiss_idx": 50,
+    "user": "User_Dad",
+    "action": "the person is standing next to a white sofa.",
+    "instance": "sofa",
+    "interacting_items": [
+      "soda"
+    ],
+    "all_items": [
+      "soda"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "soda",
+        "relation": "next to",
+        "object": "sofa",
+        "_confidence": 1.0
+      },
+      {
+        "subject": "bottle",
+        "relation": "in_hand_of",
+        "object": "User_Dad"
+      }
+    ],
+    "furniture_pos": [
+      -0.169999987,
+      8.62
+    ],
+    "mongo_id": "69b140faa821571f40b42ee9",
+    "description": "A person holding a bottle standing next to a white sofa. soda next to sofa bottle in_hand_of User_Dad",
+    "memory_text": "User_Dad the person is standing next to a white sofa. near sofa with soda. A person holding a bottle standing next to a white sofa. soda next to sofa bottle in_hand_of User_Dad soda next to sofa. bottle in_hand_of User_Dad.",
+    "timestamp": "2026-03-13T09:53:00.603656"
+  },
+  {
+    "faiss_idx": 51,
+    "user": "User_Dad",
+    "action": "the person is standing next to a white sofa.",
+    "instance": "sofa",
+    "interacting_items": [
+      "soda"
+    ],
+    "all_items": [
+      "soda"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "soda",
+        "relation": "next to",
+        "object": "sofa",
+        "_confidence": 1.0
+      },
+      {
+        "subject": "bottle",
+        "relation": "in_hand_of",
+        "object": "User_Dad"
+      }
+    ],
+    "furniture_pos": [
+      -0.169999987,
+      8.62
+    ],
+    "mongo_id": "69b140faa821571f40b42ee9",
+    "description": "A person holding a bottle standing next to a white sofa. soda next to sofa bottle in_hand_of User_Dad",
+    "memory_text": "User_Dad the person is standing next to a white sofa. near sofa with soda. A person holding a bottle standing next to a white sofa. soda next to sofa bottle in_hand_of User_Dad soda next to sofa. bottle in_hand_of User_Dad.",
+    "timestamp": "2026-03-13T09:53:10.116538"
+  },
+  {
+    "faiss_idx": 52,
+    "user": "User_Dad",
+    "action": "the person is standing next to a white sofa.",
+    "instance": "sofa",
+    "interacting_items": [
+      "skateboard"
+    ],
+    "all_items": [
+      "skateboard"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "skateboard",
+        "relation": "next to",
+        "object": "sofa",
+        "_confidence": 1.0
+      },
+      {
+        "subject": "skateboard",
+        "relation": "in_hand_of",
+        "object": "User_Dad"
+      }
+    ],
+    "furniture_pos": [
+      -0.169999987,
+      8.62
+    ],
+    "mongo_id": "69b140faa821571f40b42ee9",
+    "description": "A person is standing next to a white sofa holding a skateboard. skateboard next to sofa skateboard in_hand_of User_Dad",
+    "memory_text": "User_Dad the person is standing next to a white sofa. near sofa with skateboard. A person is standing next to a white sofa holding a skateboard. skateboard next to sofa skateboard in_hand_of User_Dad skateboard next to sofa. skateboard in_hand_of User_Dad.",
+    "timestamp": "2026-03-13T09:53:19.632883"
+  },
+  {
+    "faiss_idx": 53,
+    "user": "User_Dad",
+    "action": "the person is standing next to a white sofa.",
+    "instance": "sofa",
+    "interacting_items": [
+      "red and blue skateboard"
+    ],
+    "all_items": [
+      "red and blue skateboard",
+      "skateboard"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "skateboard",
+        "relation": "next to",
+        "object": "sofa",
+        "_confidence": 1.0
+      },
+      {
+        "subject": "red skateboard",
+        "relation": "in_hand_of",
+        "object": "User_Dad"
+      }
+    ],
+    "furniture_pos": [
+      -0.169999987,
+      8.62
+    ],
+    "mongo_id": "69b140faa821571f40b42ee9",
+    "description": "A person is standing next to a white sofa with a red skateboard. skateboard next to sofa red skateboard in_hand_of User_Dad",
+    "memory_text": "User_Dad the person is standing next to a white sofa. near sofa with red and blue skateboard. A person is standing next to a white sofa with a red skateboard. skateboard next to sofa red skateboard in_hand_of User_Dad skateboard next to sofa. red skateboard in_hand_of User_Dad.",
+    "timestamp": "2026-03-13T09:53:29.181768"
+  },
+  {
+    "faiss_idx": 54,
+    "user": "User_Dad",
+    "action": "the person is standing next to a white sofa.",
+    "instance": "sofa",
+    "interacting_items": [
+      "skateboard"
+    ],
+    "all_items": [
+      "skateboard"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "skateboard",
+        "relation": "next to",
+        "object": "sofa",
+        "_confidence": 1.0
+      },
+      {
+        "subject": "skateboard",
+        "relation": "in_hand_of",
+        "object": "User_Dad"
+      }
+    ],
+    "furniture_pos": [
+      -0.169999987,
+      8.62
+    ],
+    "mongo_id": "69b140faa821571f40b42ee9",
+    "description": "A person is standing next to a white sofa with a skateboard in their hand. skateboard next to sofa skateboard in_hand_of User_Dad",
+    "memory_text": "User_Dad the person is standing next to a white sofa. near sofa with skateboard. A person is standing next to a white sofa with a skateboard in their hand. skateboard next to sofa skateboard in_hand_of User_Dad skateboard next to sofa. skateboard in_hand_of User_Dad.",
+    "timestamp": "2026-03-13T09:53:38.700822"
+  },
+  {
+    "faiss_idx": 55,
+    "user": "User_Dad",
+    "action": "the person is standing next to a white sofa.",
+    "instance": "sofa",
+    "interacting_items": [
+      "red and blue skateboard"
+    ],
+    "all_items": [
+      "red and blue skateboard",
+      "skateboard"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "skateboard",
+        "relation": "next to",
+        "object": "sofa",
+        "_confidence": 1.0
+      },
+      {
+        "subject": "red skateboard",
+        "relation": "in_hand_of",
+        "object": "User_Dad"
+      }
+    ],
+    "furniture_pos": [
+      -0.169999987,
+      8.62
+    ],
+    "mongo_id": "69b140faa821571f40b42ee9",
+    "description": "A person holding a red skateboard standing next to a white sofa. skateboard next to sofa red skateboard in_hand_of User_Dad",
+    "memory_text": "User_Dad the person is standing next to a white sofa. near sofa with red and blue skateboard. A person holding a red skateboard standing next to a white sofa. skateboard next to sofa red skateboard in_hand_of User_Dad skateboard next to sofa. red skateboard in_hand_of User_Dad.",
+    "timestamp": "2026-03-13T09:53:48.174642"
+  },
+  {
+    "faiss_idx": 56,
+    "user": "User_Dad",
+    "action": "watching",
+    "instance": "tv",
+    "interacting_items": [],
+    "all_items": [
+      "tv"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "tv",
+        "relation": "above",
+        "object": "shelf2",
+        "_confidence": 1.0
       }
     ],
     "furniture_pos": [
       5.41,
       8.02
     ],
-    "mongo_id": "69b0e889040731fe60e11b8a",
-    "description": "A person is sleeping on a sofa. banana on tv",
-    "memory_text": "User_Dad sleeping near tv with banana. A person is sleeping on a sofa. banana on tv banana on tv.",
-    "timestamp": "2026-03-11T12:09:09.390703"
+    "mongo_id": "69b140faa821571f40b42eed",
+    "description": "A person is watching tv on a sofa. tv above shelf2",
+    "memory_text": "User_Dad watching near tv with nothing. A person is watching tv on a sofa. tv above shelf2 tv above shelf2.",
+    "timestamp": "2026-03-13T09:54:00.303922"
   },
   {
-    "faiss_idx": 13,
+    "faiss_idx": 57,
     "user": "User_Dad",
     "action": "watching",
-    "instance": "sofa",
+    "instance": "tv",
     "interacting_items": [],
-    "all_items": [],
+    "all_items": [
+      "tv"
+    ],
     "spatial_relations": [
       {
-        "subject": "person",
-        "relation": "on",
-        "object": "sofa"
+        "subject": "tv",
+        "relation": "above",
+        "object": "shelf2",
+        "_confidence": 1.0
       }
     ],
     "furniture_pos": [
-      -0.169999987,
-      8.62
+      5.41,
+      8.02
     ],
-    "mongo_id": "69b0e889040731fe60e11b86",
-    "description": "A person is sitting on a sofa and watching something. person on sofa",
-    "memory_text": "User_Dad watching near sofa with nothing. A person is sitting on a sofa and watching something. person on sofa person on sofa.",
-    "timestamp": "2026-03-11T12:09:29.891723"
+    "mongo_id": "69b140faa821571f40b42eed",
+    "description": "A person is watching tv on a sofa. tv above shelf2",
+    "memory_text": "User_Dad watching near tv with nothing. A person is watching tv on a sofa. tv above shelf2 tv above shelf2.",
+    "timestamp": "2026-03-13T09:54:09.860085"
   },
   {
-    "faiss_idx": 14,
+    "faiss_idx": 58,
     "user": "User_Dad",
     "action": "watching",
-    "instance": "sofa",
+    "instance": "tv",
     "interacting_items": [],
-    "all_items": [],
+    "all_items": [
+      "tv"
+    ],
     "spatial_relations": [
       {
-        "subject": "skateboard",
-        "relation": "on",
-        "object": "sofa"
+        "subject": "tv",
+        "relation": "above",
+        "object": "shelf2",
+        "_confidence": 1.0
+      }
+    ],
+    "furniture_pos": [
+      5.41,
+      8.02
+    ],
+    "mongo_id": "69b140faa821571f40b42eed",
+    "description": "A person is watching tv on a shelf. tv above shelf2",
+    "memory_text": "User_Dad watching near tv with nothing. A person is watching tv on a shelf. tv above shelf2 tv above shelf2.",
+    "timestamp": "2026-03-13T09:54:19.552996"
+  },
+  {
+    "faiss_idx": 59,
+    "user": "User_Dad",
+    "action": "watching",
+    "instance": "tv",
+    "interacting_items": [],
+    "all_items": [
+      "tv"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "tv",
+        "relation": "above",
+        "object": "shelf2",
+        "_confidence": 1.0
+      }
+    ],
+    "furniture_pos": [
+      5.41,
+      8.02
+    ],
+    "mongo_id": "69b140faa821571f40b42eed",
+    "description": "A person is watching tv on a shelf. tv above shelf2",
+    "memory_text": "User_Dad watching near tv with nothing. A person is watching tv on a shelf. tv above shelf2 tv above shelf2.",
+    "timestamp": "2026-03-13T09:54:29.116881"
+  },
+  {
+    "faiss_idx": 60,
+    "user": "User_Dad",
+    "action": "watching",
+    "instance": "tv",
+    "interacting_items": [],
+    "all_items": [
+      "tv"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "tv",
+        "relation": "above",
+        "object": "shelf2",
+        "_confidence": 1.0
+      }
+    ],
+    "furniture_pos": [
+      5.41,
+      8.02
+    ],
+    "mongo_id": "69b140faa821571f40b42eed",
+    "description": "A person is watching tv on a sofa. tv above shelf2",
+    "memory_text": "User_Dad watching near tv with nothing. A person is watching tv on a sofa. tv above shelf2 tv above shelf2.",
+    "timestamp": "2026-03-13T09:54:38.266186"
+  },
+  {
+    "faiss_idx": 61,
+    "user": "User_Dad",
+    "action": "watching",
+    "instance": "tv",
+    "interacting_items": [],
+    "all_items": [
+      "tv"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "tv",
+        "relation": "above",
+        "object": "shelf2",
+        "_confidence": 1.0
+      }
+    ],
+    "furniture_pos": [
+      5.41,
+      8.02
+    ],
+    "mongo_id": "69b140faa821571f40b42eed",
+    "description": "A person is watching tv on a shelf. tv above shelf2",
+    "memory_text": "User_Dad watching near tv with nothing. A person is watching tv on a shelf. tv above shelf2 tv above shelf2.",
+    "timestamp": "2026-03-13T09:54:48.141926"
+  },
+  {
+    "faiss_idx": 62,
+    "user": "User_Dad",
+    "action": "watching",
+    "instance": "tv",
+    "interacting_items": [],
+    "all_items": [
+      "tv"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "tv",
+        "relation": "above",
+        "object": "shelf2",
+        "_confidence": 1.0
+      }
+    ],
+    "furniture_pos": [
+      5.41,
+      8.02
+    ],
+    "mongo_id": "69b140faa821571f40b42eed",
+    "description": "A person is watching tv on a shelf. tv above shelf2",
+    "memory_text": "User_Dad watching near tv with nothing. A person is watching tv on a shelf. tv above shelf2 tv above shelf2.",
+    "timestamp": "2026-03-13T09:54:57.274031"
+  },
+  {
+    "faiss_idx": 63,
+    "user": "User_Dad",
+    "action": "watching",
+    "instance": "tv",
+    "interacting_items": [],
+    "all_items": [
+      "tv"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "tv",
+        "relation": "above",
+        "object": "shelf2",
+        "_confidence": 1.0
+      }
+    ],
+    "furniture_pos": [
+      5.41,
+      8.02
+    ],
+    "mongo_id": "69b140faa821571f40b42eed",
+    "description": "A person is watching tv on a shelf. tv above shelf2",
+    "memory_text": "User_Dad watching near tv with nothing. A person is watching tv on a shelf. tv above shelf2 tv above shelf2.",
+    "timestamp": "2026-03-13T09:55:07.172547"
+  },
+  {
+    "faiss_idx": 64,
+    "user": "User_Dad",
+    "action": "the person is lying down on the floor.",
+    "instance": "tv",
+    "interacting_items": [
+      "banana"
+    ],
+    "all_items": [
+      "tv",
+      "banana"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "tv",
+        "relation": "next to",
+        "object": "sofa",
+        "_confidence": 1.0
       },
       {
-        "subject": "person",
-        "relation": "standing on",
-        "object": "sofa"
+        "subject": "banana",
+        "relation": "in_hand_of",
+        "object": "User_Dad"
       }
     ],
     "furniture_pos": [
-      -0.169999987,
-      8.62
+      5.41,
+      8.02
     ],
-    "mongo_id": "69b0e889040731fe60e11b86",
-    "description": "A person standing on a sofa holding a skateboard. skateboard on sofa person standing on sofa",
-    "memory_text": "User_Dad watching near sofa with nothing. A person standing on a sofa holding a skateboard. skateboard on sofa person standing on sofa skateboard on sofa. person standing on sofa.",
-    "timestamp": "2026-03-11T12:21:48.239471"
+    "mongo_id": "69b140faa821571f40b42eed",
+    "description": "A person lying on the floor with a banana in their hand. tv next to sofa banana in_hand_of User_Dad",
+    "memory_text": "User_Dad the person is lying down on the floor. near tv with banana. A person lying on the floor with a banana in their hand. tv next to sofa banana in_hand_of User_Dad tv next to sofa. banana in_hand_of User_Dad.",
+    "timestamp": "2026-03-13T09:55:16.494712"
+  },
+  {
+    "faiss_idx": 65,
+    "user": "User_Dad",
+    "action": "watching",
+    "instance": "tv",
+    "interacting_items": [],
+    "all_items": [
+      "tv"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "tv",
+        "relation": "above",
+        "object": "shelf2",
+        "_confidence": 1.0
+      }
+    ],
+    "furniture_pos": [
+      5.41,
+      8.02
+    ],
+    "mongo_id": "69b140faa821571f40b42eed",
+    "description": "A person is watching tv on a shelf. tv above shelf2",
+    "memory_text": "User_Dad watching near tv with nothing. A person is watching tv on a shelf. tv above shelf2 tv above shelf2.",
+    "timestamp": "2026-03-13T09:55:26.130497"
+  },
+  {
+    "faiss_idx": 66,
+    "user": "User_Dad",
+    "action": "sleeping",
+    "instance": "dad's bed",
+    "interacting_items": [],
+    "all_items": [
+      "pillow"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "pillow",
+        "relation": "next to person",
+        "object": "dad's bed",
+        "_confidence": "high"
+      }
+    ],
+    "furniture_pos": [
+      -1.618,
+      0.439999968
+    ],
+    "mongo_id": "69b140faa821571f40b42ee2",
+    "description": "A man is sleeping on a blue bed in the room. pillow next to person dad's bed",
+    "memory_text": "User_Dad sleeping near dad's bed with nothing. A man is sleeping on a blue bed in the room. pillow next to person dad's bed pillow next to person dad's bed.",
+    "timestamp": "2026-03-13T09:55:38.510487"
+  },
+  {
+    "faiss_idx": 67,
+    "user": "User_Dad",
+    "action": "sleeping",
+    "instance": "dad's bed",
+    "interacting_items": [],
+    "all_items": [
+      "pillow"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "pillow",
+        "relation": "next to person",
+        "object": "dad's bed",
+        "_confidence": "high"
+      }
+    ],
+    "furniture_pos": [
+      -1.618,
+      0.439999968
+    ],
+    "mongo_id": "69b140faa821571f40b42ee2",
+    "description": "A man is sleeping on a blue bed. pillow next to person dad's bed",
+    "memory_text": "User_Dad sleeping near dad's bed with nothing. A man is sleeping on a blue bed. pillow next to person dad's bed pillow next to person dad's bed.",
+    "timestamp": "2026-03-13T09:55:47.943233"
+  },
+  {
+    "faiss_idx": 68,
+    "user": "User_Dad",
+    "action": "sleeping",
+    "instance": "dad's bed",
+    "interacting_items": [],
+    "all_items": [
+      "pillow"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "pillow",
+        "relation": "next to person",
+        "object": "dad's bed",
+        "_confidence": "high"
+      }
+    ],
+    "furniture_pos": [
+      -1.618,
+      0.439999968
+    ],
+    "mongo_id": "69b140faa821571f40b42ee2",
+    "description": "A man is sleeping on a blue bed. pillow next to person dad's bed",
+    "memory_text": "User_Dad sleeping near dad's bed with nothing. A man is sleeping on a blue bed. pillow next to person dad's bed pillow next to person dad's bed.",
+    "timestamp": "2026-03-13T09:55:57.515345"
+  },
+  {
+    "faiss_idx": 69,
+    "user": "User_Dad",
+    "action": "sleeping",
+    "instance": "dad's bed",
+    "interacting_items": [],
+    "all_items": [
+      "pillow"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "pillow",
+        "relation": "next to",
+        "object": "dad's bed",
+        "_confidence": "high"
+      }
+    ],
+    "furniture_pos": [
+      -1.618,
+      0.439999968
+    ],
+    "mongo_id": "69b140faa821571f40b42ee2",
+    "description": "A man is sleeping on a blue bed. pillow next to dad's bed",
+    "memory_text": "User_Dad sleeping near dad's bed with nothing. A man is sleeping on a blue bed. pillow next to dad's bed pillow next to dad's bed.",
+    "timestamp": "2026-03-13T09:56:06.926023"
+  },
+  {
+    "faiss_idx": 70,
+    "user": "User_Dad",
+    "action": "sleeping",
+    "instance": "dad's bed",
+    "interacting_items": [],
+    "all_items": [
+      "pillow"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "pillow",
+        "relation": "next to person",
+        "object": "dad's bed",
+        "_confidence": "high"
+      }
+    ],
+    "furniture_pos": [
+      -1.618,
+      0.439999968
+    ],
+    "mongo_id": "69b140faa821571f40b42ee2",
+    "description": "A man is sleeping on a blue bed in the room. pillow next to person dad's bed",
+    "memory_text": "User_Dad sleeping near dad's bed with nothing. A man is sleeping on a blue bed in the room. pillow next to person dad's bed pillow next to person dad's bed.",
+    "timestamp": "2026-03-13T09:56:16.500715"
+  },
+  {
+    "faiss_idx": 71,
+    "user": "User_Dad",
+    "action": "sleeping",
+    "instance": "dad's bed",
+    "interacting_items": [],
+    "all_items": [
+      "pillow"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "pillow",
+        "relation": "next to",
+        "object": "dad's bed",
+        "_confidence": "high"
+      }
+    ],
+    "furniture_pos": [
+      -1.618,
+      0.439999968
+    ],
+    "mongo_id": "69b140faa821571f40b42ee2",
+    "description": "A person is sleeping on a blue bed. pillow next to dad's bed",
+    "memory_text": "User_Dad sleeping near dad's bed with nothing. A person is sleeping on a blue bed. pillow next to dad's bed pillow next to dad's bed.",
+    "timestamp": "2026-03-13T09:56:25.931875"
+  },
+  {
+    "faiss_idx": 72,
+    "user": "User_Dad",
+    "action": "sleeping",
+    "instance": "dad's bed",
+    "interacting_items": [],
+    "all_items": [
+      "pillow"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "pillow",
+        "relation": "next to person",
+        "object": "dad's bed",
+        "_confidence": "high"
+      }
+    ],
+    "furniture_pos": [
+      -1.618,
+      0.439999968
+    ],
+    "mongo_id": "69b140faa821571f40b42ee2",
+    "description": "A man is sleeping on a blue bed in the room. pillow next to person dad's bed",
+    "memory_text": "User_Dad sleeping near dad's bed with nothing. A man is sleeping on a blue bed in the room. pillow next to person dad's bed pillow next to person dad's bed.",
+    "timestamp": "2026-03-13T09:56:35.494499"
+  },
+  {
+    "faiss_idx": 73,
+    "user": "User_Dad",
+    "action": "sleeping",
+    "instance": "dad's bed",
+    "interacting_items": [],
+    "all_items": [
+      "pillow"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "pillow",
+        "relation": "next to",
+        "object": "dad's bed",
+        "_confidence": "high"
+      }
+    ],
+    "furniture_pos": [
+      -1.618,
+      0.439999968
+    ],
+    "mongo_id": "69b140faa821571f40b42ee2",
+    "description": "A man is sleeping on a blue bed. pillow next to dad's bed",
+    "memory_text": "User_Dad sleeping near dad's bed with nothing. A man is sleeping on a blue bed. pillow next to dad's bed pillow next to dad's bed.",
+    "timestamp": "2026-03-13T09:56:45.006102"
+  },
+  {
+    "faiss_idx": 74,
+    "user": "User_Dad",
+    "action": "sleeping",
+    "instance": "dad's bed",
+    "interacting_items": [],
+    "all_items": [
+      "pillow"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "pillow",
+        "relation": "next to person",
+        "object": "dad's bed",
+        "_confidence": "high"
+      }
+    ],
+    "furniture_pos": [
+      -1.618,
+      0.439999968
+    ],
+    "mongo_id": "69b140faa821571f40b42ee2",
+    "description": "A man is sleeping on a blue bed. pillow next to person dad's bed",
+    "memory_text": "User_Dad sleeping near dad's bed with nothing. A man is sleeping on a blue bed. pillow next to person dad's bed pillow next to person dad's bed.",
+    "timestamp": "2026-03-13T09:56:54.497989"
+  },
+  {
+    "faiss_idx": 75,
+    "user": "User_Dad",
+    "action": "sleeping",
+    "instance": "dad's bed",
+    "interacting_items": [],
+    "all_items": [
+      "pillow"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "pillow",
+        "relation": "next to person",
+        "object": "dad's bed",
+        "_confidence": "high"
+      }
+    ],
+    "furniture_pos": [
+      -1.618,
+      0.439999968
+    ],
+    "mongo_id": "69b140faa821571f40b42ee2",
+    "description": "A man is sleeping on a blue bed. pillow next to person dad's bed",
+    "memory_text": "User_Dad sleeping near dad's bed with nothing. A man is sleeping on a blue bed. pillow next to person dad's bed pillow next to person dad's bed.",
+    "timestamp": "2026-03-13T09:57:04.023148"
+  },
+  {
+    "faiss_idx": 76,
+    "user": "User_Dad",
+    "action": "the person is sitting down",
+    "instance": "chair2",
+    "interacting_items": [],
+    "all_items": [
+      "computer_cube"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "computer_cube",
+        "relation": "next to",
+        "object": "dad's bed",
+        "_confidence": 1.0
+      }
+    ],
+    "furniture_pos": [
+      -2.0,
+      1.73
+    ],
+    "mongo_id": "69b140faa821571f40b42eeb",
+    "description": "A person sitting on a chair next to a desk. computer_cube next to dad's bed",
+    "memory_text": "User_Dad the person is sitting down near chair2 with nothing. A person sitting on a chair next to a desk. computer_cube next to dad's bed computer_cube next to dad's bed.",
+    "timestamp": "2026-03-13T09:57:16.511132"
+  },
+  {
+    "faiss_idx": 77,
+    "user": "User_Dad",
+    "action": "the person is sitting down with a bottle in their hands.",
+    "instance": "chair2",
+    "interacting_items": [
+      "soda"
+    ],
+    "all_items": [
+      "soda",
+      "computer_cube"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "computer_cube",
+        "relation": "above",
+        "object": "dad's bed",
+        "_confidence": 1.0
+      },
+      {
+        "subject": "bottle",
+        "relation": "in_hand_of",
+        "object": "User_Dad"
+      }
+    ],
+    "furniture_pos": [
+      -2.0,
+      1.73
+    ],
+    "mongo_id": "69b140faa821571f40b42eeb",
+    "description": "A person sitting on a chair with a bottle in their hands. computer_cube above dad's bed bottle in_hand_of User_Dad",
+    "memory_text": "User_Dad the person is sitting down with a bottle in their hands. near chair2 with soda. A person sitting on a chair with a bottle in their hands. computer_cube above dad's bed bottle in_hand_of User_Dad computer_cube above dad's bed. bottle in_hand_of User_Dad.",
+    "timestamp": "2026-03-13T09:57:25.462129"
+  },
+  {
+    "faiss_idx": 78,
+    "user": "User_Dad",
+    "action": "the person is sitting down with a bottle in their hands.",
+    "instance": "chair2",
+    "interacting_items": [
+      "soda"
+    ],
+    "all_items": [
+      "soda",
+      "computer_cube"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "computer_cube",
+        "relation": "above",
+        "object": "dad's bed",
+        "_confidence": 1.0
+      },
+      {
+        "subject": "bottle",
+        "relation": "in_hand_of",
+        "object": "User_Dad"
+      }
+    ],
+    "furniture_pos": [
+      -2.0,
+      1.73
+    ],
+    "mongo_id": "69b140faa821571f40b42eeb",
+    "description": "A person sitting on a chair with a bottle in their hands. computer_cube above dad's bed bottle in_hand_of User_Dad",
+    "memory_text": "User_Dad the person is sitting down with a bottle in their hands. near chair2 with soda. A person sitting on a chair with a bottle in their hands. computer_cube above dad's bed bottle in_hand_of User_Dad computer_cube above dad's bed. bottle in_hand_of User_Dad.",
+    "timestamp": "2026-03-13T09:57:35.727496"
+  },
+  {
+    "faiss_idx": 79,
+    "user": "User_Dad",
+    "action": "the person is sitting down",
+    "instance": "chair2",
+    "interacting_items": [],
+    "all_items": [
+      "computer_cube"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "computer_cube",
+        "relation": "next to",
+        "object": "dad's bed",
+        "_confidence": 1.0
+      }
+    ],
+    "furniture_pos": [
+      -2.0,
+      1.73
+    ],
+    "mongo_id": "69b140faa821571f40b42eeb",
+    "description": "A person sitting on a chair in front of a desk. computer_cube next to dad's bed",
+    "memory_text": "User_Dad the person is sitting down near chair2 with nothing. A person sitting on a chair in front of a desk. computer_cube next to dad's bed computer_cube next to dad's bed.",
+    "timestamp": "2026-03-13T09:57:45.035791"
+  },
+  {
+    "faiss_idx": 80,
+    "user": "User_Dad",
+    "action": "the person is sitting down with a bottle in their hand.",
+    "instance": "chair2",
+    "interacting_items": [
+      "soda"
+    ],
+    "all_items": [
+      "soda",
+      "computer_cube"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "computer_cube",
+        "relation": "next to",
+        "object": "dad's bed",
+        "_confidence": 1.0
+      },
+      {
+        "subject": "bottle",
+        "relation": "in_hand_of",
+        "object": "User_Dad"
+      }
+    ],
+    "furniture_pos": [
+      -2.0,
+      1.73
+    ],
+    "mongo_id": "69b140faa821571f40b42eeb",
+    "description": "A person sitting on a chair with a bottle in their hand. computer_cube next to dad's bed bottle in_hand_of User_Dad",
+    "memory_text": "User_Dad the person is sitting down with a bottle in their hand. near chair2 with soda. A person sitting on a chair with a bottle in their hand. computer_cube next to dad's bed bottle in_hand_of User_Dad computer_cube next to dad's bed. bottle in_hand_of User_Dad.",
+    "timestamp": "2026-03-13T09:57:54.791397"
+  },
+  {
+    "faiss_idx": 81,
+    "user": "User_Dad",
+    "action": "the person is sitting down with a bottle in their hand.",
+    "instance": "chair2",
+    "interacting_items": [
+      "soda"
+    ],
+    "all_items": [
+      "soda",
+      "computer_cube"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "computer_cube",
+        "relation": "next to",
+        "object": "dad's bed",
+        "_confidence": 1.0
+      },
+      {
+        "subject": "bottle",
+        "relation": "in_hand_of",
+        "object": "User_Dad"
+      }
+    ],
+    "furniture_pos": [
+      -2.0,
+      1.73
+    ],
+    "mongo_id": "69b140faa821571f40b42eeb",
+    "description": "A person sitting on a chair with a bottle in their hand. computer_cube next to dad's bed bottle in_hand_of User_Dad",
+    "memory_text": "User_Dad the person is sitting down with a bottle in their hand. near chair2 with soda. A person sitting on a chair with a bottle in their hand. computer_cube next to dad's bed bottle in_hand_of User_Dad computer_cube next to dad's bed. bottle in_hand_of User_Dad.",
+    "timestamp": "2026-03-13T09:58:04.314407"
+  },
+  {
+    "faiss_idx": 82,
+    "user": "User_Dad",
+    "action": "the person is sitting on a chair next to a desk.",
+    "instance": "chair2",
+    "interacting_items": [],
+    "all_items": [
+      "computer_cube"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "computer_cube",
+        "relation": "next to",
+        "object": "dad's bed",
+        "_confidence": 1.0
+      }
+    ],
+    "furniture_pos": [
+      -2.0,
+      1.73
+    ],
+    "mongo_id": "69b140faa821571f40b42eeb",
+    "description": "A person sitting on a chair next to a desk in a room. computer_cube next to dad's bed",
+    "memory_text": "User_Dad the person is sitting on a chair next to a desk. near chair2 with nothing. A person sitting on a chair next to a desk in a room. computer_cube next to dad's bed computer_cube next to dad's bed.",
+    "timestamp": "2026-03-13T09:58:13.693235"
+  },
+  {
+    "faiss_idx": 83,
+    "user": "User_Dad",
+    "action": "the person is sitting down with a bottle in their hand.",
+    "instance": "chair2",
+    "interacting_items": [
+      "soda"
+    ],
+    "all_items": [
+      "soda",
+      "computer_cube"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "computer_cube",
+        "relation": "next to",
+        "object": "dad's bed",
+        "_confidence": 1.0
+      },
+      {
+        "subject": "bottle",
+        "relation": "in_hand_of",
+        "object": "User_Dad"
+      }
+    ],
+    "furniture_pos": [
+      -2.0,
+      1.73
+    ],
+    "mongo_id": "69b140faa821571f40b42eeb",
+    "description": "A person sitting on a chair with a bottle in their hand. computer_cube next to dad's bed bottle in_hand_of User_Dad",
+    "memory_text": "User_Dad the person is sitting down with a bottle in their hand. near chair2 with soda. A person sitting on a chair with a bottle in their hand. computer_cube next to dad's bed bottle in_hand_of User_Dad computer_cube next to dad's bed. bottle in_hand_of User_Dad.",
+    "timestamp": "2026-03-13T09:58:24.903773"
+  },
+  {
+    "faiss_idx": 84,
+    "user": "User_Dad",
+    "action": "the person is sitting down with a bottle in their hand.",
+    "instance": "chair2",
+    "interacting_items": [
+      "soda"
+    ],
+    "all_items": [
+      "soda",
+      "computer_cube"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "computer_cube",
+        "relation": "next to",
+        "object": "dad's bed",
+        "_confidence": 0.8534647226333618
+      },
+      {
+        "subject": "bottle",
+        "relation": "in_hand_of",
+        "object": "User_Dad"
+      }
+    ],
+    "furniture_pos": [
+      -2.0,
+      1.73
+    ],
+    "mongo_id": "69b140faa821571f40b42eeb",
+    "description": "A person is sitting on a chair with a bottle in their hand. computer_cube next to dad's bed bottle in_hand_of User_Dad",
+    "memory_text": "User_Dad the person is sitting down with a bottle in their hand. near chair2 with soda. A person is sitting on a chair with a bottle in their hand. computer_cube next to dad's bed bottle in_hand_of User_Dad computer_cube next to dad's bed. bottle in_hand_of User_Dad.",
+    "timestamp": "2026-03-13T09:58:32.836606"
+  },
+  {
+    "faiss_idx": 85,
+    "user": "User_Dad",
+    "action": "the person is sitting down with their hands folded.",
+    "instance": "chair2",
+    "interacting_items": [],
+    "all_items": [
+      "computer_cube"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "computer_cube",
+        "relation": "next to",
+        "object": "dad's bed",
+        "_confidence": 1.0
+      }
+    ],
+    "furniture_pos": [
+      -2.0,
+      1.73
+    ],
+    "mongo_id": "69b140faa821571f40b42eeb",
+    "description": "A person sitting on a chair with their hands folded. computer_cube next to dad's bed",
+    "memory_text": "User_Dad the person is sitting down with their hands folded. near chair2 with nothing. A person sitting on a chair with their hands folded. computer_cube next to dad's bed computer_cube next to dad's bed.",
+    "timestamp": "2026-03-13T09:58:42.164750"
   }
 ]

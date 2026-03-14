@@ -16,6 +16,8 @@ from modules.memory_vector import VectorMemory
 from classifier import ObjectClassifier
 
 from sentence_transformers import SentenceTransformer
+from modules.manifold_engine   import ManifoldEngine
+from modules.service_proposal  import ServiceProposalEngine
 
 app    = Flask(__name__)
 CONFIG = Config
@@ -24,16 +26,16 @@ CONFIG = Config
 # GPU 設定
 # ──────────────────────────────────────────────────────
 sbert_model = SentenceTransformer('paraphrase-MiniLM-L6-v2', device='cuda')
-print("✅ SBERT loaded on CUDA")
+print(" SBERT loaded on CUDA")
 
 mongo_client = MongoClient(CONFIG.MONGO_URI)
 db           = mongo_client[CONFIG.DB_NAME]
 
 try:
     db.scene_snapshots.create_index([("pos", "2d")])
-    print("✅ MongoDB 2D Index ready")
+    print(" MongoDB 2D Index ready")
 except Exception as e:
-    print(f"ℹ️ Index notice: {e}")
+    print(f" Index notice: {e}")
 
 # ── FIX: 移除 spatial_module=None（perception v4 已移除此參數）──
 perception = PerceptionEngine(
@@ -51,20 +53,19 @@ vector_memory = VectorMemory(device='cuda')
 classifier    = ObjectClassifier(db)
 classifier.start()
 
-# 啟動時把 MongoDB dynamic_objects 同步進 FAISS
-# 支援同事的 sensor 資料 + 自己的 VLM 資料
 vector_memory.sync_from_mongo(db.dynamic_objects)
 
-# 程式結束時確保 BulkWriteBuffer 全部寫入
 atexit.register(perception.shutdown)
 
-# Ollama 單執行緒鎖（GPU 模式仍建議保留，避免顯存衝突）
+manifold_engine   = ManifoldEngine(db=db, sbert_model=sbert_model)
+proposal_engine   = ServiceProposalEngine(
+    db          = db,
+    ollama_url  = CONFIG.OLLAMA_URL,
+    llm_model   = CONFIG.LLM_MODEL,
+)
+
 _ollama_lock = threading.Lock()
 
-
-# ──────────────────────────────────────────────────────
-# 工具函式
-# ──────────────────────────────────────────────────────
 def preview_images(image_list, source_nodes, hint_user_id, activity):
     save_dir = "debug_images"
     os.makedirs(save_dir, exist_ok=True)
@@ -78,7 +79,7 @@ def preview_images(image_list, source_nodes, hint_user_id, activity):
             ts        = datetime.datetime.now().strftime("%H%M%S")
             node_name = source_nodes[i] if i < len(source_nodes) else f"img_{i}"
             cv2.imwrite(f"{save_dir}/{ts}_{hint_user_id}_{activity}_{node_name}.jpg", frame)
-            print(f"📸 [Saved] {ts}_{hint_user_id}_{activity}_{node_name}.jpg")
+            print(f" [Saved] {ts}_{hint_user_id}_{activity}_{node_name}.jpg")
         except Exception as e:
             print(f"⚠️ [Preview Skip] {e}")
 
@@ -90,7 +91,7 @@ def _wait_for_scene(max_wait: float = 12.0, poll: float = 1.0):
     while waited < max_wait:
         if db.scene_snapshots.count_documents({}) > 0:
             return
-        print(f"   ⏳ [WaitScene] scene_snapshots empty, waited {waited:.0f}s...")
+        print(f"    [WaitScene] scene_snapshots empty, waited {waited:.0f}s...")
         _time.sleep(poll)
         waited += poll
     print("   ⚠️  [WaitScene] Timeout, proceeding without scene data")
@@ -113,9 +114,6 @@ def log_eval(experiment, ground_truth, vlm_output, bound_label,
     db["eval_logs"].insert_one(doc)
 
 
-# ──────────────────────────────────────────────────────
-# /predict  主感知路由
-# ──────────────────────────────────────────────────────
 @app.route('/predict', methods=['POST'])
 def predict():
     try:
@@ -150,7 +148,7 @@ def predict():
                 "x": float(user_pos_raw.get("x", 0)),
                 "z": float(user_pos_raw.get("z", 0))
             }
-        # user_pos 存進 DB，讓 classifier 知道人在哪（held_by 判斷用）
+
         if est_pos and hint_user_id:
             db.user_positions.update_one(
                 {"user_id": hint_user_id},
@@ -161,15 +159,13 @@ def predict():
 
 
         data['room_name'] = room_name
-        # scene_snapshots 尚未建立時等待（/scene 和 /predict 幾乎同時到）
+
         _wait_for_scene(max_wait=12.0)
 
-
-        # ── VLM 推理（計時供 eval_logs）──
         acquired = _ollama_lock.acquire(timeout=180)
         t0 = time.time()
         try:
-            # perception v4：內部已處理 dynamic_objects 更新
+
             perception_res = perception.analyze_action_burst(data)
         finally:
             if acquired:
@@ -196,8 +192,7 @@ def predict():
                 "reason":   "VLM returned no valid action"
             }), 200
 
-        # ── memory.bind_and_update：只更新 observation_logs + activity_sequences
-        # ── dynamic_objects 已由 perception v4 處理，不重複更新
+
         final_bound_label = memory.bind_and_update(
             user_id           = user_id,
             action            = action,
@@ -211,7 +206,7 @@ def predict():
         )
         print(f"[Bind] '{vlm_object}' -> '{final_bound_label}'")
 
-        # ── 實驗一、二自動記錄 ──
+
         log_eval(
             experiment   = "exp1_exp2",
             ground_truth = activity,
@@ -267,6 +262,83 @@ def predict():
             print("[Skip FAISS] bind failed")
 
         print(f"[Done] {user_id} @ {final_bound_label} -> {action} | {vlm_ms}ms")
+
+                # ── Manifold：特徵向量 → 記錄 → 預判 ──────────────────
+        manifold_point_id  = ""
+        intent_prediction  = {"trigger": False, "intent": "unknown", "confidence": 0.0}
+        has_proposal       = False
+ 
+        try:
+            # 取 perception 的信心度（perception_res 裡有）
+            confidence_str = perception_res.get("result", {}).get("confidence", "unknown")
+ 
+            # 1. 建特徵向量
+            feature_vec = manifold_engine.build_feature_vector(
+                user_id        = user_id,
+                action         = action,
+                user_pos       = est_pos,
+                room_name      = room_name,
+                detected_items = detected_items,
+                confidence     = confidence_str,
+            )
+ 
+            # 2. 記錄到 manifold_points
+            manifold_point_id = manifold_engine.record_point(
+                user_id     = user_id,
+                feature_vec = feature_vec,
+                action      = action,
+                bound_label = final_bound_label,
+            )
+ 
+            # 3. 每 50 筆觸發非同步 refit（不阻塞）
+            manifold_engine.maybe_refit(user_id)
+ 
+            # 4. 預判意圖
+            intent_prediction = manifold_engine.predict_intent(
+                user_id         = user_id,
+                current_feature = feature_vec,
+            )
+ 
+            # 5. 如果觸發，請 ServiceProposalEngine 決策
+            if intent_prediction.get("trigger"):
+                # 取 dynamic_results 給 proposal_engine 找導航目標
+                dynamic_results = vector_memory.search_dynamic(
+                    action, top_k=5, user_filter=user_id
+                )
+                proposal_result = proposal_engine.evaluate(
+                    user_id            = user_id,
+                    intent_prediction  = intent_prediction,
+                    manifold_point_id  = manifold_point_id,
+                    user_pos           = est_pos,
+                    dynamic_results    = dynamic_results,
+                )
+                has_proposal = proposal_result.get("has_proposal", False)
+ 
+        except Exception as manifold_err:
+            print(f"[Manifold] non-critical error: {manifold_err}")
+            # Manifold 失敗不影響主流程
+ 
+        # ── 修改 return jsonify，加入 manifold 欄位 ────────────
+        # 把原本的 return jsonify({...}) 改成下面這個版本：
+ 
+        return jsonify({
+            "status":            "Success",
+            "user":              user_id,
+            "action":            action,
+            "bound_to":          final_bound_label,
+            "interacting_items": detected_items,
+            "all_items":         all_items,
+            "spatial_relations": spatial_rels,
+            "description":       vlm_desc,
+            "estimated_pos":     est_pos,
+            "furniture_pos":     furniture_pos,
+            "vlm_inference_ms":  vlm_ms,
+            # ── 以下是新增的 manifold 欄位 ──
+            "manifold_point_id": manifold_point_id,
+            "intent_prediction": intent_prediction,
+            "has_proposal":      has_proposal,
+        }), 200
+
 
         return jsonify({
             "status":            "Success",
@@ -632,7 +704,69 @@ def interact():
         import traceback
         print(f"[Interact Error] {e}\n{traceback.format_exc()}")
         return jsonify({"error": str(e)}), 500
-
+@app.route('/service_proposal', methods=['GET'])
+def service_proposal():
+    """Unity 每 3 秒輪詢，取下一個待處理提案"""
+    try:
+        proposal = proposal_engine.get_next_proposal()
+        if proposal:
+            print(f"[Proposal] 發出提案: {proposal.get('user_id')} → {proposal.get('intent')}")
+            return jsonify(proposal), 200
+        return jsonify({"status": "no_proposal"}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+ 
+ 
+@app.route('/service_response', methods=['POST'])
+def service_response():
+    """Unity 回傳用戶對提案的回應"""
+    try:
+        data        = request.get_json()
+        proposal_id = data.get("proposal_id", "")
+        user_id     = data.get("user_id", "Unknown")
+        result      = data.get("result", "ignored")   # accepted / rejected / ignored
+ 
+        if not proposal_id:
+            return jsonify({"error": "proposal_id required"}), 400
+ 
+        response = proposal_engine.handle_response(
+            proposal_id    = proposal_id,
+            user_id        = user_id,
+            result         = result,
+            manifold_engine = manifold_engine,
+        )
+        return jsonify(response), 200
+    except Exception as e:
+        import traceback
+        print(f"[ServiceResponse Error] {e}\n{traceback.format_exc()}")
+        return jsonify({"error": str(e)}), 500
+ 
+ 
+@app.route('/service_history', methods=['GET'])
+def service_history():
+    """查詢服務歷史（調試 + 論文數據用）"""
+    try:
+        user_id = request.args.get("user_id")
+        query   = {"user_id": user_id} if user_id else {}
+        proposals = list(
+            db.service_proposals.find(query, {"_id": 0})
+            .sort("created_at", -1).limit(50)
+        )
+        # 轉換 datetime
+        for p in proposals:
+            for k in ["created_at", "responded_at"]:
+                if k in p and hasattr(p[k], "isoformat"):
+                    p[k] = p[k].isoformat()
+ 
+        stats = list(db.intent_stats.find(query, {"_id": 0}))
+        return jsonify({
+            "proposals": proposals,
+            "intent_stats": stats,
+            "total": len(proposals),
+        }), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+ 
 
 @app.route('/interact/confirm', methods=['POST'])
 def interact_confirm():
@@ -658,10 +792,6 @@ def interact_confirm():
         print(f"[Confirm Error] {e}\n{traceback.format_exc()}")
         return jsonify({"error": str(e)}), 500
 
-
-# ──────────────────────────────────────────────────────
-# 延遲載入（避免 circular import）
-# ──────────────────────────────────────────────────────
 from modules.interaction import InteractionEngine
 from modules.training_exporter import TrainingExporter
 
@@ -678,7 +808,7 @@ training_exporter = TrainingExporter(mongo_client)
 if __name__ == "__main__":
     host = getattr(CONFIG, 'FLASK_HOST', '0.0.0.0')
     port = int(getattr(CONFIG, 'FLASK_PORT', 5000))
-    print(f"\n🚀 Robot Brain Server on {host}:{port}")
+    print(f"\n Robot Brain Server on {host}:{port}")
     print(f"   SBERT device : cuda")
     print(f"   VLM model    : {CONFIG.VLM_MODEL}   ← perception")
     print(f"   LLM model    : {CONFIG.LLM_MODEL}  ← interaction/RAG")

@@ -25,16 +25,16 @@ CONFIG = Config
 # Ollama（llava-phi3 / Gemma3）：不需要改 code，
 #   只要確認 Ollama 有偵測到 GPU 即可（見下方說明）
 sbert_model = SentenceTransformer('paraphrase-MiniLM-L6-v2', device='cuda')
-print("✅ SBERT loaded on CUDA")
+print("SBERT loaded on CUDA")
 
 mongo_client = MongoClient(CONFIG.MONGO_URI)
 db           = mongo_client[CONFIG.DB_NAME]
 
 try:
     db.scene_snapshots.create_index([("pos", "2d")])
-    print("✅ MongoDB 2D Index ready")
+    print("MongoDB 2D Index ready")
 except Exception as e:
-    print(f"ℹ️ Index notice: {e}")
+    print(f" Index notice: {e}")
 
 perception = PerceptionEngine(
     ollama_url=CONFIG.OLLAMA_URL,
@@ -46,16 +46,9 @@ perception = PerceptionEngine(
 
 memory        = MemoryManager(mongo_client, embedding_model=sbert_model)
 vector_memory = VectorMemory()
-
-# ──────────────────────────────────────────────────────
-# Ollama 單執行緒鎖（GPU 模式仍建議保留，避免顯存衝突）
-# ──────────────────────────────────────────────────────
 _ollama_lock = threading.Lock()
 
 
-# ──────────────────────────────────────────────────────
-# 工具函式
-# ──────────────────────────────────────────────────────
 def preview_images(image_list, source_nodes, hint_user_id, activity):
     save_dir = "debug_images"
     os.makedirs(save_dir, exist_ok=True)
@@ -69,18 +62,13 @@ def preview_images(image_list, source_nodes, hint_user_id, activity):
             ts        = datetime.datetime.now().strftime("%H%M%S")
             node_name = source_nodes[i] if i < len(source_nodes) else f"img_{i}"
             cv2.imwrite(f"{save_dir}/{ts}_{hint_user_id}_{activity}_{node_name}.jpg", frame)
-            print(f"📸 [Saved] {ts}_{hint_user_id}_{activity}_{node_name}.jpg")
+            print(f" [Saved] {ts}_{hint_user_id}_{activity}_{node_name}.jpg")
         except Exception as e:
             print(f"⚠️ [Preview Skip] {e}")
 
 
 def log_eval(experiment, ground_truth, vlm_output, bound_label,
              user_id, room, vlm_ms, binding_results=None):
-    """
-    實驗一、二自動記錄到 eval_logs collection。
-    binding_results: dict，供實驗二記錄三種綁定方法結果
-      { "method_a": label, "method_b": label, "method_c": label }
-    """
     doc = {
         "experiment":      experiment,
         "ground_truth":    ground_truth,
@@ -97,9 +85,6 @@ def log_eval(experiment, ground_truth, vlm_output, bound_label,
     db["eval_logs"].insert_one(doc)
 
 
-# ──────────────────────────────────────────────────────
-# /predict  主感知路由
-# ──────────────────────────────────────────────────────
 @app.route('/predict', methods=['POST'])
 def predict():
     try:
@@ -137,7 +122,7 @@ def predict():
 
         data['room_name'] = room_name
 
-        # ── VLM 推理（計時供 eval_logs）──
+
         acquired = _ollama_lock.acquire(timeout=180)
         t0 = time.time()
         try:
@@ -180,7 +165,7 @@ def predict():
         )
         print(f"[Bind] '{vlm_object}' -> '{final_bound_label}'")
 
-        # ── 實驗一、二自動記錄 ──────────────────────
+
         log_eval(
             experiment   = "exp1_exp2",
             ground_truth = activity,       # Unity ground truth
@@ -190,7 +175,7 @@ def predict():
             room         = room_name,
             vlm_ms       = vlm_ms,
         )
-        # ──────────────────────────────────────────
+
 
         furniture_pos = None
         mongo_id      = None
