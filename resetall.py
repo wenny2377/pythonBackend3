@@ -2,26 +2,22 @@
 reset_all.py
 開發用完全重置腳本
 執行方式：python reset_all.py
-不依賴 Config，直接硬寫連線，確保一定能清到正確的 DB
 """
 
 import os
 import shutil
 from pymongo import MongoClient
 
-# ── 直接寫死，不依賴 Config（避免 DB_NAME 對不上）──
 MONGO_URI = "mongodb://127.0.0.1:27017/"
-DB_NAME   = "robot_rag_db"   # ← 確認這個跟你 MongoDB 裡的名稱一致
+DB_NAME   = "robot_rag_db"
 
 client = MongoClient(MONGO_URI)
 
-# 先印出所有 DB，確認名稱
 print("\n📋 MongoDB 現有資料庫：", client.list_database_names())
 print(f"🎯 目標 DB：{DB_NAME}\n")
 
 db = client[DB_NAME]
 
-# 印出現有 collections 和筆數
 print("📊 清除前各 collection 筆數：")
 for col_name in db.list_collection_names():
     print(f"  [{col_name}] {db[col_name].count_documents({})} 筆")
@@ -39,6 +35,11 @@ cols = [
     "scene_snapshots",
     "semantic_memories",
     "navigation_logs",
+    # ── 新增：Manifold 相關 ──
+    "manifold_points",
+    "behavior_clusters",
+    "service_proposals",
+    "intent_stats",
 ]
 for col in cols:
     n = db[col].delete_many({}).deleted_count
