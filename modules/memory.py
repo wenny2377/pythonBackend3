@@ -310,10 +310,7 @@ class MemoryManager:
 
         return "Unknown_ID", "Unknown_Area", None
 
-    # ─────────────────────────────────────────────
-    # SBERT 語意重排（近距離候選中挑最語意相近的）
-    # 語意×0.6 + 距離×0.4
-    # ─────────────────────────────────────────────
+
     def _semantic_rerank(self, vlm_label, nearby_list):
         max_dist   = max(d for _, d in nearby_list) + 1e-8
         query_vec  = self.model.encode(vlm_label)

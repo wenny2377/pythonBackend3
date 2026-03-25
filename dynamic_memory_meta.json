@@ -1,0 +1,154 @@
+[
+  {
+    "label": "user_mom",
+    "room": "",
+    "last_seen_on": "unknown",
+    "spatial_rel": "near",
+    "furniture_pos": [
+      3.46,
+      3.24
+    ],
+    "seen_count": 725,
+    "interact_count": 0,
+    "interacted_by": [],
+    "memory_text": "user_mom near unknown in . seen 725 times. interacted 0 times.",
+    "timestamp": "2026-03-25T10:19:07.331807",
+    "faiss_idx": 0
+  },
+  {
+    "label": "user_dad",
+    "room": "",
+    "last_seen_on": "unknown",
+    "spatial_rel": "near",
+    "furniture_pos": [
+      1.05,
+      3.24
+    ],
+    "seen_count": 457,
+    "interact_count": 0,
+    "interacted_by": [],
+    "memory_text": "user_dad near unknown in . seen 457 times. interacted 0 times.",
+    "timestamp": "2026-03-25T10:19:26.523166",
+    "faiss_idx": 1
+  },
+  {
+    "label": "apple",
+    "room": "Kitchen",
+    "last_seen_on": "table",
+    "spatial_rel": "above",
+    "furniture_pos": [
+      1.97,
+      2.29
+    ],
+    "seen_count": 8,
+    "interact_count": 0,
+    "interacted_by": [],
+    "memory_text": "apple above table in Kitchen. seen 8 times. interacted 0 times.",
+    "timestamp": "2026-03-25T10:17:15.885711",
+    "faiss_idx": 38
+  },
+  {
+    "label": "banana",
+    "room": "LivingRoom",
+    "last_seen_on": "table",
+    "spatial_rel": "above",
+    "furniture_pos": [
+      1.97,
+      2.29
+    ],
+    "seen_count": 15,
+    "interact_count": 2,
+    "interacted_by": [
+      "User_Dad"
+    ],
+    "memory_text": "banana above table in LivingRoom. seen 15 times. interacted 2 times. used by User_Dad.",
+    "timestamp": "2026-03-25T10:18:00.690914",
+    "faiss_idx": 36
+  },
+  {
+    "label": "computer set",
+    "room": "LivingRoom",
+    "last_seen_on": "table",
+    "spatial_rel": "below",
+    "furniture_pos": [
+      1.97,
+      2.29
+    ],
+    "seen_count": 16,
+    "interact_count": 0,
+    "interacted_by": [],
+    "memory_text": "computer set below table in LivingRoom. seen 16 times. interacted 0 times.",
+    "timestamp": "2026-03-25T10:17:50.485710",
+    "faiss_idx": 37
+  },
+  {
+    "label": "ball",
+    "room": "LivingRoom",
+    "last_seen_on": "User_Mom",
+    "spatial_rel": "held_by",
+    "furniture_pos": [
+      1.97,
+      2.29
+    ],
+    "seen_count": 8,
+    "interact_count": 4,
+    "interacted_by": [
+      "User_Mom"
+    ],
+    "memory_text": "ball held_by User_Mom in LivingRoom. seen 8 times. interacted 4 times. used by User_Mom.",
+    "timestamp": "2026-03-25T10:18:30.750398",
+    "faiss_idx": 40
+  },
+  {
+    "label": "remote",
+    "room": "LivingRoom",
+    "last_seen_on": "table",
+    "spatial_rel": "above",
+    "furniture_pos": [
+      1.97,
+      2.29
+    ],
+    "seen_count": 6,
+    "interact_count": 1,
+    "interacted_by": [
+      "User_Mom"
+    ],
+    "memory_text": "remote above table in LivingRoom. seen 6 times. interacted 1 times. used by User_Mom.",
+    "timestamp": "2026-03-25T10:19:22.383036",
+    "faiss_idx": 41
+  },
+  {
+    "label": "hand",
+    "room": "LivingRoom",
+    "last_seen_on": "User_Dad",
+    "spatial_rel": "held_by",
+    "furniture_pos": [
+      1.97,
+      2.29
+    ],
+    "seen_count": 1,
+    "interact_count": 1,
+    "interacted_by": [
+      "User_Dad"
+    ],
+    "memory_text": "hand held_by User_Dad in LivingRoom. seen 1 times. interacted 1 times. used by User_Dad.",
+    "timestamp": "2026-03-25T09:59:24.750334",
+    "faiss_idx": 21
+  },
+  {
+    "label": "black bench",
+    "room": "LivingRoom",
+    "last_seen_on": "table",
+    "spatial_rel": "next to",
+    "furniture_pos": [
+      1.97,
+      2.29
+    ],
+    "seen_count": 1,
+    "interact_count": 0,
+    "interacted_by": [],
+    "memory_text": "black bench next to table in LivingRoom. seen 1 times. interacted 0 times.",
+    "timestamp": "2026-03-25T10:19:16.748109",
+    "faiss_idx": 42
+  }
+]

@@ -381,63 +381,65 @@ def set_virtual_hour():
         return jsonify({"error": str(e)}), 500
 
 
-# ──────────────────────────────────────────────────────
-# /exp_checkpoint
-# ──────────────────────────────────────────────────────
-@app.route('/exp_checkpoint', methods=['GET'])
+@app.route('/exp_checkpoint', methods=['GET', 'POST'])
 def exp_checkpoint():
     try:
-        experiment = request.args.get('experiment', '')
-        step       = request.args.get('step', 0, type=int)
-        day        = request.args.get('day', 0, type=int)
-        user       = request.args.get('user', 'User_Mom')
-        action     = request.args.get('action', 'drinking')
-
+        # ── 同時支援 GET（舊版）和 POST（ExperimentRunner 新版）──
+        if request.method == 'POST':
+            body       = request.get_json(force=True, silent=True) or {}
+            episode    = body.get('episode', 0)
+            user_id    = body.get('user_id', 'User_Mom')
+            action     = body.get('action', 'Drink')
+            experiment = 'experiment2'          # 論文 Experiment 2
+        else:
+            experiment = request.args.get('experiment', 'experiment2')
+            episode    = request.args.get('step', 0, type=int)
+            user_id    = request.args.get('user', 'User_Mom')
+            action     = request.args.get('action', 'Drink')
+ 
+        # ── 查 observation_logs 的 habit weight ──
+        obs = db.observation_logs.find_one(
+            {"user": user_id, "action": {"$regex": action, "$options": "i"}},
+            sort=[("weight", -1)]
+        )
+        weight = obs["weight"] if obs else 0
+ 
+        # ── 查 FAISS cosine similarity ──
+        similarity = 0.0
+        try:
+            query   = f"{user_id} {action}"
+            results = vector_memory.search_habit(query, user_id=user_id, top_k=1)
+            if results:
+                similarity = float(results[0].get("similarity", 0.0))
+        except Exception as fe:
+            print(f"[Checkpoint] FAISS query skipped: {fe}")
+ 
+        # ── 寫入 exp_checkpoint_logs（analyze_exp2.py 讀這個）──
         checkpoint_doc = {
             "experiment": experiment,
-            "step":       step,
-            "day":        day,
-            "timestamp":  datetime.datetime.now(),
+            "episode":    episode,
+            "user_id":    user_id,
+            "action":     action,
+            "weight":     weight,
+            "similarity": round(similarity, 4),
+            "timestamp":  datetime.datetime.utcnow(),
         }
-
-        if experiment == "exp3a":
-            obs = db.observation_logs.find_one(
-                {"user": user, "action": action},
-                sort=[("weight", -1)]
-            )
-            weight = obs["weight"] if obs else 0
-
-            similarity = 0.0
-            try:
-                results    = vector_memory.search_habit(f"{user} {action}", user_id=user, top_k=1)
-                similarity = float(results[0].get("similarity", 0.0)) if results else 0.0
-            except Exception as fe:
-                print(f"[Checkpoint] FAISS skipped: {fe}")
-
-            checkpoint_doc.update({
-                "user":       user,
-                "action":     action,
-                "weight":     weight,
-                "similarity": round(similarity, 4),
-            })
-            print(f"[Checkpoint Exp3A] step={step} weight={weight} sim={similarity:.4f}")
-
-        elif experiment == "exp3b":
-            try:
-                pipeline = [
-                    {"$match": {"timestamp": {"$gte": datetime.datetime.now() - datetime.timedelta(hours=2)}}},
-                    {"$group": {"_id": {"user": "$user", "action": "$action"}, "count": {"$sum": 1}}}
-                ]
-                today_obs_raw = list(db.observation_logs.aggregate(pipeline))
-                today_obs = [{"user": r["_id"].get("user",""), "action": r["_id"].get("action",""), "count": r["count"]} for r in today_obs_raw]
-                print(f"[Checkpoint Exp3B] day={day} obs={len(today_obs)}")
-            except Exception as pe:
-                print(f"[Checkpoint Exp3B] aggregate skipped: {pe}")
-                checkpoint_doc["today_observations"] = []
-
-        db["exp_checkpoints"].insert_one(checkpoint_doc)
-        return jsonify({"status": "ok", "checkpoint": checkpoint_doc}), 200
-
+        db["exp_checkpoint_logs"].insert_one(checkpoint_doc)
+ 
+        print(f"[Checkpoint] {experiment} ep={episode} "
+              f"user={user_id} action={action} "
+              f"weight={weight} sim={similarity:.4f}")
+ 
+        return jsonify({
+            "status":     "ok",
+            "experiment": experiment,
+            "episode":    episode,
+            "user_id":    user_id,
+            "action":     action,
+            "weight":     weight,
+            "similarity": round(similarity, 4),
+        }), 200
+ 
     except Exception as e:
         print(f"[Checkpoint Error] {e}")
         return jsonify({"error": str(e)}), 500

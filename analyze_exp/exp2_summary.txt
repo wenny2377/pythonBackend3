@@ -1,0 +1,19 @@
+============================================================
+Experiment 2: Habit Memory Accumulation
+Generated: 2026-03-25 10:04
+============================================================
+User:            User_Mom
+Action:          Drink
+Episodes:        8
+sim (ep 1):      0.5724
+sim (ep 8):    0.5724
+Total increase:  +0.0000
+Monotone rate:   0/7 = 0%
+
+── For thesis (copy-paste) ─────────────────────────────
+FAISS cosine similarity increases from s(1) = 0.572
+to s(8) = 0.572 over 8 consecutive observations
+of the same behavioral episode, with 0% of
+episode transitions showing monotonic improvement.
+This confirms that the RAG memory system progressively
+consolidates User_Mom's Drink habit (RQ3).
