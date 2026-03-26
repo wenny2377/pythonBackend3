@@ -37,28 +37,91 @@ BEHAVIOR_LABELS = [
 ]
 
 NORMALIZE_MAP = {
-    "drinking":   "Drink",    "drink":      "Drink",
-    "sitting":    "SittingIdle", "sit":     "SittingIdle", "sittingidle": "SittingIdle",
-    "reading":    "Reading",  "read":       "Reading",
-    "typing":     "Typing",   "type":       "Typing",
-    "watching":   "Watching", "watch":      "Watching",
-    "sleeping":   "Sleeping", "sleep":      "Sleeping", "lying": "Sleeping",
-    "eating":     "Eating",   "eat":        "Eating",
-    "exercising": "Exercising","exercise":  "Exercising",
-    "walking":    "Walking",  "walk":       "Walking",
-    "standing":   "Standing", "stand":      "Standing",
+    "drink":"Drink",        "drinking":"Drink",
+    "sit":"SittingIdle",    "sitting":"SittingIdle",   "sittingidle":"SittingIdle",
+    "read":"Reading",       "reading":"Reading",
+    "type":"Typing",        "typing":"Typing",
+    "watch":"Watching",     "watching":"Watching",
+    "sleep":"Sleeping",     "sleeping":"Sleeping",     "lying":"Sleeping",
+    "eat":"Eating",         "eating":"Eating",
+    "exercise":"Exercising","exercising":"Exercising",
+    "walk":"Walking",       "walking":"Walking",
+    "stand":"Standing",     "standing":"Standing",
+}
+
+# Clean labels stored by new app.py (SBERT-normalized)
+CLEAN_LABELS = set(NORMALIZE_MAP.values())
+
+# Contextual keyword hints — same priority order as app.py
+# Handles raw VLM strings still in eval_logs from before the fix
+_KEYWORD_HINTS = [
+    ("laptop",     "Typing"),
+    ("computer",   "Typing"),
+    ("keyboard",   "Typing"),
+    ("working",    "Typing"),
+    ("typing",     "Typing"),
+    ("book",       "Reading"),
+    ("magazine",   "Reading"),
+    ("reading",    "Reading"),
+    ("bottle",     "Drink"),
+    ("drinking",   "Drink"),
+    ("cup",        "Drink"),
+    ("sipping",    "Drink"),
+    ("juice",      "Drink"),
+    ("couch",      "SittingIdle"),
+    ("sofa",       "SittingIdle"),
+    ("resting",    "SittingIdle"),
+    ("television", "Watching"),
+    ("screen",     "Watching"),
+    ("looking",    "Watching"),
+]
+
+_SKIP_FIRST = {
+    "a", "an", "the", "person", "man", "woman",
+    "user", "someone", "he", "she", "they", "two",
 }
 
 def normalize(label: str) -> str:
+    """
+    Map a VLM output string to a canonical behavior label.
+    Mirrors the logic in app.py normalize_action_sbert() for consistency:
+      1. Already a clean label → pass-through
+      2. First-word exact match in NORMALIZE_MAP
+      3. First word is article/pronoun → check keyword hints, then scan words
+      4. Keyword hints scan (contextual)
+      5. Fallback: capitalize first word
+    """
     if not label:
         return "Unknown"
-    label = label.lower().strip()
-    if label in NORMALIZE_MAP:
-        return NORMALIZE_MAP[label]
-    for kw, mapped in NORMALIZE_MAP.items():
-        if kw in label:
-            return mapped
-    return label.capitalize()
+    s     = label.strip()
+    sl    = s.lower()
+    words = sl.split()
+    first = words[0] if words else ""
+
+    # 1. Already a clean label (stored by new app.py)
+    if s in CLEAN_LABELS:
+        return s
+
+    # 2. First-word exact match
+    if first in NORMALIZE_MAP:
+        return NORMALIZE_MAP[first]
+
+    # 3. First word is meaningless — contextual hints take priority
+    if first in _SKIP_FIRST:
+        for kw, lbl in _KEYWORD_HINTS:
+            if kw in sl:
+                return lbl
+        for word in words[1:]:
+            if word in NORMALIZE_MAP:
+                return NORMALIZE_MAP[word]
+
+    # 4. Contextual hints for all other cases
+    for kw, lbl in _KEYWORD_HINTS:
+        if kw in sl:
+            return lbl
+
+    # 5. Fallback
+    return first.capitalize() if first else "Unknown"
 
 # ── Load data ──────────────────────────────────────────────────────────────
 def load_eval_logs(db, query=None):

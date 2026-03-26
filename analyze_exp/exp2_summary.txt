@@ -1,19 +1,19 @@
 =================================================================
 Experiment 2: Behavioral Scene Graph Construction
-Generated: 2026-03-26 15:08
+Generated: 2026-03-26 15:31
 =================================================================
 
 -- Graph Statistics --
 Total nodes : 26
   Users     : 2
   Behaviors : 6
-  Furniture : 11
-  Objects   : 7
-Total edges : 39
-  performs    : 10
-  near        : 11
-  has_item    : 15
-  in_hand_of  : 3
+  Furniture : 12
+  Objects   : 6
+Total edges : 32
+  performs    : 9
+  near        : 10
+  has_item    : 12
+  in_hand_of  : 1
 
 -- Query Validation (dynamic, from actual DB data) --
 Total queries       : 12
@@ -24,23 +24,23 @@ Overall Top-3 Recall: 100%
 
 Per-query results:
   v  User_Mom watching                        -> sofa            [rank=2, sim=0.622]
-  v  User_Dad typing                          -> desk            [rank=2, sim=0.700]
+  v  User_Dad standing                        -> table2          [rank=2, sim=0.669]
+  v  User_Mom the person is sitting on a sofa and holding a book -> sofa            [rank=1, sim=0.908]
   v  User_Mom sittingidle                     -> sofa            [rank=2, sim=0.700]
-  v  User_Dad watching                        -> table2          [rank=2, sim=0.640]
   v  watching near sofa                       -> sofa            [rank=1, sim=0.741]
-  v  typing near desk                         -> desk            [rank=1, sim=0.649]
+  v  standing near table2                     -> table2          [rank=1, sim=0.631]
+  v  the person is sitting on a sofa and holding a book near sofa -> sofa            [rank=1, sim=0.859]
   v  sittingidle near sofa                    -> sofa            [rank=1, sim=0.704]
-  v  watching near table2                     -> table2          [rank=1, sim=0.665]
-  v  apple on table                           -> apple           [rank=1, sim=0.822]
+  v  apple on table                           -> apple           [rank=1, sim=0.694]
   v  computer set on desk                     -> computer set    [rank=1, sim=0.666]
   v  remote on desk                           -> remote          [rank=1, sim=0.702]
-  v  book on sofa                             -> book            [rank=1, sim=0.721]
+  v  remote on sofa                           -> remote          [rank=1, sim=0.653]
 
 -- For thesis (copy-paste) --
 Following Experiment 1, the Robot Brain System successfully
 constructed a Behavioral Scene Graph comprising 26 nodes
-(2 users, 6 behaviors, 11 furniture items,
-7 objects) and 39 typed relational edges across
+(2 users, 6 behaviors, 12 furniture items,
+6 objects) and 32 typed relational edges across
 four relation categories (performs, near, has_item, in_hand_of).
 FAISS semantic retrieval was evaluated on 12 queries
 generated directly from the system's stored memories, covering

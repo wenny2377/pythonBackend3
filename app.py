@@ -260,7 +260,7 @@ def predict():
 
         final_bound_label = memory.bind_and_update(
             user_id           = user_id,
-            action            = action,
+            action            = action_label,   # normalized label, not raw VLM output
             est_pos           = est_pos,
             vlm_description   = vlm_desc,
             detected_items    = detected_items,
@@ -271,11 +271,12 @@ def predict():
         )
         print(f"[Bind] '{vlm_object}' -> '{final_bound_label}'")
 
-        # log_eval keeps raw VLM output for Exp1 accuracy calculation
+        # log_eval: keep raw VLM output as vlm_output for Exp1 F1 calculation
+        # action_label is stored separately so Exp2 graph reads clean labels
         log_eval(
             experiment   = "exp1_exp2",
             ground_truth = activity,
-            vlm_output   = action,
+            vlm_output   = action,              # raw output for F1 comparison
             bound_label  = final_bound_label,
             user_id      = user_id,
             room         = room_name,
@@ -297,7 +298,7 @@ def predict():
 
             vector_memory.add_memory(
                 user_id           = user_id,
-                action            = action,
+                action            = action_label,   # normalized label stored in semantic_memories
                 furniture_label   = final_bound_label,
                 vlm_description   = f"{vlm_desc} {spatial_text}".strip(),
                 detected_items    = detected_items,

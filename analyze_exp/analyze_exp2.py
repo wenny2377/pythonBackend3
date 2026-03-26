@@ -81,7 +81,11 @@ EDGE_COLORS = {
 }
 
 # ── Action normalization ───────────────────────────────────────────────────
-_NORM_MAP = {
+# app.py now stores action_label (SBERT-normalized) directly into
+# semantic_memories.action, so no post-processing is needed here.
+# This function is kept only as a lightweight safety net for legacy data
+# that may still contain raw VLM strings.
+_LEGACY_MAP = {
     "drink":"Drink",       "drinking":"Drink",
     "sit":"SittingIdle",   "sitting":"SittingIdle",  "sittingidle":"SittingIdle",
     "read":"Reading",      "reading":"Reading",
@@ -92,82 +96,19 @@ _NORM_MAP = {
     "stand":"Standing",    "standing":"Standing",
 }
 
-# Contextual keyword hints — scanned when first-word lookup fails
-# Handles VLM descriptions like "a man working on his laptop" → Typing
-# ORDER MATTERS: more specific hints must come before generic ones.
-# Use an ordered list of (keyword, label) pairs instead of a dict.
-_KEYWORD_HINTS = [
-    # Typing — check laptop/computer/keyboard BEFORE sitting
-    ("laptop",     "Typing"),
-    ("computer",   "Typing"),
-    ("keyboard",   "Typing"),
-    ("working",    "Typing"),
-    ("typing",     "Typing"),
-    # Reading
-    ("book",       "Reading"),
-    ("magazine",   "Reading"),
-    ("reading",    "Reading"),
-    # Drink
-    ("bottle",     "Drink"),
-    ("drinking",   "Drink"),
-    ("cup",        "Drink"),
-    ("sipping",    "Drink"),
-    ("juice",      "Drink"),
-    # SittingIdle — after Typing/Reading so "sitting at desk" → Typing
-    ("couch",      "SittingIdle"),
-    ("sofa",       "SittingIdle"),
-    ("resting",    "SittingIdle"),
-    # Watching
-    ("television", "Watching"),
-    ("screen",     "Watching"),
-]
-
-# First words that carry no behavioral meaning (articles, pronouns, etc.)
-_SKIP_FIRST = {
-    "a", "an", "the", "person", "man", "woman",
-    "user", "someone", "he", "she", "they", "i",
-}
-
 def _normalize_action(a: str) -> str:
     """
-    Map a raw VLM free-text description to a canonical behavior label.
-
-    1. Exact first-word match in _NORM_MAP  (fast path)
-    2. If first word is an article/pronoun, scan remaining words in _NORM_MAP
-    3. Scan full sentence for contextual keyword hints
-    4. Fallback: capitalize first word
+    Pass-through for clean labels stored by the new app.py.
+    Falls back to first-word lookup only for legacy raw VLM strings.
     """
     if not a:
         return "unknown"
-    s     = a.lower().strip()
-    words = s.split()
-    first = words[0] if words else ""
-
-    # 1. Fast path: first word is a known action keyword
-    if first in _NORM_MAP:
-        return _NORM_MAP[first]
-
-    # 2. First word is meaningless — scan the rest of the sentence
-    # But first check if contextual hints override (e.g. "sitting at desk
-    # working on laptop" should be Typing, not SittingIdle)
-    if first in _SKIP_FIRST:
-        # Step 2a: check contextual hints first (higher specificity)
-        for kw, label in _KEYWORD_HINTS:
-            if kw in s:
-                return label
-        # Step 2b: fall back to scanning remaining words in _NORM_MAP
-        for word in words[1:]:
-            if word in _NORM_MAP:
-                return _NORM_MAP[word]
-
-    # 3. Contextual hints for sentences where first word IS a known action
-    # but context provides stronger signal (rare case)
-    for kw, label in _KEYWORD_HINTS:
-        if kw in s:
-            return label
-
-    # 4. Fallback
-    return first.capitalize() if first else "unknown"
+    # Already a clean label (stored by new app.py)
+    if a in _LEGACY_MAP.values():
+        return a
+    # Legacy fallback: try first-word lookup
+    first = a.lower().strip().split()[0]
+    return _LEGACY_MAP.get(first, a)
 
 
 # ── Step 0: Dynamic query generation ──────────────────────────────────────
