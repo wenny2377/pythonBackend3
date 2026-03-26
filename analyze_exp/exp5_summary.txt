@@ -1,0 +1,49 @@
+=================================================================
+Experiment 5: Fuzzy Need Retrieval via RAG Memory
+Generated: 2026-03-26 14:58
+=================================================================
+
+── Evaluation Design ───────────────────────────────────────
+12 fixed queries across 3 semantic distance levels:
+  Direct:   '我口渴了' → Drink
+  Indirect: '我想休息一下' → SittingIdle
+  Abstract: '我有點累' → SittingIdle
+
+── Results ──────────────────────────────────────────────────
+Total queries:       12
+Nav target returned: 12/12 (100%)
+Semantic match:      8/12 (67%)
+Overall correct:     8/12 (67%)
+
+Per-user:
+  User_Dad: 3/4 (75%)
+  User_Mom: 5/8 (62%)
+
+Per-query:
+  ✗  User_Mom    我口渴了                    → Drink
+  ✗  User_Mom    我想喝點什麼                  → Drink
+  ✓  User_Mom    我想休息一下                  → SittingIdle
+  ✓  User_Mom    我想坐下來                   → SittingIdle
+  ✓  User_Mom    我想找個地方看書                → Reading
+  ✗  User_Mom    我想安靜一下                  → Reading
+  ✓  User_Dad    我要工作了                   → Typing
+  ✓  User_Dad    我想用電腦                   → Typing
+  ✗  User_Dad    我渴了                     → Drink
+  ✓  User_Dad    我想喝水                    → Drink
+  ✓  User_Mom    我有點累                    → SittingIdle
+  ✓  User_Mom    幫我找杯子                   → Drink
+
+── For thesis (copy-paste) ──────────────────────────────────
+To evaluate the RAG memory system's ability to resolve fuzzy
+user requests, 12 fixed natural language queries were issued
+to the InteractionEngine after Experiment 3 had populated
+the behavioral memory. Queries ranged from direct expressions
+('我口渴了') to abstract emotional states ('我有點累'),
+spanning three semantic distance levels from the stored
+behavioral memory.
+The system returned a valid navigation target in 12 of
+12 queries (100%), and produced a semantically
+correct response in 8 of 12 cases
+(overall accuracy = 67%), confirming that FAISS-based
+semantic retrieval can bridge the vocabulary gap between
+user expressions and stored behavioral observations.

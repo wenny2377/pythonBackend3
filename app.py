@@ -22,9 +22,6 @@ from modules.service_proposal  import ServiceProposalEngine
 app    = Flask(__name__)
 CONFIG = Config
 
-# ──────────────────────────────────────────────────────
-# GPU 設定
-# ──────────────────────────────────────────────────────
 sbert_model = SentenceTransformer('paraphrase-MiniLM-L6-v2', device='cuda')
 print(" SBERT loaded on CUDA")
 
@@ -65,21 +62,69 @@ proposal_engine = ServiceProposalEngine(
 
 _ollama_lock = threading.Lock()
 
-# ── Action 正規化表：VLM 自由描述第一個單字 → 分類標籤 ──────────
-ACTION_NORMALIZE = {
-    "drink":     "Drink",       "drinking":   "Drink",
-    "sit":       "SittingIdle", "sitting":    "SittingIdle",
-    "read":      "Reading",     "reading":    "Reading",
-    "type":      "Typing",      "typing":     "Typing",
-    "watch":     "Watching",    "watching":   "Watching",
-    "sleep":     "Sleeping",    "sleeping":   "Sleeping",
-    "eat":       "Eating",      "eating":     "Eating",
-    "stand":     "Standing",    "standing":   "Standing",
-    "exercise":  "Exercising",  "exercising": "Exercising",
-    "cook":      "Cooking",     "cooking":    "Cooking",
-    "walk":      "Walking",     "walking":    "Walking",
-    "lying":     "Sleeping",    "lie":        "Sleeping",
+# ── SBERT-based action normalization ─────────────────────────────────────────
+# Prototype descriptions for each behavioral label.
+# SBERT encodes the VLM free-text output and finds the closest prototype.
+# No keyword rules — purely semantic similarity.
+BEHAVIOR_PROTOTYPES = {
+    "Drink":       "a person drinking, holding a bottle or cup, sipping a beverage",
+    "SittingIdle": "a person sitting still, resting, idle on a sofa or chair",
+    "Reading":     "a person reading a book, holding a book, looking at pages",
+    "Typing":      "a person typing on a keyboard, working at a computer or laptop",
+    "Watching":    "a person watching television, looking at a screen or monitor",
+    "Standing":    "a person standing still, not doing anything specific",
+    "Walking":     "a person walking, moving across the room",
+    "Sleeping":    "a person sleeping, lying down, resting on a bed",
+    "Eating":      "a person eating food, having a meal",
 }
+
+_proto_vecs   = None   # cached on first call
+_proto_labels = list(BEHAVIOR_PROTOTYPES.keys())
+
+def _get_proto_vecs():
+    """Encode prototype descriptions once and cache."""
+    global _proto_vecs
+    if _proto_vecs is None:
+        import torch
+        _proto_vecs = sbert_model.encode(
+            list(BEHAVIOR_PROTOTYPES.values()),
+            normalize_embeddings=True,
+            convert_to_tensor=True,
+        )
+        print(f"[SBERT Norm] Prototype vectors built ({len(_proto_labels)} classes)")
+    return _proto_vecs
+
+def normalize_action_sbert(raw: str, threshold: float = 0.35) -> str:
+    """
+    Map VLM free-text output to a canonical behavior label using SBERT.
+
+    - Computes cosine similarity between the VLM description and each
+      BEHAVIOR_PROTOTYPES entry.
+    - Returns the label of the closest prototype if sim >= threshold.
+    - Falls back to the raw string if no prototype is close enough
+      (handles unknown behaviors gracefully).
+    - threshold=0.35 is conservative; typical sim for correct matches
+      is 0.45–0.75.
+    """
+    if not raw or raw.strip() in ("", "none"):
+        return "unknown"
+
+    import torch
+    q_vec      = sbert_model.encode(
+        [raw], normalize_embeddings=True, convert_to_tensor=True
+    )
+    sims       = torch.nn.functional.cosine_similarity(q_vec, _get_proto_vecs())
+    best_idx   = int(sims.argmax())
+    best_sim   = float(sims[best_idx])
+    best_label = _proto_labels[best_idx]
+
+    if best_sim >= threshold:
+        print(f"[SBERT Norm] '{raw[:60]}' → '{best_label}' (sim={best_sim:.3f})")
+        return best_label
+    else:
+        print(f"[SBERT Norm] '{raw[:60]}' → fallback "
+              f"(best={best_label} sim={best_sim:.3f} < {threshold})")
+        return raw
 
 
 def preview_images(image_list, source_nodes, hint_user_id, activity):
@@ -97,7 +142,7 @@ def preview_images(image_list, source_nodes, hint_user_id, activity):
             cv2.imwrite(f"{save_dir}/{ts}_{hint_user_id}_{activity}_{node_name}.jpg", frame)
             print(f" [Saved] {ts}_{hint_user_id}_{activity}_{node_name}.jpg")
         except Exception as e:
-            print(f"⚠️ [Preview Skip] {e}")
+            print(f"[Preview Skip] {e}")
 
 
 def _wait_for_scene(max_wait: float = 12.0, poll: float = 1.0):
@@ -109,7 +154,7 @@ def _wait_for_scene(max_wait: float = 12.0, poll: float = 1.0):
         print(f"    [WaitScene] scene_snapshots empty, waited {waited:.0f}s...")
         _time.sleep(poll)
         waited += poll
-    print("   ⚠️  [WaitScene] Timeout, proceeding without scene data")
+    print("   [WaitScene] Timeout, proceeding without scene data")
 
 
 def log_eval(experiment, ground_truth, vlm_output, bound_label,
@@ -129,6 +174,7 @@ def log_eval(experiment, ground_truth, vlm_output, bound_label,
         doc["binding_results"] = binding_results
     db["eval_logs"].insert_one(doc)
 
+
 @app.route('/predict', methods=['POST'])
 def predict():
     try:
@@ -143,7 +189,7 @@ def predict():
         source_nodes = data.get('source_nodes', [])
         image_count  = data.get('image_count', len(image_list))
         room_name    = data.get('room_name', '')
-        virtual_hour = data.get('virtual_hour')   # ← Exp4 時段
+        virtual_hour = data.get('virtual_hour')
 
         if not room_name and source_nodes:
             first_node = source_nodes[0]
@@ -187,17 +233,20 @@ def predict():
         vlm_ms = int((time.time() - t0) * 1000)
 
         user_id        = perception_res["user"]
-        action         = perception_res["action"]          # VLM 原始輸出，保留給 log_eval
+        action         = perception_res["action"]   # raw VLM output, kept for log_eval
         detected_items = perception_res["items"]
         all_items      = perception_res["all_items"]
         spatial_rels   = perception_res["spatial"]
         vlm_desc       = perception_res["result"].get("context", "Observed behavior.")
         vlm_object     = perception_res["bound_instance"]
 
-        # ── Action 正規化：VLM 自由描述 → 分類標籤 ──────────────
-        _first_word  = action.lower().split()[0] if action else "none"
-        action_label = ACTION_NORMALIZE.get(_first_word, action)
-        print(f"[VLM] action='{action}' → label='{action_label}' | object={vlm_object} | {vlm_ms}ms")
+        # ── Action normalization: SBERT semantic matching ─────────────────
+        # Replaces the old first-word lookup table (ACTION_NORMALIZE).
+        # normalize_action_sbert handles full VLM sentences such as
+        # "man sitting at a desk working on his laptop" → "Typing"
+        action_label = normalize_action_sbert(action)
+        print(f"[VLM] action='{action}' → label='{action_label}' "
+              f"| object={vlm_object} | {vlm_ms}ms")
 
         if action == "none":
             print("[Skip] VLM no valid action")
@@ -211,7 +260,7 @@ def predict():
 
         final_bound_label = memory.bind_and_update(
             user_id           = user_id,
-            action            = action,           # 保留原始 action 給 memory
+            action            = action,
             est_pos           = est_pos,
             vlm_description   = vlm_desc,
             detected_items    = detected_items,
@@ -222,7 +271,7 @@ def predict():
         )
         print(f"[Bind] '{vlm_object}' -> '{final_bound_label}'")
 
-        # log_eval 用原始 action（為了 Exp1 VLM 準確率計算）
+        # log_eval keeps raw VLM output for Exp1 accuracy calculation
         log_eval(
             experiment   = "exp1_exp2",
             ground_truth = activity,
@@ -248,7 +297,7 @@ def predict():
 
             vector_memory.add_memory(
                 user_id           = user_id,
-                action            = action,       # 保留原始 action
+                action            = action,
                 furniture_label   = final_bound_label,
                 vlm_description   = f"{vlm_desc} {spatial_text}".strip(),
                 detected_items    = detected_items,
@@ -278,7 +327,7 @@ def predict():
 
         print(f"[Done] {user_id} @ {final_bound_label} -> {action_label} | {vlm_ms}ms")
 
-        # ── Manifold：特徵向量 → 記錄 → 預判 ──────────────────────
+        # ── Manifold: feature vector → record → intent prediction ─────────
         manifold_point_id = ""
         intent_prediction = {"trigger": False, "intent": "unknown", "confidence": 0.0}
         has_proposal      = False
@@ -286,7 +335,6 @@ def predict():
         try:
             confidence_str = perception_res.get("result", {}).get("confidence", "unknown")
 
-            # ── 取得前一個行為（序列上下文）──
             prev_doc = db.manifold_points.find_one(
                 {"user_id": user_id},
                 sort=[("timestamp", -1)]
@@ -294,7 +342,6 @@ def predict():
             prev_action_label = prev_doc.get("action", "unknown") if prev_doc else "unknown"
             print(f"[Manifold] prev_action='{prev_action_label}'")
 
-            # 1. 建特徵向量（含時間編碼 + 序列上下文）
             feature_vec = manifold_engine.build_feature_vector(
                 user_id        = user_id,
                 action         = action_label,
@@ -302,30 +349,26 @@ def predict():
                 room_name      = room_name,
                 detected_items = detected_items,
                 confidence     = confidence_str,
-                virtual_hour   = virtual_hour,        # ← 時間編碼
-                prev_action    = prev_action_label,   # ← 序列上下文
+                virtual_hour   = virtual_hour,
+                prev_action    = prev_action_label,
             )
 
-            # 2. 記錄到 manifold_points
             manifold_point_id = manifold_engine.record_point(
                 user_id      = user_id,
                 feature_vec  = feature_vec,
                 action       = action_label,
                 bound_label  = final_bound_label,
                 virtual_hour = virtual_hour,
-                prev_action  = prev_action_label,     # ← 新增
+                prev_action  = prev_action_label,
             )
 
-            # 3. 每 50 筆觸發非同步 refit
             manifold_engine.maybe_refit(user_id)
 
-            # 4. 預判意圖
             intent_prediction = manifold_engine.predict_intent(
                 user_id         = user_id,
                 current_feature = feature_vec,
             )
 
-            # 5. 觸發時請 ServiceProposalEngine 決策
             if intent_prediction.get("trigger"):
                 dynamic_results = vector_memory.search_dynamic(
                     action_label, top_k=5, user_filter=user_id
@@ -366,9 +409,6 @@ def predict():
         return jsonify({"error": str(e)}), 500
 
 
-# ──────────────────────────────────────────────────────
-# /set_virtual_hour
-# ──────────────────────────────────────────────────────
 @app.route('/set_virtual_hour', methods=['POST'])
 def set_virtual_hour():
     try:
@@ -384,27 +424,24 @@ def set_virtual_hour():
 @app.route('/exp_checkpoint', methods=['GET', 'POST'])
 def exp_checkpoint():
     try:
-        # ── 同時支援 GET（舊版）和 POST（ExperimentRunner 新版）──
         if request.method == 'POST':
             body       = request.get_json(force=True, silent=True) or {}
             episode    = body.get('episode', 0)
             user_id    = body.get('user_id', 'User_Mom')
             action     = body.get('action', 'Drink')
-            experiment = 'experiment2'          # 論文 Experiment 2
+            experiment = 'experiment2'
         else:
             experiment = request.args.get('experiment', 'experiment2')
             episode    = request.args.get('step', 0, type=int)
             user_id    = request.args.get('user', 'User_Mom')
             action     = request.args.get('action', 'Drink')
- 
-        # ── 查 observation_logs 的 habit weight ──
+
         obs = db.observation_logs.find_one(
             {"user": user_id, "action": {"$regex": action, "$options": "i"}},
             sort=[("weight", -1)]
         )
         weight = obs["weight"] if obs else 0
- 
-        # ── 查 FAISS cosine similarity ──
+
         similarity = 0.0
         try:
             query   = f"{user_id} {action}"
@@ -413,8 +450,7 @@ def exp_checkpoint():
                 similarity = float(results[0].get("similarity", 0.0))
         except Exception as fe:
             print(f"[Checkpoint] FAISS query skipped: {fe}")
- 
-        # ── 寫入 exp_checkpoint_logs（analyze_exp2.py 讀這個）──
+
         checkpoint_doc = {
             "experiment": experiment,
             "episode":    episode,
@@ -425,11 +461,11 @@ def exp_checkpoint():
             "timestamp":  datetime.datetime.utcnow(),
         }
         db["exp_checkpoint_logs"].insert_one(checkpoint_doc)
- 
+
         print(f"[Checkpoint] {experiment} ep={episode} "
               f"user={user_id} action={action} "
               f"weight={weight} sim={similarity:.4f}")
- 
+
         return jsonify({
             "status":     "ok",
             "experiment": experiment,
@@ -439,21 +475,22 @@ def exp_checkpoint():
             "weight":     weight,
             "similarity": round(similarity, 4),
         }), 200
- 
+
     except Exception as e:
         print(f"[Checkpoint Error] {e}")
         return jsonify({"error": str(e)}), 500
 
+
 @app.route('/scene', methods=['POST'])
 def handle_scene():
     try:
-        data      = request.get_json()
-        objects   = data.get('objects', [])
+        data    = request.get_json()
+        objects = data.get('objects', [])
 
         if not objects:
             return jsonify({"status": "empty"}), 200
 
-        now = datetime.datetime.utcnow()
+        now  = datetime.datetime.utcnow()
         docs = []
         for obj in objects:
             label = obj.get('label', '').lower().strip()
@@ -475,7 +512,7 @@ def handle_scene():
         if docs:
             db.raw_objects.insert_many(docs)
 
-        print(f"[Scene] 收到 {len(docs)} 個物件 → raw_objects（等待分類）")
+        print(f"[Scene] received {len(docs)} objects → raw_objects")
         return jsonify({"status": "Success", "received": len(docs)}), 200
 
     except Exception as e:
@@ -483,9 +520,6 @@ def handle_scene():
         return jsonify({"error": str(e)}), 500
 
 
-# ──────────────────────────────────────────────────────
-# /dynamic_sync
-# ──────────────────────────────────────────────────────
 @app.route('/dynamic_sync', methods=['POST'])
 def dynamic_sync():
     try:
@@ -539,7 +573,7 @@ def dynamic_sync():
                 )
             count += 1
 
-        print(f"[DynamicSync] {count} 個物件已更新（source=sensor）")
+        print(f"[DynamicSync] {count} objects updated (source=sensor)")
         return jsonify({"status": "Success", "updated": count}), 200
 
     except Exception as e:
@@ -715,7 +749,7 @@ def service_proposal():
     try:
         proposal = proposal_engine.get_next_proposal()
         if proposal:
-            print(f"[Proposal] 發出提案: {proposal.get('user_id')} → {proposal.get('intent')}")
+            print(f"[Proposal] {proposal.get('user_id')} → {proposal.get('intent')}")
             return jsonify(proposal), 200
         return jsonify({"status": "no_proposal"}), 200
     except Exception as e:
@@ -812,6 +846,7 @@ if __name__ == "__main__":
     port = int(getattr(CONFIG, 'FLASK_PORT', 5000))
     print(f"\n Robot Brain Server on {host}:{port}")
     print(f"   SBERT device : cuda")
-    print(f"   VLM model    : {CONFIG.VLM_MODEL}   ← perception")
-    print(f"   LLM model    : {CONFIG.LLM_MODEL}  ← interaction/RAG")
+    print(f"   VLM model    : {CONFIG.VLM_MODEL}")
+    print(f"   LLM model    : {CONFIG.LLM_MODEL}")
+    print(f"   Action norm  : SBERT semantic matching ({len(BEHAVIOR_PROTOTYPES)} classes)")
     app.run(host=host, port=port, debug=False)

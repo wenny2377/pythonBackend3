@@ -1,31 +1,31 @@
 =================================================================
 Experiment 4: End-to-End Proactive Service
 Evaluation: distribution-based (no per-episode alignment)
-Generated: 2026-03-25 10:19
+Generated: 2026-03-26 11:40
 =================================================================
 
 Total episodes:       30
-Triggered proposals:  1
-Trigger Rate:         3.3%
-Mean Confidence C:    0.869 ± 0.000
+Triggered proposals:  3
+Trigger Rate:         10.0%
+Mean Confidence C:    0.692 ± 0.052
 Distribution Overlap: 0.000  [low (<0.50)]
-Top triggered intent: Watching (n=1)
-Top GT behavior:      Drink (n=18)
+Top triggered intent: Standing (n=3)
+Top GT behavior:      Drink (n=13)
 Top-Intent Match:     ✗  (does NOT match)
 
 Intent distribution:
-  Watching            1  (100.0%)
+  Standing            3  (100.0%)
 
 Ground truth distribution:
-  Drink              18  (60.0%)
-  Typing              7  (23.3%)
-  Reading             5  (16.7%)
+  Drink              13  (43.3%)
+  Reading             9  (30.0%)
+  Typing              8  (26.7%)
 
 ── For thesis ───────────────────────────────────────────────
 Over 30 shuffled evaluation episodes (seed=42),
-the ManifoldEngine triggered 1 proactive proposals
-(trigger rate = 3.3%), with mean confidence
-C = 0.869 (σ = 0.000).
+the ManifoldEngine triggered 3 proactive proposals
+(trigger rate = 10.0%), with mean confidence
+C = 0.692 (σ = 0.052).
 The triggered intent distribution does NOT match the dominant
 ground-truth behavior (Drink), with
 Bhattacharyya overlap = 0.000 (low (<0.50)).

@@ -1,0 +1,230 @@
+[
+  {
+    "index": 1,
+    "query": "我口渴了",
+    "user_id": "User_Mom",
+    "expected_behavior": "Drink",
+    "description": "直接需求（口渴→喝水）",
+    "answer": "桌上的可樂嗎？",
+    "nav_target": [
+      2.96,
+      -0.59
+    ],
+    "has_nav": true,
+    "text_match": false,
+    "habit_match": false,
+    "overall_correct": false,
+    "top_habit": null,
+    "semantic_results": [],
+    "timestamp": "2026-03-26T14:57:54.460828"
+  },
+  {
+    "index": 2,
+    "query": "我想喝點什麼",
+    "user_id": "User_Mom",
+    "expected_behavior": "Drink",
+    "description": "間接需求（想喝→喝水）",
+    "answer": "可樂嗎？",
+    "nav_target": [
+      2.96,
+      -0.59
+    ],
+    "has_nav": true,
+    "text_match": false,
+    "habit_match": false,
+    "overall_correct": false,
+    "top_habit": null,
+    "semantic_results": [],
+    "timestamp": "2026-03-26T14:57:56.642943"
+  },
+  {
+    "index": 3,
+    "query": "我想休息一下",
+    "user_id": "User_Mom",
+    "expected_behavior": "SittingIdle",
+    "description": "模糊需求（休息→坐著）",
+    "answer": "您想坐在LivingRoom的桌子旁休息一下。",
+    "nav_target": [
+      2.96,
+      -0.59
+    ],
+    "has_nav": true,
+    "text_match": true,
+    "habit_match": false,
+    "overall_correct": true,
+    "top_habit": null,
+    "semantic_results": [],
+    "timestamp": "2026-03-26T14:57:58.913253"
+  },
+  {
+    "index": 4,
+    "query": "我想坐下來",
+    "user_id": "User_Mom",
+    "expected_behavior": "SittingIdle",
+    "description": "動作需求（坐下→坐著）",
+    "answer": "請坐到Living Room的桌子旁的椅子。",
+    "nav_target": [
+      2.96,
+      -0.59
+    ],
+    "has_nav": true,
+    "text_match": true,
+    "habit_match": false,
+    "overall_correct": true,
+    "top_habit": null,
+    "semantic_results": [],
+    "timestamp": "2026-03-26T14:58:01.245479"
+  },
+  {
+    "index": 5,
+    "query": "我想找個地方看書",
+    "user_id": "User_Mom",
+    "expected_behavior": "Reading",
+    "description": "活動需求（看書→閱讀）",
+    "answer": "書在桌子旁，您可以去那邊看。",
+    "nav_target": [
+      2.96,
+      -0.59
+    ],
+    "has_nav": true,
+    "text_match": true,
+    "habit_match": false,
+    "overall_correct": true,
+    "top_habit": null,
+    "semantic_results": [],
+    "timestamp": "2026-03-26T14:58:03.655013"
+  },
+  {
+    "index": 6,
+    "query": "我想安靜一下",
+    "user_id": "User_Mom",
+    "expected_behavior": "Reading",
+    "description": "情緒需求（安靜→閱讀）",
+    "answer": "請坐一下在 LivingRoom 的桌子旁邊。",
+    "nav_target": [
+      2.96,
+      -0.59
+    ],
+    "has_nav": true,
+    "text_match": false,
+    "habit_match": false,
+    "overall_correct": false,
+    "top_habit": null,
+    "semantic_results": [],
+    "timestamp": "2026-03-26T14:58:06.037909"
+  },
+  {
+    "index": 7,
+    "query": "我要工作了",
+    "user_id": "User_Dad",
+    "expected_behavior": "Typing",
+    "description": "工作需求（工作→打字）",
+    "answer": "您在桌子旁工作。",
+    "nav_target": [
+      2.96,
+      -0.59
+    ],
+    "has_nav": true,
+    "text_match": true,
+    "habit_match": false,
+    "overall_correct": true,
+    "top_habit": null,
+    "semantic_results": [],
+    "timestamp": "2026-03-26T14:58:08.185489"
+  },
+  {
+    "index": 8,
+    "query": "我想用電腦",
+    "user_id": "User_Dad",
+    "expected_behavior": "Typing",
+    "description": "工具需求（電腦→打字）",
+    "answer": "電腦已在桌子旁邊，您可以使用電腦。",
+    "nav_target": [
+      2.96,
+      -0.59
+    ],
+    "has_nav": true,
+    "text_match": true,
+    "habit_match": false,
+    "overall_correct": true,
+    "top_habit": null,
+    "semantic_results": [],
+    "timestamp": "2026-03-26T14:58:10.419158"
+  },
+  {
+    "index": 9,
+    "query": "我渴了",
+    "user_id": "User_Dad",
+    "expected_behavior": "Drink",
+    "description": "直接需求（渴→喝水）",
+    "answer": "桌子2上有香蕉。",
+    "nav_target": [
+      2.517,
+      5.455
+    ],
+    "has_nav": true,
+    "text_match": false,
+    "habit_match": false,
+    "overall_correct": false,
+    "top_habit": null,
+    "semantic_results": [],
+    "timestamp": "2026-03-26T14:58:12.624237"
+  },
+  {
+    "index": 10,
+    "query": "我想喝水",
+    "user_id": "User_Dad",
+    "expected_behavior": "Drink",
+    "description": "明確需求（喝水→喝水）",
+    "answer": "桌子2上有香蕉，您想喝水嗎？",
+    "nav_target": [
+      2.517,
+      5.455
+    ],
+    "has_nav": true,
+    "text_match": true,
+    "habit_match": false,
+    "overall_correct": true,
+    "top_habit": null,
+    "semantic_results": [],
+    "timestamp": "2026-03-26T14:58:14.893948"
+  },
+  {
+    "index": 11,
+    "query": "我有點累",
+    "user_id": "User_Mom",
+    "expected_behavior": "SittingIdle",
+    "description": "狀態需求（累→坐著）",
+    "answer": "您可以在沙發旁邊或餐桌旁休息一下。",
+    "nav_target": [
+      2.96,
+      -0.59
+    ],
+    "has_nav": true,
+    "text_match": true,
+    "habit_match": false,
+    "overall_correct": true,
+    "top_habit": null,
+    "semantic_results": [],
+    "timestamp": "2026-03-26T14:58:17.193330"
+  },
+  {
+    "index": 12,
+    "query": "幫我找杯子",
+    "user_id": "User_Mom",
+    "expected_behavior": "Drink",
+    "description": "物件需求（杯子→喝水位置）",
+    "answer": "杯子最後被看到在桌子旁。",
+    "nav_target": [
+      3.242,
+      0.018
+    ],
+    "has_nav": true,
+    "text_match": true,
+    "habit_match": false,
+    "overall_correct": true,
+    "top_habit": null,
+    "semantic_results": [],
+    "timestamp": "2026-03-26T14:58:19.477471"
+  }
+]
