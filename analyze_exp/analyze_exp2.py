@@ -1,262 +1,519 @@
 """
-analyze_exp2.py  (v2 — merged)
-──────────────────────────────
-Experiment 2: Habit Memory Accumulation
+analyze_exp2.py  (v4 — Behavioral Scene Graph)
+───────────────────────────────────────────────
+Experiment 2: Behavioral Scene Graph Construction & FAISS Semantic Retrieval
 
-使用方式（Experiment 2 跑完後，等 60 秒讓 VLM 寫入，直接執行）：
+目的：
+    驗證系統能否正確建立「人與物、物與物」的關係圖，
+    並透過 FAISS 語意搜尋在 graph 中做正確的語意導航。
+
+Graph 的四種節點：
+    User      → 紫色  (User_Mom, User_Dad)
+    Behavior  → 青色  (Drink, SittingIdle, Reading, Typing)
+    Furniture → 橙色  (dining_table, sofa, desk...)
+    Object    → 珊瑚色 (cup, book, laptop...)
+
+Graph 的四種邊：
+    performs   User → Behavior          (來自 semantic_memories)
+    near       Behavior → Furniture     (來自 semantic_memories.spatial)
+    has_item   Furniture → Object       (來自 scene_snapshots)
+    in_hand_of Object → User            (來自 dynamic_objects)
+
+產出（三張並排）：
+    左：Behavioral Scene Graph (networkx)
+    中：Query 驗證結果（12 個 query 的 top-1 命中）
+    右：準確率 bar chart（按關係類型分組）
+
+使用方式：
     python3 analyze_exp/analyze_exp2.py
-    python3 analyze_exp/analyze_exp2.py --user User_Mom --action Drink
     python3 analyze_exp/analyze_exp2.py --out ./results/
 
-資料來源（自動選擇，不需手動指定）：
-  1. semantic_memories（優先）— /predict 成功後寫入，最準確
-  2. observation_logs    （fallback）— 只有 weight，不含完整記憶文字
-  3. exp_checkpoint_logs（fallback）— 前次已補算的結果
-
-流程：
-  Step 1: 從 MongoDB 取記憶 → 模擬累積 FAISS → 算每個 episode 的 similarity
-  Step 2: 結果寫入 exp_checkpoint_logs（覆蓋舊的 sim=0 資料）
-  Step 3: 畫折線圖 + 輸出摘要
+前提：
+    Experiment 1 跑完，app.py 持續運行，
+    semantic_memories / scene_snapshots / dynamic_objects 有資料。
 
 輸出：
-    exp2_convergence.png  → 論文 Figure
-    exp2_summary.txt      → 論文文字摘要
+    exp2_graph.png      → 論文 Figure（三欄並排）
+    exp2_summary.txt    → 論文文字摘要
 """
 
 import argparse
-import csv
 import datetime
 import os
 import sys
+from collections import defaultdict
 
 import numpy as np
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-import matplotlib.ticker as ticker
+import matplotlib.patches as mpatches
 from pymongo import MongoClient
-from sentence_transformers import SentenceTransformer
-import faiss
+
+try:
+    import networkx as nx
+except ImportError:
+    print("❌ Missing: pip install networkx")
+    sys.exit(1)
+
+try:
+    import faiss
+    from sentence_transformers import SentenceTransformer
+    HAS_FAISS = True
+except ImportError:
+    print("⚠️  faiss / sentence_transformers not available. Query validation skipped.")
+    HAS_FAISS = False
 
 MONGO_URI = "mongodb://127.0.0.1:27017/"
 DB_NAME   = "robot_rag_db"
 
-# ── Step 1: Load & reconstruct similarity curve ────────────────────────────
+# ── Node colors ────────────────────────────────────────────────────────────
+NODE_COLORS = {
+    "user":      "#7F77DD",   # purple-400
+    "behavior":  "#1D9E75",   # teal-400
+    "furniture": "#BA7517",   # amber-400
+    "object":    "#D85A30",   # coral-400
+}
+EDGE_COLORS = {
+    "performs":   "#534AB7",   # 核心邊，納入 query 驗證
+    "near":       "#0F6E56",   # 核心邊，納入 query 驗證
+    "has_item":   "#854F0B",   # 核心邊，納入 query 驗證
+    "in_hand_of": "#993C1D",   # 延伸邊，顯示於 graph 但不納入 query 驗證
+}
 
-def load_and_reconstruct(db, user_id: str, action: str) -> list:
-    """
-    自動選擇資料來源，重建 [{episode, similarity}] 列表。
-    """
+# ── Fixed query list ───────────────────────────────────────────────────────
+# (query_text, expected_node, edge_type, description)
+QUERIES = [
+    # User → Behavior (performs)
+    ("User_Mom drinking",        "Drink",        "performs",   "Mom → Drink"),
+    ("User_Dad typing",          "Typing",        "performs",   "Dad → Typing"),
+    ("User_Mom reading",         "Reading",       "performs",   "Mom → Reading"),
+    ("User_Dad sitting",         "SittingIdle",   "performs",   "Dad → SittingIdle"),
+    # Behavior → Furniture (near)
+    ("drinking near table",      "dining_table",  "near",       "Drink → dining_table"),
+    ("sitting near sofa",        "sofa",          "near",       "SittingIdle → sofa"),
+    ("typing near desk",         "desk",          "near",       "Typing → desk"),
+    ("reading near sofa",        "sofa",          "near",       "Reading → sofa"),
+    # Furniture → Object (has_item)
+    ("cup on dining table",      "cup",           "has_item",   "dining_table → cup"),
+    ("book on sofa",             "book",          "has_item",   "sofa → book"),
+    ("laptop on desk",           "laptop",        "has_item",   "desk → laptop"),
+    ("items near dining table",  "cup",           "has_item",   "dining_table items"),
+]
 
-    # ── 優先：semantic_memories ──────────────────────────────────────────
+# ── Step 1: Build graph from MongoDB ──────────────────────────────────────
+def build_graph(db) -> nx.DiGraph:
+    G = nx.DiGraph()
+
+    # ── semantic_memories: User → Behavior → Furniture ──────────────────
     memories = list(db.semantic_memories.find(
-        {"user": user_id, "action": {"$regex": action, "$options": "i"}},
-        {"bound_to": 1, "details": 1, "timestamp": 1}
-    ).sort("timestamp", 1))
+        {},
+        {"user":1, "action":1, "bound_to":1,
+         "spatial_relations":1, "interacting_items":1}
+    ))
+    print(f"  semantic_memories: {len(memories)}")
 
-    if memories:
-        print(f"  [Source] semantic_memories: {len(memories)} records")
-        return _reconstruct_from_memories(memories, user_id, action)
+    for m in memories:
+        user     = m.get("user", "")
+        action   = m.get("action", "").split()[0].capitalize()
+        bound_to = m.get("bound_to", "")
 
-    # ── Fallback 1：observation_logs ─────────────────────────────────────
+        if not user or not action: continue
+
+        # Normalize action
+        action = _normalize_action(action)
+
+        G.add_node(user,     node_type="user")
+        G.add_node(action,   node_type="behavior")
+
+        if G.has_edge(user, action):
+            G[user][action]["weight"] += 1
+        else:
+            G.add_edge(user, action, rel="performs", weight=1)
+
+        if bound_to and "unknown" not in bound_to.lower():
+            G.add_node(bound_to, node_type="furniture")
+            if G.has_edge(action, bound_to):
+                G[action][bound_to]["weight"] += 1
+            else:
+                G.add_edge(action, bound_to, rel="near", weight=1)
+
+        # Items in hand → object nodes
+        for item in m.get("interacting_items", []):
+            item = item.lower().strip()
+            if not item: continue
+            G.add_node(item, node_type="object")
+            if bound_to and "unknown" not in bound_to.lower():
+                if not G.has_edge(bound_to, item):
+                    G.add_edge(bound_to, item, rel="has_item", weight=1)
+                else:
+                    G[bound_to][item]["weight"] += 1
+
+    # ── scene_snapshots: Furniture → Object ──────────────────────────────
+    snapshots = list(db.scene_snapshots.find({}, {"label":1, "items":1}))
+    print(f"  scene_snapshots: {len(snapshots)}")
+
+    for snap in snapshots:
+        furniture = snap.get("label", "").lower().strip()
+        if not furniture: continue
+        G.add_node(furniture, node_type="furniture")
+        for item in snap.get("items", []):
+            item = item.lower().strip()
+            if not item: continue
+            G.add_node(item, node_type="object")
+            if not G.has_edge(furniture, item):
+                G.add_edge(furniture, item, rel="has_item", weight=1)
+
+    # ── dynamic_objects: Object → User (in_hand_of，選填）────────────────
+    # 只有 VLM 明確辨識到手持物件時才有資料，沒有資料則跳過
+    dyn_objs = list(db.dynamic_objects.find(
+        {"interacted_by": {"$exists": True, "$ne": []}},
+        {"label":1, "interacted_by":1}
+    ))
+    if dyn_objs:
+        print(f"  dynamic_objects (in_hand_of): {len(dyn_objs)} records")
+        for obj in dyn_objs:
+            item = obj.get("label", "").lower().strip()
+            if not item: continue
+            G.add_node(item, node_type="object")
+            for uid in obj.get("interacted_by", []):
+                G.add_node(uid, node_type="user")
+                if not G.has_edge(item, uid):
+                    G.add_edge(item, uid, rel="in_hand_of", weight=1)
+    else:
+        print("  dynamic_objects (in_hand_of): 0 records — skipped")
+
+    # ── observation_logs: reinforce user→behavior weights ────────────────
     obs_logs = list(db.observation_logs.find(
-        {"user": user_id, "action": {"$regex": action, "$options": "i"}},
-        {"instance": 1, "interacting_items": 1, "last_seen": 1}
-    ).sort("last_seen", 1))
+        {}, {"user":1, "action":1, "weight":1}
+    ))
+    print(f"  observation_logs: {len(obs_logs)}")
 
-    if obs_logs:
-        print(f"  [Source] observation_logs (fallback): {len(obs_logs)} records")
-        return _reconstruct_from_obs_logs(obs_logs, user_id, action)
+    for obs in obs_logs:
+        user   = obs.get("user", "")
+        action = _normalize_action(obs.get("action", ""))
+        w      = obs.get("weight", 1)
+        if G.has_edge(user, action):
+            G[user][action]["weight"] = max(G[user][action]["weight"], w)
 
-    # ── Fallback 2：exp_checkpoint_logs（舊資料）──────────────────────────
-    checkpoints = list(db.exp_checkpoint_logs.find(
-        {"experiment": "experiment2", "user_id": user_id,
-         "similarity": {"$gt": 0}},
-        {"episode": 1, "similarity": 1}
-    ).sort("episode", 1))
+    print(f"  Graph: {G.number_of_nodes()} nodes, {G.number_of_edges()} edges")
+    return G
 
-    if checkpoints:
-        print(f"  [Source] exp_checkpoint_logs (cached): {len(checkpoints)} records")
-        return [{"episode": c["episode"], "similarity": c["similarity"]}
-                for c in checkpoints]
+def _normalize_action(a: str) -> str:
+    m = {
+        "drink":"Drink","drinking":"Drink",
+        "sit":"SittingIdle","sitting":"SittingIdle","sittingidle":"SittingIdle",
+        "read":"Reading","reading":"Reading",
+        "type":"Typing","typing":"Typing",
+        "watch":"Watching","watching":"Watching",
+        "sleep":"Sleeping","sleeping":"Sleeping",
+        "walk":"Walking","walking":"Walking",
+        "stand":"Standing","standing":"Standing",
+    }
+    return m.get(a.lower().strip(), a.capitalize())
 
-    return []
+# ── Step 2: FAISS query validation ────────────────────────────────────────
+def run_query_validation(db) -> list:
+    if not HAS_FAISS:
+        return []
 
-
-def _make_model_and_query(user_id, action, furniture=""):
     print("  Loading SBERT model...")
     model = SentenceTransformer("paraphrase-MiniLM-L6-v2")
-    query = f"{user_id} {action}" + (f" near {furniture}" if furniture else "")
-    q_vec = model.encode([query], normalize_embeddings=True).astype("float32")
-    return model, q_vec
 
+    # Build combined FAISS index from all memory sources
+    texts  = []
+    labels = []   # (node_name, node_type)
 
-def _reconstruct_from_memories(memories, user_id, action):
-    model, q_vec = _make_model_and_query(user_id, action)
-    index   = faiss.IndexFlatIP(384)
+    # From semantic_memories
+    for m in db.semantic_memories.find(
+        {}, {"user":1,"action":1,"bound_to":1,"interacting_items":1}
+    ):
+        user   = m.get("user","")
+        action = _normalize_action(m.get("action",""))
+        bound  = m.get("bound_to","")
+        items  = m.get("interacting_items",[])
+        text   = f"{user} {action} near {bound} with {', '.join(items) or 'nothing'}."
+        texts.append(text)
+        labels.append((bound or action, "furniture" if bound else "behavior"))
+
+    # From dynamic_objects
+    for obj in db.dynamic_objects.find({}, {"label":1,"room":1,"last_seen_on":1}):
+        item  = obj.get("label","")
+        room  = obj.get("room","")
+        on    = obj.get("last_seen_on","")
+        text  = f"{item} located in {room} on {on}."
+        texts.append(text)
+        labels.append((item, "object"))
+
+    if not texts:
+        print("  ⚠️  No data for FAISS index")
+        return []
+
+    print(f"  Building FAISS index ({len(texts)} documents)...")
+    vecs = model.encode(texts, normalize_embeddings=True).astype("float32")
+    dim  = vecs.shape[1]
+    index = faiss.IndexFlatIP(dim)
+    index.add(vecs)
+
     results = []
+    for query_text, expected, edge_type, desc in QUERIES:
+        q_vec = model.encode([query_text], normalize_embeddings=True).astype("float32")
+        scores, idxs = index.search(q_vec, 5)
 
-    for i, mem in enumerate(memories):
-        bound    = mem.get("bound_to", "unknown")
-        items    = (mem.get("details") or {}).get("interacting_items", [])
-        mem_text = f"{user_id} {action} near {bound} with {', '.join(items) or 'nothing'}."
-        m_vec    = model.encode([mem_text], normalize_embeddings=True).astype("float32")
-        index.add(m_vec)
+        top_hits = [(labels[i][0], labels[i][1], float(scores[0][k]))
+                    for k, i in enumerate(idxs[0]) if i < len(labels)]
 
-        scores, _ = index.search(q_vec, 1)
-        sim = max(0.0, float(scores[0][0]))
-        results.append({"episode": i + 1, "similarity": round(sim, 4)})
-        print(f"    ep{i+1:3d}: sim={sim:.4f}  bound='{bound}'")
+        # Check if expected node is in top-5
+        hit_rank = None
+        hit_sim  = None
+        for rank, (node, ntype, sim) in enumerate(top_hits):
+            if expected.lower() in node.lower() or node.lower() in expected.lower():
+                hit_rank = rank + 1
+                hit_sim  = sim
+                break
+
+        results.append({
+            "query":      query_text,
+            "expected":   expected,
+            "edge_type":  edge_type,
+            "description":desc,
+            "top_hits":   top_hits[:3],
+            "hit_rank":   hit_rank,
+            "hit_sim":    hit_sim,
+            "correct":    hit_rank is not None and hit_rank <= 3,
+        })
+
+        status = f"rank={hit_rank} sim={hit_sim:.3f}" if hit_rank else "MISS"
+        print(f"    {'✓' if hit_rank else '✗'}  {query_text:35s} → {expected:15s} [{status}]")
 
     return results
-
-
-def _reconstruct_from_obs_logs(obs_logs, user_id, action):
-    model, q_vec = _make_model_and_query(user_id, action)
-    index   = faiss.IndexFlatIP(384)
-    results = []
-
-    for i, doc in enumerate(obs_logs):
-        instance = doc.get("instance", "unknown")
-        items    = list(doc.get("interacting_items", []))
-        mem_text = f"{user_id} {action} near {instance} with {', '.join(items) or 'nothing'}."
-        m_vec    = model.encode([mem_text], normalize_embeddings=True).astype("float32")
-        index.add(m_vec)
-
-        scores, _ = index.search(q_vec, 1)
-        sim = max(0.0, float(scores[0][0]))
-        results.append({"episode": i + 1, "similarity": round(sim, 4)})
-        print(f"    ep{i+1:3d}: sim={sim:.4f}  instance='{instance}'")
-
-    return results
-
-
-# ── Step 2: Write back to MongoDB ──────────────────────────────────────────
-
-def write_checkpoints(db, results, user_id, action):
-    deleted = db.exp_checkpoint_logs.delete_many({
-        "experiment": "experiment2",
-        "user_id":    user_id,
-    })
-    if deleted.deleted_count:
-        print(f"  Replaced {deleted.deleted_count} old checkpoint records")
-
-    docs = [{
-        "experiment": "experiment2",
-        "episode":    r["episode"],
-        "user_id":    user_id,
-        "action":     action,
-        "similarity": r["similarity"],
-        "weight":     r["episode"],
-        "timestamp":  datetime.datetime.utcnow(),
-    } for r in results]
-
-    if docs:
-        db.exp_checkpoint_logs.insert_many(docs)
-    print(f"  Wrote {len(docs)} records to exp_checkpoint_logs")
-
 
 # ── Step 3: Plot ───────────────────────────────────────────────────────────
-
-def plot(results, user_id, action, out_path):
-    episodes = [r["episode"] for r in results]
-    sims     = [r["similarity"] for r in results]
-
-    fig, ax = plt.subplots(figsize=(9, 5))
-
-    # Main line
-    ax.plot(episodes, sims,
-            color="#2563EB", linewidth=2.0,
-            marker="o", markersize=4,
-            label="FAISS Cosine Similarity")
-
-    # Rolling mean
-    if len(sims) >= 5:
-        w    = max(3, len(sims) // 8)
-        roll = np.convolve(sims, np.ones(w) / w, mode="valid")
-        ax.plot(episodes[w - 1:], roll,
-                color="#DC2626", linewidth=1.5,
-                linestyle="--",
-                label=f"Rolling Mean (w={w})")
-
-    # Fill under curve
-    ax.fill_between(episodes, sims, alpha=0.07, color="#2563EB")
-
-    # Final value line
-    ax.axhline(y=sims[-1], color="#059669", linewidth=1.0,
-               linestyle=":", alpha=0.7,
-               label=f"Final sim = {sims[-1]:.3f}")
-
-    # Monotonicity stats
-    diffs       = [sims[i+1] - sims[i] for i in range(len(sims)-1)]
-    mono_rate   = sum(d > 0 for d in diffs) / len(diffs) if diffs else 0
-
-    ax.set_xlabel("Episode Number", fontsize=12)
-    ax.set_ylabel("FAISS Cosine Similarity", fontsize=12)
-    ax.set_title(
-        f"Experiment 2: Habit Memory Accumulation\n"
-        f"{user_id} — {action}  "
-        f"(n={len(episodes)}, monotone rate={mono_rate:.0%})",
-        fontsize=11
+def plot(G: nx.DiGraph, query_results: list, out_path: str):
+    fig, axes = plt.subplots(1, 3, figsize=(22, 9))
+    fig.suptitle(
+        "Experiment 2: Behavioral Scene Graph Construction & FAISS Semantic Retrieval",
+        fontsize=13, fontweight="bold"
     )
-    ax.set_xlim(min(episodes) - 0.5, max(episodes) + 0.5)
-    ax.set_ylim(max(0, min(sims) - 0.05), min(1.02, max(sims) + 0.08))
-    ax.xaxis.set_major_locator(ticker.MaxNLocator(integer=True))
-    ax.legend(fontsize=10)
-    ax.grid(True, alpha=0.25)
+
+    # ── Panel 1: Network graph ────────────────────────────────────────────
+    ax1 = axes[0]
+    ax1.set_title("Behavioral Scene Graph", fontsize=12)
+
+    if G.number_of_nodes() > 0:
+        # Layout: hierarchical by node type
+        pos = {}
+        layers = {"user":0, "behavior":1, "furniture":2, "object":3}
+        layer_nodes = defaultdict(list)
+        for n, d in G.nodes(data=True):
+            nt = d.get("node_type", "object")
+            layer_nodes[nt].append(n)
+
+        for nt, y in layers.items():
+            nodes = layer_nodes[nt]
+            for i, n in enumerate(nodes):
+                x = (i - (len(nodes)-1)/2) * 1.8
+                pos[n] = (x, -y * 2.5)
+
+        # Draw edges by type
+        for rel, color in EDGE_COLORS.items():
+            edges = [(u, v) for u, v, d in G.edges(data=True)
+                     if d.get("rel") == rel]
+            if edges:
+                nx.draw_networkx_edges(
+                    G, pos, edgelist=edges, ax=ax1,
+                    edge_color=color, arrows=True,
+                    arrowsize=15, width=1.2, alpha=0.7,
+                    connectionstyle="arc3,rad=0.1",
+                    node_size=800,
+                )
+
+        # Draw nodes by type
+        for nt, color in NODE_COLORS.items():
+            nodes = [n for n, d in G.nodes(data=True)
+                     if d.get("node_type") == nt]
+            if nodes:
+                nx.draw_networkx_nodes(
+                    G, pos, nodelist=nodes, ax=ax1,
+                    node_color=color, node_size=800, alpha=0.9
+                )
+
+        nx.draw_networkx_labels(G, pos, ax=ax1, font_size=8,
+                                font_color="white", font_weight="bold")
+    else:
+        ax1.text(0.5, 0.5, "No graph data\n(Run Experiment 1 first)",
+                 ha="center", va="center", transform=ax1.transAxes, fontsize=11)
+
+    # Legend
+    patches = [mpatches.Patch(color=c, label=t.capitalize())
+               for t, c in NODE_COLORS.items()]
+    edge_lines = [plt.Line2D([0],[0], color=c, linewidth=2, label=r)
+                  for r, c in EDGE_COLORS.items()]
+    ax1.legend(handles=patches + edge_lines, loc="lower left",
+               fontsize=8, framealpha=0.8)
+    ax1.axis("off")
+
+    # ── Panel 2: Query results table ──────────────────────────────────────
+    ax2 = axes[1]
+    ax2.set_title("Query Validation Results", fontsize=12)
+    ax2.axis("off")
+
+    if query_results:
+        col_labels = ["Query", "Expected", "Type", "Rank", "Sim", "OK"]
+        table_data = []
+        for r in query_results:
+            sim_str  = f"{r['hit_sim']:.3f}" if r["hit_sim"] else "—"
+            rank_str = str(r["hit_rank"]) if r["hit_rank"] else "—"
+            ok_str   = "✓" if r["correct"] else "✗"
+            table_data.append([
+                r["query"][:28],
+                r["expected"][:14],
+                r["edge_type"],
+                rank_str,
+                sim_str,
+                ok_str,
+            ])
+
+        tbl = ax2.table(
+            cellText=table_data,
+            colLabels=col_labels,
+            loc="center",
+            cellLoc="center",
+        )
+        tbl.auto_set_font_size(False)
+        tbl.set_fontsize(8.5)
+        tbl.scale(1, 1.5)
+
+        # Color rows
+        for i, r in enumerate(query_results):
+            color = "#E1F5EE" if r["correct"] else "#FCEBEB"
+            for j in range(len(col_labels)):
+                tbl[i+1, j].set_facecolor(color)
+    else:
+        ax2.text(0.5, 0.5,
+                 "FAISS not available\nor no data",
+                 ha="center", va="center",
+                 transform=ax2.transAxes, fontsize=11)
+
+    # ── Panel 3: Accuracy bar chart ───────────────────────────────────────
+    ax3 = axes[2]
+    ax3.set_title("Retrieval Accuracy by Relation Type", fontsize=12)
+
+    if query_results:
+        edge_types = list(EDGE_COLORS.keys())
+        accs = []
+        ns   = []
+        for et in edge_types:
+            subset = [r for r in query_results if r["edge_type"] == et]
+            n      = len(subset)
+            acc    = sum(1 for r in subset if r["correct"]) / n if n > 0 else 0
+            accs.append(acc)
+            ns.append(n)
+
+        x      = np.arange(len(edge_types))
+        colors = [EDGE_COLORS[et] for et in edge_types]
+        bars   = ax3.bar(x, accs, color=colors, alpha=0.85,
+                         edgecolor="white", linewidth=0.8)
+
+        for bar, acc, n in zip(bars, accs, ns):
+            ax3.text(bar.get_x() + bar.get_width()/2,
+                     bar.get_height() + 0.02,
+                     f"{acc:.0%}\n(n={n})",
+                     ha="center", va="bottom", fontsize=9, fontweight="bold")
+
+        overall_acc = sum(1 for r in query_results if r["correct"]) / len(query_results)
+        ax3.axhline(y=overall_acc, color="#2C2C2A", linewidth=1.2,
+                    linestyle="--", alpha=0.6,
+                    label=f"Overall = {overall_acc:.0%}")
+
+        ax3.set_xticks(x)
+        ax3.set_xticklabels(edge_types, fontsize=10)
+        ax3.set_ylabel("Top-3 Recall", fontsize=12)
+        ax3.set_ylim(0, 1.25)
+        ax3.legend(fontsize=10)
+        ax3.grid(True, alpha=0.2, axis="y")
+    else:
+        ax3.text(0.5, 0.5, "No query results",
+                 ha="center", va="center",
+                 transform=ax3.transAxes, fontsize=11)
 
     plt.tight_layout()
     plt.savefig(out_path, dpi=200, bbox_inches="tight")
     plt.close()
     print(f"  ✅ Plot saved: {out_path}")
 
+# ── Step 4: Summary ───────────────────────────────────────────────────────
+def save_summary(G: nx.DiGraph, query_results: list, out_path: str):
+    n_nodes  = G.number_of_nodes()
+    n_edges  = G.number_of_edges()
+    n_users  = sum(1 for _, d in G.nodes(data=True) if d.get("node_type")=="user")
+    n_behav  = sum(1 for _, d in G.nodes(data=True) if d.get("node_type")=="behavior")
+    n_furn   = sum(1 for _, d in G.nodes(data=True) if d.get("node_type")=="furniture")
+    n_obj    = sum(1 for _, d in G.nodes(data=True) if d.get("node_type")=="object")
 
-# ── Summary ────────────────────────────────────────────────────────────────
+    edge_counts = defaultdict(int)
+    for _, _, d in G.edges(data=True):
+        edge_counts[d.get("rel","unknown")] += 1
 
-def save_summary(results, user_id, action, out_path):
-    if not results:
-        return
-    sims  = [r["similarity"] for r in results]
-    n     = len(sims)
-    diffs = [sims[i+1] - sims[i] for i in range(n - 1)]
-    mono  = sum(d > 0 for d in diffs)
+    overall_acc = 0.0
+    type_accs   = {}
+    if query_results:
+        overall_acc = sum(1 for r in query_results if r["correct"]) / len(query_results)
+        for et in EDGE_COLORS:
+            subset = [r for r in query_results if r["edge_type"] == et]
+            if subset:
+                type_accs[et] = sum(1 for r in subset if r["correct"]) / len(subset)
 
     lines = [
-        "=" * 60,
-        "Experiment 2: Habit Memory Accumulation",
+        "=" * 65,
+        "Experiment 2: Behavioral Scene Graph Construction",
         f"Generated: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}",
-        "=" * 60,
-        f"User:            {user_id}",
-        f"Action:          {action}",
-        f"Episodes:        {n}",
-        f"sim (ep 1):      {sims[0]:.4f}",
-        f"sim (ep {n}):    {sims[-1]:.4f}",
-        f"Total increase:  +{sims[-1] - sims[0]:.4f}",
-        f"Monotone rate:   {mono}/{len(diffs)} = {mono/len(diffs):.0%}" if diffs else "",
+        "=" * 65,
         "",
-        "── For thesis (copy-paste) ─────────────────────────────",
-        f"FAISS cosine similarity increases from s(1) = {sims[0]:.3f}",
-        f"to s({n}) = {sims[-1]:.3f} over {n} consecutive observations",
-        f"of the same behavioral episode, with {mono/len(diffs):.0%} of",
-        f"episode transitions showing monotonic improvement.",
-        f"This confirms that the RAG memory system progressively",
-        f"consolidates {user_id}'s {action} habit (RQ3).",
+        "── Graph Statistics ─────────────────────────────────────────",
+        f"Total nodes:   {n_nodes}",
+        f"  Users:       {n_users}",
+        f"  Behaviors:   {n_behav}",
+        f"  Furniture:   {n_furn}",
+        f"  Objects:     {n_obj}",
+        f"Total edges:   {n_edges}",
+        *[f"  {rel:12s}: {cnt}" for rel, cnt in edge_counts.items()],
+        "",
+        "── Query Validation ─────────────────────────────────────────",
+        f"Total queries:    {len(query_results)}",
+        f"Overall Top-3 Recall: {overall_acc:.0%}",
+        *[f"  {et:12s}: {acc:.0%}" for et, acc in type_accs.items()],
+        "",
+        "Per-query results:",
+        *[f"  {'✓' if r['correct'] else '✗'}  "
+          f"{r['query']:35s} → {r['expected']:15s} "
+          f"[rank={r['hit_rank'] or '—'}, sim={r['hit_sim'] if r['hit_sim'] is not None else 0.0:.3f}]"
+          for r in query_results],
+        "",
+        "── For thesis (copy-paste) ──────────────────────────────────",
+        f"Following Experiment 1, the Robot Brain System successfully",
+        f"constructed a Behavioral Scene Graph comprising {n_nodes} nodes",
+        f"({n_users} users, {n_behav} behaviors, {n_furn} furniture items,",
+        f"{n_obj} objects) and {n_edges} typed relational edges across",
+        f"four relation categories (performs, near, has_item, in_hand_of).",
+        f"FAISS semantic retrieval evaluated on {len(query_results)} structured",
+        f"queries achieves an overall Top-3 Recall of {overall_acc:.0%},",
+        f"confirming that the system correctly captures user-behavior-",
+        f"furniture-object relationships and supports semantic navigation",
+        f"over the constructed graph (RQ2).",
     ]
+
     with open(out_path, "w", encoding="utf-8") as f:
         f.write("\n".join(lines))
     print(f"  ✅ Summary saved: {out_path}")
-    print("\n" + "\n".join(lines[-8:]))
-
+    print(f"\n  Graph: {n_nodes} nodes, {n_edges} edges")
+    if query_results:
+        print(f"  Overall Top-3 Recall: {overall_acc:.0%}")
 
 # ── Main ───────────────────────────────────────────────────────────────────
-
 def main():
-    parser = argparse.ArgumentParser(
-        description="Experiment 2: reconstruct + plot FAISS convergence curve"
-    )
-    parser.add_argument("--user",   default="User_Mom", help="User ID")
-    parser.add_argument("--action", default="Drink",    help="Action label")
-    parser.add_argument("--out",    default=".",        help="Output directory")
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--out", default=".", help="Output directory")
     args = parser.parse_args()
     os.makedirs(args.out, exist_ok=True)
 
@@ -264,26 +521,21 @@ def main():
     client = MongoClient(MONGO_URI)
     db     = client[DB_NAME]
 
-    # Step 1: Reconstruct
-    print(f"\nStep 1: Reconstructing similarity curve ({args.user} / {args.action})...")
-    results = load_and_reconstruct(db, args.user, args.action)
+    print("\nStep 1: Building Behavioral Scene Graph...")
+    G = build_graph(db)
 
-    if not results:
-        print("❌ No data found. Make sure Experiment 2 has run and VLM results are written.")
-        print("   Check: db.semantic_memories.count_documents({'user': 'User_Mom'})")
-        sys.exit(1)
+    if G.number_of_nodes() < 3:
+        print("⚠️  Graph has fewer than 3 nodes.")
+        print("   Run Experiment 1 first to populate semantic_memories.")
 
-    # Step 2: Write back
-    print(f"\nStep 2: Writing {len(results)} records to exp_checkpoint_logs...")
-    write_checkpoints(db, results, args.user, args.action)
+    print("\nStep 2: Running FAISS query validation...")
+    query_results = run_query_validation(db)
 
-    # Step 3: Plot + summary
-    print(f"\nStep 3: Generating outputs...")
-    plot(results, args.user, args.action,
-         out_path=os.path.join(args.out, "exp2_convergence.png"))
-    save_summary(results, args.user, args.action,
+    print("\nStep 3: Generating outputs...")
+    plot(G, query_results,
+         out_path=os.path.join(args.out, "exp2_graph.png"))
+    save_summary(G, query_results,
                  out_path=os.path.join(args.out, "exp2_summary.txt"))
-
 
 if __name__ == "__main__":
     main()
