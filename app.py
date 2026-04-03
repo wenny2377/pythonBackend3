@@ -31,8 +31,16 @@ db           = mongo_client[CONFIG.DB_NAME]
 try:
     db.scene_snapshots.create_index([("pos", "2d")])
     print(" MongoDB 2D Index ready")
+    db.observation_logs.create_index(
+        [("last_seen", 1)],
+        expireAfterSeconds=14 * 86400,
+        name="observation_ttl_14d"
+    )
+    print("[MongoDB] TTL Index for observation_logs ready (14 days)")
+
 except Exception as e:
     print(f" Index notice: {e}")
+    print(f"[MongoDB] TTL Index notice: {e}")
 
 perception = PerceptionEngine(
     ollama_url       = CONFIG.OLLAMA_URL,
@@ -215,7 +223,7 @@ def nightly_maintenance():
             sm = interaction_engine.skill_manager
             for doc in db.user_skills.find({}, {"user_id": 1}):
                 try:
-                    sm.nightly_refactor(doc["user_id"])
+                    submit_llm_task(sm.nightly_refactor, doc["user_id"])
                     print(f"[Maintenance] refactored skill for {doc['user_id']}")
                 except Exception as e:
                     print(f"[Maintenance] refactor failed for {doc['user_id']}: {e}")

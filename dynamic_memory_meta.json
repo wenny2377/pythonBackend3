@@ -9,7 +9,7 @@
     "interact_count": 0,
     "interacted_by": [],
     "memory_text": "user_mom unknown unknown in . seen 707 times. interacted 0 times.",
-    "timestamp": "2026-04-03T09:12:41.985136",
+    "timestamp": "2026-04-03T10:17:08.288272",
     "faiss_idx": 0
   },
   {
@@ -22,7 +22,7 @@
     "interact_count": 0,
     "interacted_by": [],
     "memory_text": "user_dad unknown unknown in . seen 665 times. interacted 0 times.",
-    "timestamp": "2026-04-03T09:12:41.986619",
+    "timestamp": "2026-04-03T10:17:08.289024",
     "faiss_idx": 1
   },
   {
@@ -40,7 +40,7 @@
       "User_Mom"
     ],
     "memory_text": "apple above table in Kitchen. seen 294 times. interacted 1 times. used by User_Mom.",
-    "timestamp": "2026-04-03T09:12:41.987604",
+    "timestamp": "2026-04-03T10:17:08.290290",
     "faiss_idx": 186
   },
   {
@@ -56,7 +56,7 @@
     "interact_count": 0,
     "interacted_by": [],
     "memory_text": "banana next to table2 in LivingRoom. seen 296 times. interacted 0 times.",
-    "timestamp": "2026-04-03T09:12:41.988084",
+    "timestamp": "2026-04-03T10:17:08.290991",
     "faiss_idx": 187
   },
   {
@@ -74,7 +74,7 @@
       "User_Dad"
     ],
     "memory_text": "computer set below desk in BedRoom(dad). seen 306 times. interacted 2 times. used by User_Dad.",
-    "timestamp": "2026-04-03T09:12:41.988566",
+    "timestamp": "2026-04-03T10:17:08.295704",
     "faiss_idx": 188
   },
   {
@@ -87,7 +87,7 @@
     "interact_count": 0,
     "interacted_by": [],
     "memory_text": "juicebottle unknown unknown in LivingRoom. seen 290 times. interacted 0 times.",
-    "timestamp": "2026-04-03T09:12:41.989042",
+    "timestamp": "2026-04-03T10:17:08.296455",
     "faiss_idx": 179
   },
   {
@@ -102,7 +102,7 @@
       "User_Mom"
     ],
     "memory_text": "book held_by User_Mom in LivingRoom. seen 291 times. interacted 1 times. used by User_Mom.",
-    "timestamp": "2026-04-03T09:12:41.989522",
+    "timestamp": "2026-04-03T10:17:08.300695",
     "faiss_idx": 185
   },
   {
@@ -120,7 +120,7 @@
       "User_Mom"
     ],
     "memory_text": "cola near table in BedRoom(dad). seen 291 times. interacted 1 times. used by User_Mom.",
-    "timestamp": "2026-04-03T09:12:41.990080",
+    "timestamp": "2026-04-03T10:17:08.301457",
     "faiss_idx": 189
   },
   {
@@ -133,7 +133,7 @@
     "interact_count": 0,
     "interacted_by": [],
     "memory_text": "pot at sink in Kitchen. seen 5 times. interacted 0 times.",
-    "timestamp": "2026-04-03T09:12:41.987114",
+    "timestamp": "2026-04-03T10:17:08.289637",
     "faiss_idx": 18
   },
   {
@@ -151,7 +151,7 @@
       "User_Mom"
     ],
     "memory_text": "phone near sofa in LivingRoom. seen 2 times. interacted 2 times. used by User_Mom.",
-    "timestamp": "2026-04-03T09:12:41.990728",
+    "timestamp": "2026-04-03T10:17:08.306122",
     "faiss_idx": 169
   },
   {
@@ -167,7 +167,7 @@
     "interact_count": 0,
     "interacted_by": [],
     "memory_text": "remote next to table2 in LivingRoom. seen 3 times. interacted 0 times.",
-    "timestamp": "2026-04-03T09:12:41.991274",
+    "timestamp": "2026-04-03T10:17:08.306892",
     "faiss_idx": 190
   },
   {
@@ -185,7 +185,7 @@
       "User_Dad"
     ],
     "memory_text": "mouse next to desk in BedRoom(dad). seen 2 times. interacted 2 times. used by User_Dad.",
-    "timestamp": "2026-04-03T09:12:41.991830",
+    "timestamp": "2026-04-03T10:17:08.307668",
     "faiss_idx": 191
   }
 ]

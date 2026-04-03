@@ -11,7 +11,12 @@ LLM_TIMEOUT = 60
 LLM_TEMP    = 0.3
 LLM_TOKENS  = 300
 
-# ── ReAct system prompt ───────────────────────────────────────────────────────
+# ── SBERT 意圖分類門檻（論文 §3.1）──────────────────────────────────────────
+SBERT_THRESHOLD_CHAT    = 0.70
+SBERT_THRESHOLD_QUERY   = 0.65
+SBERT_THRESHOLD_SERVICE = 0.60
+
+# ── ReAct system prompt（補空間推理邏輯，論文 §5.2）─────────────────────────
 REACT_SYSTEM_PROMPT = """You are a home service robot assistant.
 
 You have two sources of information:
@@ -30,6 +35,7 @@ Tools:
 
 2. search_object(query: str)
    Find what is currently in the home. Returns real-time object locations.
+   Each result includes: label, last_seen_on (furniture), room, Camera_ID.
    Always use this to confirm something is actually available right now.
 
 3. finish(answer: str, nav_target: str, nav_label: str)
@@ -37,6 +43,13 @@ Tools:
    - answer: natural sentence in the SAME language as the user
    - nav_target: furniture label where the recommended object is (e.g. "table") or "unknown"
    - nav_label: same as nav_target
+
+SPATIAL REASONING RULES (具身空間推理):
+- Always check the room field in search_object results
+- If the object is NOT in the robot's current room, nav_target MUST be set to the furniture
+  label where the object was seen (do NOT set "unknown")
+- Example: robot is in bedroom, apple is in kitchen on table → nav_target="table", nav_label="table"
+- If the object IS in the current room, nav_target is still the furniture label
 
 DECISION FLOW:
 - Conversational (chat/greeting/opinion) → finish immediately, no tools, nav_target="unknown"
@@ -90,19 +103,17 @@ class ToolExecutor:
 
     def _search_object(self, query: str) -> str:
         """
-        三層搜尋，MongoDB 是 ground truth：
+        三層搜尋（論文 §5.1 全知視角工具）：
         1. FAISS 語意搜尋（快速候選）
-        2. MongoDB 最近看到的物件（TTL 過濾，確保還在）
-        3. 合併去重，回傳給 LLM
+        2. MongoDB 最近看到的物件（TTL 過濾）
+        3. 合併去重，回傳含 Camera_ID / Room_Name 的格式讓 LLM 做空間推理
         """
         from datetime import datetime, timedelta
-        TTL_HOURS = 2  # 超過 2 小時未看到視為可能不在
+        TTL_HOURS = 2
 
-        # Layer 1: FAISS 語意搜尋
         faiss_results = self.vector.search_dynamic(query, top_k=5)
         seen_labels   = {r.get("label","") for r in faiss_results}
 
-        # Layer 2: MongoDB — 最近有看到的物件（TTL 過濾）
         cutoff = datetime.utcnow() - timedelta(hours=TTL_HOURS)
         recent_docs = list(self.db.dynamic_objects.find(
             {"last_seen": {"$gte": cutoff}},
@@ -110,14 +121,12 @@ class ToolExecutor:
              "furniture_pos":1,"interact_count":1,"last_seen":1}
         ).sort("interact_count", -1).limit(12))
 
-        # 如果沒有 last_seen 欄位的 doc，撈全部（舊資料相容）
         if not recent_docs:
             recent_docs = list(self.db.dynamic_objects.find(
                 {}, {"label":1,"room":1,"last_seen_on":1,
                      "furniture_pos":1,"interact_count":1}
             ).sort("interact_count", -1).limit(12))
 
-        # 合併：FAISS 結果優先，MongoDB 補充
         combined = list(faiss_results)
         for doc in recent_docs:
             label = doc.get("label","").lower()
@@ -128,14 +137,14 @@ class ToolExecutor:
                     "room":          doc.get("room","?"),
                     "furniture_pos": doc.get("furniture_pos"),
                     "interact_count":doc.get("interact_count",0),
-                    "similarity":    0.0,  # MongoDB 補充，非 FAISS 命中
+                    "similarity":    0.0,
                 })
                 seen_labels.add(label)
 
         if not combined:
             return "No objects currently visible in the home."
 
-        # 最多傳 8 個給 LLM，格式包含 Camera/Room 讓 LLM 做空間推理
+        # 格式包含 Room 讓 LLM 做空間推理（論文 §5.1）
         lines = []
         for r in combined[:8]:
             interact = r.get("interact_count", 0)
@@ -144,7 +153,7 @@ class ToolExecutor:
             lines.append(
                 f"- {r.get('label','?')}: "
                 f"on {r.get('last_seen_on','?')} "
-                f"in {room}{freq}"
+                f"in Room={room}{freq}"
             )
         return "\n".join(lines)
 
@@ -211,7 +220,7 @@ class InteractionEngine:
         self.conv_logs     = self.db["conversation_logs"]
         self.tool_executor = ToolExecutor(vector_memory, self.db)
 
-        # SkillManager（動態載入避免循環 import）
+        # SkillManager
         try:
             from modules.skill_manager import SkillManager
             self.skill_manager = SkillManager(
@@ -225,32 +234,153 @@ class InteractionEngine:
             logger.warning(f"[InteractionEngine] SkillManager not available: {e}")
             self._has_skill_manager = False
 
-    # ── 快速意圖分類（關鍵字，不呼叫 LLM）────────────────────────────────────
-    CHAT_KEYWORDS = {
-        "hate", "love", "feel", "feeling", "miss", "sad", "happy", "angry",
-        "tired", "stressed", "bored", "lonely", "excited", "scared", "worry",
-        "thank", "thanks", "hello", "hi", "hey", "bye", "goodbye", "sorry",
-        "joke", "chat", "talk", "tell me", "how are you", "what do you think",
-        "i think", "i feel", "my boss", "my friend", "my life", "i hate",
-        "i love", "i miss", "can we", "let's", "lol", "haha",
-    }
-    LIST_KEYWORDS = {
-        "what can i eat", "what can i drink", "what's available", "what do we have",
-        "what is available", "show me", "list", "options", "choices",
-        "what food", "what drink", "what snack",
-    }
+        # SBERT 語義比對用（論文 §3.1）
+        self._sbert = None
+        self._sbert_templates = None
+        self._init_sbert()
+
+    # ── SBERT 初始化（懶載入，避免佔 VRAM）─────────────────────────────────
+    def _init_sbert(self):
+        try:
+            # 重用 vector_memory 已載入的 SBERT，不重複佔 VRAM
+            if hasattr(self.vector, 'model'):
+                self._sbert = self.vector.model
+                self._sbert_templates = self._build_sbert_templates()
+                logger.info("[IntentClassify] SBERT loaded from VectorMemory")
+        except Exception as e:
+            logger.warning(f"[IntentClassify] SBERT init failed: {e}")
+
+    def _build_sbert_templates(self):
+        """
+        三類代表句子（論文 §3.1 意圖模板）
+        每類 3 句，取平均向量作為類別代表
+        """
+        import numpy as np
+        templates = {
+            "chat": [
+                "你好，我好累，今天天氣真好",
+                "謝謝你，你好棒，再見",
+                "hello how are you thank you goodbye",
+            ],
+            "query": [
+                "鑰匙在哪裡，冰箱有牛奶嗎，客廳有人嗎",
+                "家裡有什麼吃的，爸爸在哪，現在幾度",
+                "where is the key, is there milk in the fridge",
+            ],
+            "service": [
+                "幫我拿水，帶我去沙發，打開燈",
+                "我餓了，幫我倒咖啡，把杯子拿到廚房",
+                "get me water, take me to the sofa, turn on the light",
+            ],
+        }
+        vecs = {}
+        for intent, sentences in templates.items():
+            encoded = self._sbert.encode(sentences, normalize_embeddings=True)
+            vecs[intent] = encoded.mean(axis=0)
+        return vecs
+
+    # ── 快速意圖分類（關鍵字優先 → SBERT 備援，論文 §3.1）─────────────────
+    #
+    # 決策優先順序：
+    # 1. 中斷關鍵字 → interrupt
+    # 2. 動作關鍵字 → service
+    # 3. 查詢關鍵字 → query
+    # 4. 生理需求   → service（預設）
+    # 5. SBERT 語義比對（未命中時）
+    # 6. 預設 chat
+    #
+    INTERRUPT_KEYWORDS_ZH = {"停下", "停止", "算了", "取消", "不用了"}
+    INTERRUPT_KEYWORDS_EN = {"stop", "cancel", "never mind", "forget it"}
+
+    ACTION_KEYWORDS_ZH = {"幫我", "拿去", "帶我", "幫忙", "帶到", "送到", "打開", "關掉",
+                          "開燈", "關燈", "倒", "煮", "準備", "導航", "去拿"}
+    ACTION_KEYWORDS_EN = {"get me", "bring me", "take me", "help me", "fetch",
+                          "navigate to", "turn on", "turn off", "prepare", "make"}
+
+    QUERY_KEYWORDS_ZH = {"在哪", "在哪裡", "有沒有", "有嗎", "有什麼", "幾個", "幾顆",
+                         "過期", "什麼時候", "幾點", "多少", "哪裡", "在嗎", "看到"}
+    QUERY_KEYWORDS_EN = {"where is", "where are", "is there", "do we have",
+                         "how many", "what is available", "show me", "list",
+                         "what food", "what drink", "options", "choices"}
+
+    PHYSICAL_NEED_ZH = {"餓了", "渴了", "累了想坐", "想喝", "想吃", "想睡"}
+    PHYSICAL_NEED_EN = {"i'm hungry", "i'm thirsty", "i want to eat", "i want to drink"}
 
     def _classify_intent(self, query: str) -> str:
         """
-        回傳: 'chat' | 'list' | 'service'
-        純關鍵字比對，不呼叫 LLM，速度快。
+        回傳: 'interrupt' | 'chat' | 'query' | 'service'
+
+        論文 §3.1 Intent Disambiguation with Hybrid Routing：
+        - Step 1: 關鍵字快速匹配（< 1ms）
+        - Step 2: SBERT 語義比對（關鍵字未命中時，~10ms）
         """
         q = query.lower().strip()
-        if any(kw in q for kw in self.LIST_KEYWORDS):
-            return "list"
-        if any(kw in q for kw in self.CHAT_KEYWORDS):
-            return "chat"
-        return "service"
+
+        # Step 1a：中斷關鍵字（最高優先級）
+        if any(kw in q for kw in self.INTERRUPT_KEYWORDS_ZH):
+            return "interrupt"
+        if any(kw in q for kw in self.INTERRUPT_KEYWORDS_EN):
+            return "interrupt"
+
+        # Step 1b：動作關鍵字 → service
+        if any(kw in q for kw in self.ACTION_KEYWORDS_ZH):
+            return "service"
+        if any(kw in q for kw in self.ACTION_KEYWORDS_EN):
+            return "service"
+
+        # Step 1c：查詢關鍵字 → query
+        if any(kw in q for kw in self.QUERY_KEYWORDS_ZH):
+            return "query"
+        if any(kw in q for kw in self.QUERY_KEYWORDS_EN):
+            return "query"
+
+        # Step 1d：生理需求 → service（預設）
+        if any(kw in q for kw in self.PHYSICAL_NEED_ZH):
+            return "service"
+        if any(kw in q for kw in self.PHYSICAL_NEED_EN):
+            return "service"
+
+        # Step 2：SBERT 語義比對（關鍵字都未命中）
+        if self._sbert and self._sbert_templates:
+            sbert_result = self._classify_by_sbert(query)
+            if sbert_result:
+                return sbert_result
+
+        # 預設 chat
+        return "chat"
+
+    def _classify_by_sbert(self, query: str) -> str | None:
+        """
+        SBERT 語義比對：計算 query 與三類模板的餘弦相似度
+        門檻：chat=0.70, query=0.65, service=0.60（論文 §3.1）
+        """
+        try:
+            import numpy as np
+            q_vec = self._sbert.encode(query, normalize_embeddings=True)
+
+            scores = {}
+            for intent, template_vec in self._sbert_templates.items():
+                sim = float(np.dot(q_vec, template_vec))
+                scores[intent] = sim
+
+            logger.debug(f"[SBERT] scores={scores}")
+
+            # 按門檻值判斷（高門檻優先）
+            if scores.get("chat", 0) >= SBERT_THRESHOLD_CHAT:
+                return "chat"
+            if scores.get("query", 0) >= SBERT_THRESHOLD_QUERY:
+                return "query"
+            if scores.get("service", 0) >= SBERT_THRESHOLD_SERVICE:
+                return "service"
+
+            # 沒有任何類別達到門檻 → 取最高分
+            best = max(scores, key=scores.get)
+            logger.debug(f"[SBERT] no threshold met, best={best}")
+            return best
+
+        except Exception as e:
+            logger.warning(f"[SBERT classify] failed: {e}")
+            return None
 
     # ── 主入口 ────────────────────────────────────────────────────────────────
     def process(self, query, user_id="Unknown", robot_pos=None,
@@ -261,15 +391,19 @@ class InteractionEngine:
         intent = self._classify_intent(query)
         print(f"[Classify] intent={intent}")
 
-        # 純聊天 → 不進 ReAct，直接用 LLM 回應
+        # 中斷指令
+        if intent == "interrupt":
+            return self._interrupt_response(query, user_id)
+
+        # 純聊天 → 不進 ReAct，直接 LLM 回應
         if intent == "chat":
             return self._chat_response(query, user_id)
 
-        # 列表查詢 → 直接從 MongoDB 撈所有選項
-        if intent == "list":
-            return self._list_response(query, user_id)
+        # 查詢類 → MongoDB 直查（論文 §2.2）
+        if intent == "query":
+            return self._query_response(query, user_id, room)
 
-        # ReAct 主流程（service 類）
+        # 執行類（service）→ ReAct + FAISS
         if self._has_skill_manager:
             try:
                 result = self._react_process(query, user_id, room)
@@ -287,9 +421,22 @@ class InteractionEngine:
             except Exception as e:
                 logger.warning(f"[ReAct] Failed, falling back: {e}")
 
-        # Fallback：固定 pipeline
+        # Fallback pipeline
         logger.info("[Interact] Using fixed pipeline fallback")
         return self._pipeline_process(query, user_id, robot_pos, user_pos, room)
+
+    # ── 中斷回應 ──────────────────────────────────────────────────────────────
+    def _interrupt_response(self, query: str, user_id: str) -> dict:
+        print(f"[Interrupt] Task cancelled by user")
+        is_chinese = any('\u4e00' <= c <= '\u9fff' for c in query)
+        answer = "好的，已停止。" if is_chinese else "Understood, stopping now."
+        return {
+            "status": "Interrupted", "answer": answer,
+            "nav_target": None, "nav_label": None,
+            "options": [{"id": 3, "label": "關閉" if is_chinese else "Close"}],
+            "confidence": 1.0, "intent_type": "interrupt",
+            "recommendations": [], "is_personalized": False,
+        }
 
     # ── 聊天回應（不進 ReAct）────────────────────────────────────────────────
     def _chat_response(self, query: str, user_id: str) -> dict:
@@ -309,12 +456,125 @@ class InteractionEngine:
             "recommendations": [], "is_personalized": False,
         }
 
-    # ── 列表回應（所有可用選項）──────────────────────────────────────────────
+    # ── 查詢回應（Query 類，MongoDB 直查，論文 §2.2）─────────────────────────
+    def _query_response(self, query: str, user_id: str, room: str) -> dict:
+        """
+        Query 類處理：直接查 MongoDB，不走 ReAct loop
+        包含物品位置、存在性、人物位置、空間狀態等查詢
+        """
+        print(f"[Query] Direct MongoDB lookup for: {query}")
+        from datetime import datetime, timedelta
+
+        q = query.lower()
+
+        # ── 人物位置查詢 ──
+        if any(kw in q for kw in ["在哪", "在嗎", "在客廳", "人在", "where is"]):
+            # 查 user_positions collection
+            users = list(self.db.user_positions.find(
+                {}, {"user_id":1,"room":1,"updated_at":1}
+            ))
+            if users:
+                is_chinese = any('\u4e00' <= c <= '\u9fff' for c in query)
+                user_strs = []
+                for u in users:
+                    user_strs.append(f"{u.get('user_id','?')} 在 {u.get('room','?')}")
+                answer = "、".join(user_strs) + "。" if is_chinese else \
+                         ", ".join(f"{u.get('user_id','?')} is in {u.get('room','?')}" for u in users)
+            else:
+                answer = "目前沒有追蹤到家庭成員位置。"
+            return {
+                "status": "Success", "answer": answer,
+                "nav_target": None, "nav_label": None,
+                "options": [{"id": 3, "label": "關閉"}],
+                "confidence": 0.9, "intent_type": "query",
+                "recommendations": [], "is_personalized": False,
+            }
+
+        # ── 物品查詢（位置 / 存在性）──
+        cutoff = datetime.utcnow() - timedelta(hours=2)
+        docs = list(self.db.dynamic_objects.find(
+            {"last_seen": {"$gte": cutoff}},
+            {"label":1,"room":1,"last_seen_on":1,"interact_count":1}
+        ).sort("interact_count", -1))
+
+        if not docs:
+            docs = list(self.db.dynamic_objects.find(
+                {}, {"label":1,"room":1,"last_seen_on":1,"interact_count":1}
+            ).sort("interact_count", -1).limit(15))
+
+        # 排除人物
+        EXCLUDE = {"user_mom","user_dad","user","person","people"}
+        docs = [d for d in docs if d.get("label","").lower() not in EXCLUDE]
+
+        is_chinese = any('\u4e00' <= c <= '\u9fff' for c in query)
+
+        if not docs:
+            answer = "目前家裡沒有偵測到相關物品。" if is_chinese else \
+                     "No items currently detected in the home."
+            return {
+                "status": "Success", "answer": answer,
+                "nav_target": None, "nav_label": None,
+                "options": [{"id": 3, "label": "關閉" if is_chinese else "Close"}],
+                "confidence": 0.5, "intent_type": "query",
+                "recommendations": [], "is_personalized": False,
+            }
+
+        # 用 SBERT 找最相關的物品
+        relevant_docs = []
+        if self._sbert:
+            try:
+                import numpy as np
+                q_vec = self._sbert.encode(query, normalize_embeddings=True)
+                scored = []
+                for d in docs:
+                    label_vec = self._sbert.encode(d.get("label",""), normalize_embeddings=True)
+                    sim = float(np.dot(q_vec, label_vec))
+                    scored.append((d, sim))
+                scored.sort(key=lambda x: x[1], reverse=True)
+                relevant_docs = [d for d, s in scored[:5] if s > 0.3]
+            except Exception:
+                relevant_docs = docs[:5]
+        else:
+            relevant_docs = docs[:5]
+
+        if not relevant_docs:
+            relevant_docs = docs[:3]
+
+        # 組回答
+        if is_chinese:
+            items_str = "、".join(
+                f"{d['label']}（在{d.get('room','?')}的{d.get('last_seen_on','?')}上）"
+                for d in relevant_docs[:3]
+            )
+            answer = f"我找到以下相關物品：{items_str}。"
+        else:
+            items_str = ", ".join(
+                f"{d['label']} (on {d.get('last_seen_on','?')} in {d.get('room','?')})"
+                for d in relevant_docs[:3]
+            )
+            answer = f"I found: {items_str}."
+
+        nav_label  = relevant_docs[0].get("last_seen_on") if relevant_docs else None
+        nav_target = self._resolve_pos(nav_label)
+
+        return {
+            "status": "Success", "answer": answer,
+            "nav_target": nav_target, "nav_label": nav_label,
+            "options": self._build_options(nav_target, nav_label, query),
+            "confidence": 0.85, "intent_type": "query",
+            "recommendations": [
+                {"label": d["label"], "last_seen_on": d.get("last_seen_on"),
+                 "room": d.get("room"), "score": 0.8}
+                for d in relevant_docs[:4]
+            ],
+            "is_personalized": False,
+        }
+
+    # ── 列表回應（query 的清單子類型，論文 §2.2 清單查詢）───────────────────
     def _list_response(self, query: str, user_id: str) -> dict:
         print(f"[List] Fetching available options from MongoDB")
         from datetime import datetime, timedelta
 
-        # 從 MongoDB 取最近看到的物件
         cutoff = datetime.utcnow() - timedelta(hours=2)
         docs = list(self.db.dynamic_objects.find(
             {"last_seen": {"$gte": cutoff}},
@@ -326,7 +586,6 @@ class InteractionEngine:
                 {}, {"label":1,"room":1,"last_seen_on":1,"furniture_pos":1,"interact_count":1}
             ).sort("interact_count", -1).limit(15))
 
-        # 排除人物類
         EXCLUDE = {"user_mom","user_dad","user","person","people"}
         docs = [d for d in docs if d.get("label","").lower() not in EXCLUDE]
 
@@ -338,11 +597,10 @@ class InteractionEngine:
                 "status": "Success", "answer": answer,
                 "nav_target": None, "nav_label": None,
                 "options": [{"id": 3, "label": "Close"}],
-                "confidence": 0.5, "intent_type": "list",
+                "confidence": 0.5, "intent_type": "query",
                 "recommendations": [], "is_personalized": False,
             }
 
-        # 用 LLM 從清單裡選出和 query 相關的物件
         all_items_str = "\n".join(
             f"- {d['label']}: on {d.get('last_seen_on','?')} in {d.get('room','?')}"
             for d in docs
@@ -368,15 +626,12 @@ class InteractionEngine:
         if filter_result and not filter_result.get("none", False):
             relevant_labels = [l.lower() for l in filter_result.get("relevant", [])]
 
-        # 用過濾後的 label 取對應 doc
         label_to_doc = {d["label"].lower(): d for d in docs}
         filtered_docs = [label_to_doc[l] for l in relevant_labels if l in label_to_doc]
 
-        # 如果 LLM 過濾失敗，fallback 到全部
         if not filtered_docs:
             filtered_docs = docs[:6]
 
-        # 用習慣記憶排序
         habit_results = self.vector.search_habit(query, user_id=user_id, top_k=5)
         habit_items   = set()
         for h in habit_results:
@@ -387,7 +642,6 @@ class InteractionEngine:
             -d.get("interact_count", 0)
         ))
 
-        # 組回答
         items_str = ", ".join(
             f"{d['label']} ({d.get('last_seen_on','?')} in {d.get('room','?')})"
             for d in filtered_docs[:5]
@@ -397,7 +651,6 @@ class InteractionEngine:
         else:
             answer = f"Currently available: {items_str}. Which one would you like?"
 
-        # 選項：每個相關物件一個
         options = []
         for i, d in enumerate(filtered_docs[:4], 1):
             label = d.get("label","?")
@@ -412,7 +665,7 @@ class InteractionEngine:
             "status": "Success", "answer": answer,
             "nav_target": nav_target, "nav_label": nav_label,
             "options": options,
-            "confidence": 0.9, "intent_type": "list",
+            "confidence": 0.9, "intent_type": "query",
             "recommendations": [
                 {"label": d["label"], "last_seen_on": d.get("last_seen_on"),
                  "room": d.get("room"), "score": 0.8}
@@ -421,12 +674,14 @@ class InteractionEngine:
             "is_personalized": len(habit_items) > 0,
         }
 
-    # ── ReAct 流程 ────────────────────────────────────────────────────────────
+    # ── ReAct 流程（Service 類）───────────────────────────────────────────────
     def _react_process(self, query, user_id, room):
         sm = self.skill_manager
 
-        # 1. 讀取或生成 SKILL.md
-        skill_md = sm.get_skill(user_id)
+        # 1. 讀取或生成 SKILL.md（使用 FAISS 切片版本，論文 §4.2）
+        skill_md = sm.get_skill_chunks(user_id, query)  # Top-2 切片
+        if not skill_md:
+            skill_md = sm.get_skill(user_id)
         if not skill_md:
             skill_md = sm.generate(user_id)
 
@@ -434,7 +689,14 @@ class InteractionEngine:
         has_gap, missing = sm.detect_gap(user_id, query)
         if has_gap and missing:
             print(f"[GapDetector] Missing: {missing} → fill_gap()")
-            skill_md = sm.fill_gap(user_id, query, missing)
+            # 走非同步隊列，避免卡住即時回應（論文 §3.2）
+            try:
+                from app import submit_llm_task
+                skill_md_updated = submit_llm_task(sm.fill_gap, user_id, query, missing)
+                if skill_md_updated:
+                    skill_md = skill_md_updated
+            except ImportError:
+                skill_md = sm.fill_gap(user_id, query, missing)
 
         # 3. 更新 last_used
         self.db.user_skills.update_one(
@@ -442,10 +704,10 @@ class InteractionEngine:
             {"$set": {"last_used": datetime.datetime.utcnow()}}
         )
 
-        # 4. system prompt = ReAct + SKILL.md
+        # 4. system prompt = ReAct + SKILL 切片（< 400 tokens）
         system = REACT_SYSTEM_PROMPT
         if skill_md:
-            system += f"\n\n## This user's skill profile\n{skill_md}"
+            system += f"\n\n## This user's skill profile (relevant rules only)\n{skill_md}"
 
         # 5. 取得已知家具
         furniture_labels = [
@@ -457,7 +719,7 @@ class InteractionEngine:
 
         # 6. ReAct loop
         observations = []
-        used_tools   = []   # 記錄已使用的工具，防止重複
+        used_tools   = []
 
         for step in range(MAX_STEPS):
             obs_text = ""
@@ -471,7 +733,6 @@ class InteractionEngine:
                         f"  Result: {o['result']}\n"
                     )
 
-            # 告訴 LLM 已用過的工具 + 剩餘步數
             remaining = MAX_STEPS - step
             used_str  = f"Already used: {used_tools}" if used_tools else "No tools used yet"
             next_hint = "You MUST call finish now." if remaining == 1 else \
@@ -480,7 +741,7 @@ class InteractionEngine:
             user_prompt = (
                 f"User: {query}\n"
                 f"User ID: {user_id}\n"
-                f"Room: {room}\n"
+                f"Robot current room: {room}\n"
                 f"Known furniture: {furniture_str}\n"
                 f"Time: {datetime.datetime.now().strftime('%H:%M')}\n"
                 f"{used_str}. {next_hint}"
@@ -503,29 +764,29 @@ class InteractionEngine:
             print(f"[ReAct] Step {step+1} | tool={tool_name} | "
                   f"thought={thought[:60]}")
 
-            # tool 是空字串 → LLM 沒有選工具，直接跳出讓 summarize 處理
             if not tool_name:
-                logger.warning(f"[ReAct] Step {step+1}: empty tool name, breaking to summarize")
+                logger.warning(f"[ReAct] Step {step+1}: empty tool name")
                 break
 
-            # finish → 結束
             if tool_name == "finish":
                 answer     = tool_input.get("answer", "")
                 nav_target = tool_input.get("nav_target", "unknown")
                 nav_label  = tool_input.get("nav_label", nav_target)
 
-                # 對話型查詢：沒有用任何搜尋工具 → 不顯示導航
-                # 例如 "can you help me", "how are you", "chat with me"
                 if not observations:
                     nav_target = None
                     nav_label  = None
 
                 nav_pos = self._resolve_pos(nav_target) if nav_target and nav_target != "unknown" else None
 
-                # RelevanceGate → 更新 SKILL.md
+                # RelevanceGate → 非同步更新 SKILL.md
                 if sm.should_update(user_id, query, answer, observations):
-                    print(f"[RelevanceGate] Updating SKILL.md...")
-                    sm.update(user_id, query, answer, observations)
+                    print(f"[RelevanceGate] Queuing SKILL.md update...")
+                    try:
+                        from app import submit_llm_task
+                        submit_llm_task(sm.update, user_id, query, answer, observations)
+                    except ImportError:
+                        sm.update(user_id, query, answer, observations)
 
                 sm.check_stale(user_id)
 
@@ -543,19 +804,13 @@ class InteractionEngine:
                     "skill_version":   sm.get_version(user_id),
                 }
 
-            # 執行工具
-            # 如果重複呼叫同一個工具 → 強制用 LLM 總結後 finish
             if tool_name in used_tools:
                 print(f"[ReAct] Step {step+1}: '{tool_name}' already used → force finish")
-
-                # 收集所有 observations 的結果
                 all_results = "\n".join(
                     f"From {o['tool']}: {o['result']}"
                     for o in observations
                     if o["result"] and "No " not in o["result"][:3]
                 )
-
-                # 用 LLM 把結果轉成自然語言
                 if all_results:
                     summary_prompt = (
                         f'User said: "{query}"\n\n'
@@ -605,7 +860,7 @@ class InteractionEngine:
                 "result":  result,
             })
 
-        # MAX_STEPS 用完 → 用 LLM 總結已有的 observations
+        # MAX_STEPS 用完 → LLM 總結
         logger.warning("[ReAct] Exceeded MAX_STEPS, summarizing observations")
         all_results = "\n".join(
             f"From {o['tool']}: {o['result']}"
@@ -640,10 +895,9 @@ class InteractionEngine:
                     "skill_version": sm.get_version(user_id),
                 }
 
-        # 完全沒有結果才 fallback 到 pipeline
         return None
 
-    # ── 固定 pipeline fallback（v2 完整保留）─────────────────────────────────
+    # ── 固定 pipeline fallback ─────────────────────────────────────────────────
     def _pipeline_process(self, query, user_id="Unknown", robot_pos=None,
                           user_pos=None, room=""):
         intent_result  = self._llm_analyze_intent(query, user_id)
@@ -687,7 +941,6 @@ class InteractionEngine:
             is_personalized=len(dynamic_personal) > 0,
         )
 
-        print(f"[Pipeline] answer={answer[:60]}...")
         return {
             "status": "Success", "answer": answer,
             "nav_target": nav_target, "nav_label": nav_label,
