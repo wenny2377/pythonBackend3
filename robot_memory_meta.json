@@ -1,0 +1,1747 @@
+[
+  {
+    "faiss_idx": 0,
+    "user": "User_Mom",
+    "action": "Drink",
+    "instance": "table",
+    "interacting_items": [
+      "cola"
+    ],
+    "all_items": [
+      "cola",
+      "apple"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "apple",
+        "relation": "above",
+        "object": "table",
+        "_confidence": "high"
+      },
+      {
+        "subject": "bottle",
+        "relation": "in_hand_of",
+        "object": "User_Mom"
+      }
+    ],
+    "furniture_pos": [
+      2.96,
+      -0.59
+    ],
+    "mongo_id": "69c8c45136c26b43bb620c5e",
+    "description": "A woman is drinking from a bottle on top of a table. apple above table bottle in_hand_of User_Mom",
+    "memory_text": "User_Mom Drink near table with cola. A woman is drinking from a bottle on top of a table. apple above table bottle in_hand_of User_Mom apple above table. bottle in_hand_of User_Mom.",
+    "timestamp": "2026-03-29T14:22:03.212441"
+  },
+  {
+    "faiss_idx": 1,
+    "user": "User_Dad",
+    "action": "Typing",
+    "instance": "desk",
+    "interacting_items": [
+      "computer set"
+    ],
+    "all_items": [
+      "computer set"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "computer set",
+        "relation": "above",
+        "object": "desk",
+        "_confidence": 1.0
+      },
+      {
+        "subject": "computer",
+        "relation": "in_hand_of",
+        "object": "User_Dad"
+      }
+    ],
+    "furniture_pos": [
+      -1.52,
+      0.110000014
+    ],
+    "mongo_id": "69c8c45136c26b43bb620c5f",
+    "description": "A man is typing on a laptop computer at his desk. computer set above desk computer in_hand_of User_Dad",
+    "memory_text": "User_Dad Typing near desk with computer set. A man is typing on a laptop computer at his desk. computer set above desk computer in_hand_of User_Dad computer set above desk. computer in_hand_of User_Dad.",
+    "timestamp": "2026-03-29T14:22:11.886040"
+  },
+  {
+    "faiss_idx": 2,
+    "user": "User_Mom",
+    "action": "Watching",
+    "instance": "sofa",
+    "interacting_items": [],
+    "all_items": [
+      "shelf",
+      "table2"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "table2",
+        "relation": "next to",
+        "object": "sofa",
+        "_confidence": 1.0
+      },
+      {
+        "subject": "shelf",
+        "relation": "above",
+        "object": "sofa",
+        "_confidence": 1.0
+      }
+    ],
+    "furniture_pos": [
+      0.4,
+      5.75
+    ],
+    "mongo_id": "69c8c45136c26b43bb620c63",
+    "description": "A woman is sitting on a sofa and watching television. table2 next to sofa shelf above sofa",
+    "memory_text": "User_Mom Watching near sofa with nothing. A woman is sitting on a sofa and watching television. table2 next to sofa shelf above sofa table2 next to sofa. shelf above sofa.",
+    "timestamp": "2026-03-29T14:22:23.772123"
+  },
+  {
+    "faiss_idx": 3,
+    "user": "User_Dad",
+    "action": "Typing",
+    "instance": "table",
+    "interacting_items": [
+      "computer set"
+    ],
+    "all_items": [
+      "computer set"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "computer set",
+        "relation": "above",
+        "object": "desk",
+        "_confidence": 1.0
+      },
+      {
+        "subject": "computer",
+        "relation": "in_hand_of",
+        "object": "User_Dad"
+      }
+    ],
+    "furniture_pos": [
+      2.96,
+      -0.59
+    ],
+    "mongo_id": "69c8c45136c26b43bb620c5e",
+    "description": "A man is typing on a laptop computer at his desk. computer set above desk computer in_hand_of User_Dad",
+    "memory_text": "User_Dad Typing near table with computer set. A man is typing on a laptop computer at his desk. computer set above desk computer in_hand_of User_Dad computer set above desk. computer in_hand_of User_Dad.",
+    "timestamp": "2026-03-29T14:22:34.474588"
+  },
+  {
+    "faiss_idx": 4,
+    "user": "User_Mom",
+    "action": "Drink",
+    "instance": "table",
+    "interacting_items": [
+      "cola"
+    ],
+    "all_items": [
+      "cola",
+      "apple"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "apple",
+        "relation": "above",
+        "object": "table",
+        "_confidence": "high"
+      },
+      {
+        "subject": "cup",
+        "relation": "in_hand_of",
+        "object": "User_Mom"
+      }
+    ],
+    "furniture_pos": [
+      2.96,
+      -0.59
+    ],
+    "mongo_id": "69c8c45136c26b43bb620c5e",
+    "description": "A woman is drinking from a cup while standing at the kitchen table. apple above table cup in_hand_of User_Mom",
+    "memory_text": "User_Mom Drink near table with cola. A woman is drinking from a cup while standing at the kitchen table. apple above table cup in_hand_of User_Mom apple above table. cup in_hand_of User_Mom.",
+    "timestamp": "2026-03-29T14:22:45.324111"
+  },
+  {
+    "faiss_idx": 5,
+    "user": "User_Dad",
+    "action": "Watching",
+    "instance": "table",
+    "interacting_items": [],
+    "all_items": [
+      "tv",
+      "chair"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "tv",
+        "relation": "above",
+        "object": "table",
+        "_confidence": 1.0
+      },
+      {
+        "subject": "chair",
+        "relation": "next to",
+        "object": "desk",
+        "_confidence": 1.0
+      }
+    ],
+    "furniture_pos": [
+      2.96,
+      -0.59
+    ],
+    "mongo_id": "69c8c45136c26b43bb620c5e",
+    "description": "A man is watching tv on a white table. tv above table chair next to desk",
+    "memory_text": "User_Dad Watching near table with nothing. A man is watching tv on a white table. tv above table chair next to desk tv above table. chair next to desk.",
+    "timestamp": "2026-03-29T14:22:56.862299"
+  },
+  {
+    "faiss_idx": 6,
+    "user": "User_Mom",
+    "action": "Drink",
+    "instance": "table",
+    "interacting_items": [
+      "cola"
+    ],
+    "all_items": [
+      "cola",
+      "apple"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "apple",
+        "relation": "next to",
+        "object": "bed",
+        "_confidence": "no_match"
+      },
+      {
+        "subject": "cup",
+        "relation": "in_hand_of",
+        "object": "User_Mom"
+      }
+    ],
+    "furniture_pos": [
+      2.96,
+      -0.59
+    ],
+    "mongo_id": "69c8c45136c26b43bb620c5e",
+    "description": "A person is drinking from a cup on a bed next to an apple. apple next to bed cup in_hand_of User_Mom",
+    "memory_text": "User_Mom Drink near table with cola. A person is drinking from a cup on a bed next to an apple. apple next to bed cup in_hand_of User_Mom apple next to bed. cup in_hand_of User_Mom.",
+    "timestamp": "2026-03-29T14:23:07.783362"
+  },
+  {
+    "faiss_idx": 7,
+    "user": "User_Dad",
+    "action": "Typing",
+    "instance": "desk",
+    "interacting_items": [],
+    "all_items": [
+      "computer set"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "computer set",
+        "relation": "above",
+        "object": "desk",
+        "_confidence": 1.0
+      }
+    ],
+    "furniture_pos": [
+      -1.52,
+      0.110000014
+    ],
+    "mongo_id": "69c8c45136c26b43bb620c5f",
+    "description": "A man is typing on a computer keyboard at his desk. computer set above desk",
+    "memory_text": "User_Dad Typing near desk with nothing. A man is typing on a computer keyboard at his desk. computer set above desk computer set above desk.",
+    "timestamp": "2026-03-29T14:23:18.670533"
+  },
+  {
+    "faiss_idx": 8,
+    "user": "User_Mom",
+    "action": "Watching",
+    "instance": "sofa",
+    "interacting_items": [
+      "apple"
+    ],
+    "all_items": [
+      "apple",
+      "banana"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "banana",
+        "relation": "next to",
+        "object": "table",
+        "_confidence": "coord_fallback"
+      },
+      {
+        "subject": "tablet",
+        "relation": "in_hand_of",
+        "object": "User_Mom"
+      }
+    ],
+    "furniture_pos": [
+      0.4,
+      5.75
+    ],
+    "mongo_id": "69c8c45136c26b43bb620c63",
+    "description": "A person is sitting on a sofa and watching something while holding a tablet. banana next to table tablet in_hand_of User_Mom",
+    "memory_text": "User_Mom Watching near sofa with apple. A person is sitting on a sofa and watching something while holding a tablet. banana next to table tablet in_hand_of User_Mom banana next to table. tablet in_hand_of User_Mom.",
+    "timestamp": "2026-03-29T14:23:30.304815"
+  },
+  {
+    "faiss_idx": 9,
+    "user": "User_Dad",
+    "action": "Watching",
+    "instance": "desk",
+    "interacting_items": [],
+    "all_items": [
+      "computer set"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "computer set",
+        "relation": "above",
+        "object": "desk",
+        "_confidence": 1.0
+      },
+      {
+        "subject": "computer set",
+        "relation": "in front of",
+        "object": "desk",
+        "_confidence": 1.0
+      }
+    ],
+    "furniture_pos": [
+      -1.52,
+      0.110000014
+    ],
+    "mongo_id": "69c8c45136c26b43bb620c5f",
+    "description": "A man sitting at a desk with his computer on. computer set above desk computer set in front of desk",
+    "memory_text": "User_Dad Watching near desk with nothing. A man sitting at a desk with his computer on. computer set above desk computer set in front of desk computer set above desk. computer set in front of desk.",
+    "timestamp": "2026-03-29T14:23:41.830460"
+  },
+  {
+    "faiss_idx": 10,
+    "user": "User_Mom",
+    "action": "Drink",
+    "instance": "table",
+    "interacting_items": [
+      "cola"
+    ],
+    "all_items": [
+      "cola",
+      "apple"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "apple",
+        "relation": "above",
+        "object": "bed",
+        "_confidence": "no_match"
+      },
+      {
+        "subject": "cup",
+        "relation": "in_hand_of",
+        "object": "User_Mom"
+      }
+    ],
+    "furniture_pos": [
+      2.96,
+      -0.59
+    ],
+    "mongo_id": "69c8c45136c26b43bb620c5e",
+    "description": "A woman is drinking from a cup while standing next to a bed with an apple on it. apple above bed cup in_hand_of User_Mom",
+    "memory_text": "User_Mom Drink near table with cola. A woman is drinking from a cup while standing next to a bed with an apple on it. apple above bed cup in_hand_of User_Mom apple above bed. cup in_hand_of User_Mom.",
+    "timestamp": "2026-03-29T14:23:52.352843"
+  },
+  {
+    "faiss_idx": 11,
+    "user": "User_Dad",
+    "action": "Watching",
+    "instance": "table",
+    "interacting_items": [],
+    "all_items": [
+      "computer set",
+      "tv"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "tv",
+        "relation": "above",
+        "object": "table",
+        "_confidence": 1.0
+      },
+      {
+        "subject": "computer set",
+        "relation": "next to",
+        "object": "desk",
+        "_confidence": 1.0
+      }
+    ],
+    "furniture_pos": [
+      2.96,
+      -0.59
+    ],
+    "mongo_id": "69c8c45136c26b43bb620c5e",
+    "description": "A man is watching a blue screen on the television. tv above table computer set next to desk",
+    "memory_text": "User_Dad Watching near table with nothing. A man is watching a blue screen on the television. tv above table computer set next to desk tv above table. computer set next to desk.",
+    "timestamp": "2026-03-29T14:24:03.682035"
+  },
+  {
+    "faiss_idx": 12,
+    "user": "User_Mom",
+    "action": "Drink",
+    "instance": "table",
+    "interacting_items": [
+      "cola"
+    ],
+    "all_items": [
+      "cola",
+      "apple"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "apple",
+        "relation": "above",
+        "object": "table",
+        "_confidence": "high"
+      },
+      {
+        "subject": "bottle",
+        "relation": "in_hand_of",
+        "object": "User_Mom"
+      }
+    ],
+    "furniture_pos": [
+      2.96,
+      -0.59
+    ],
+    "mongo_id": "69c8c45136c26b43bb620c5e",
+    "description": "A woman is drinking from a bottle on the table. apple above table bottle in_hand_of User_Mom",
+    "memory_text": "User_Mom Drink near table with cola. A woman is drinking from a bottle on the table. apple above table bottle in_hand_of User_Mom apple above table. bottle in_hand_of User_Mom.",
+    "timestamp": "2026-03-29T14:24:14.874633"
+  },
+  {
+    "faiss_idx": 13,
+    "user": "User_Dad",
+    "action": "Watching",
+    "instance": "table",
+    "interacting_items": [],
+    "all_items": [
+      "computer set"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "computer set",
+        "relation": "above",
+        "object": "desk",
+        "_confidence": 1.0
+      },
+      {
+        "subject": "computer set",
+        "relation": "below",
+        "object": "desk",
+        "_confidence": 1.0
+      }
+    ],
+    "furniture_pos": [
+      2.96,
+      -0.59
+    ],
+    "mongo_id": "69c8c45136c26b43bb620c5e",
+    "description": "A man is standing at a desk and looking at his computer screen. computer set above desk computer set below desk",
+    "memory_text": "User_Dad Watching near table with nothing. A man is standing at a desk and looking at his computer screen. computer set above desk computer set below desk computer set above desk. computer set below desk.",
+    "timestamp": "2026-03-29T14:24:26.498474"
+  },
+  {
+    "faiss_idx": 14,
+    "user": "User_Mom",
+    "action": "Drink",
+    "instance": "table",
+    "interacting_items": [
+      "cola"
+    ],
+    "all_items": [
+      "cola",
+      "sink",
+      "refrigerator"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "sink",
+        "relation": "on",
+        "object": "table",
+        "_confidence": 0.5823929905891418
+      },
+      {
+        "subject": "refrigerator",
+        "relation": "on",
+        "object": "wall",
+        "_confidence": "no_match"
+      },
+      {
+        "subject": "bottle",
+        "relation": "in_hand_of",
+        "object": "User_Mom"
+      }
+    ],
+    "furniture_pos": [
+      2.96,
+      -0.59
+    ],
+    "mongo_id": "69c8c45136c26b43bb620c5e",
+    "description": "A woman is drinking from a bottle at the kitchen table. sink on table refrigerator on wall bottle in_hand_of User_Mom",
+    "memory_text": "User_Mom Drink near table with cola. A woman is drinking from a bottle at the kitchen table. sink on table refrigerator on wall bottle in_hand_of User_Mom sink on table. refrigerator on wall. bottle in_hand_of User_Mom.",
+    "timestamp": "2026-03-29T14:24:37.419898"
+  },
+  {
+    "faiss_idx": 15,
+    "user": "User_Dad",
+    "action": "Walking",
+    "instance": "table",
+    "interacting_items": [],
+    "all_items": [
+      "banana"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "banana",
+        "relation": "next to",
+        "object": "table",
+        "_confidence": "coord_fallback"
+      }
+    ],
+    "furniture_pos": [
+      2.96,
+      -0.59
+    ],
+    "mongo_id": "69c8c45136c26b43bb620c5e",
+    "description": "A woman is walking across a room with a banana on the table. banana next to table",
+    "memory_text": "User_Dad Walking near table with nothing. A woman is walking across a room with a banana on the table. banana next to table banana next to table.",
+    "timestamp": "2026-03-29T14:33:40.952703"
+  },
+  {
+    "faiss_idx": 16,
+    "user": "User_Mom",
+    "action": "Walking",
+    "instance": "sofa",
+    "interacting_items": [],
+    "all_items": [
+      "tv"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "tv",
+        "relation": "above",
+        "object": "shelf2",
+        "_confidence": 1.0
+      }
+    ],
+    "furniture_pos": [
+      0.4,
+      5.75
+    ],
+    "mongo_id": "69c8c45136c26b43bb620c63",
+    "description": "A man is walking in front of a sofa and a television on a shelf. tv above shelf2",
+    "memory_text": "User_Mom Walking near sofa with nothing. A man is walking in front of a sofa and a television on a shelf. tv above shelf2 tv above shelf2.",
+    "timestamp": "2026-03-29T14:33:45.600344"
+  },
+  {
+    "faiss_idx": 17,
+    "user": "User_Dad",
+    "action": "Watching",
+    "instance": "desk",
+    "interacting_items": [],
+    "all_items": [
+      "tv",
+      "chair"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "tv",
+        "relation": "above",
+        "object": "desk",
+        "_confidence": 1.0
+      },
+      {
+        "subject": "chair",
+        "relation": "next to",
+        "object": "desk",
+        "_confidence": 1.0
+      }
+    ],
+    "furniture_pos": [
+      -1.52,
+      0.110000014
+    ],
+    "mongo_id": "69c8c45136c26b43bb620c5f",
+    "description": "A man is sitting on a chair and watching the television. tv above desk chair next to desk",
+    "memory_text": "User_Dad Watching near desk with nothing. A man is sitting on a chair and watching the television. tv above desk chair next to desk tv above desk. chair next to desk.",
+    "timestamp": "2026-03-29T14:33:50.233466"
+  },
+  {
+    "faiss_idx": 18,
+    "user": "User_Mom",
+    "action": "looking at a phone",
+    "instance": "table",
+    "interacting_items": [
+      "phone"
+    ],
+    "all_items": [
+      "apple",
+      "phone"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "apple",
+        "relation": "above",
+        "object": "table",
+        "_confidence": "high"
+      },
+      {
+        "subject": "phone",
+        "relation": "in_hand_of",
+        "object": "User_Mom"
+      }
+    ],
+    "furniture_pos": [
+      2.96,
+      -0.59
+    ],
+    "mongo_id": "69c8c45136c26b43bb620c5e",
+    "description": "A person is looking at their phone while standing near a table with an apple on it. apple above table phone in_hand_of User_Mom",
+    "memory_text": "User_Mom looking at a phone near table with phone. A person is looking at their phone while standing near a table with an apple on it. apple above table phone in_hand_of User_Mom apple above table. phone in_hand_of User_Mom.",
+    "timestamp": "2026-03-29T14:33:58.072304"
+  },
+  {
+    "faiss_idx": 19,
+    "user": "User_Dad",
+    "action": "Watching",
+    "instance": "table",
+    "interacting_items": [],
+    "all_items": [
+      "tv",
+      "chair"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "tv",
+        "relation": "above",
+        "object": "table",
+        "_confidence": 1.0
+      },
+      {
+        "subject": "chair",
+        "relation": "next to",
+        "object": "desk",
+        "_confidence": 1.0
+      }
+    ],
+    "furniture_pos": [
+      2.96,
+      -0.59
+    ],
+    "mongo_id": "69c8c45136c26b43bb620c5e",
+    "description": "A man is watching tv on a white table. tv above table chair next to desk",
+    "memory_text": "User_Dad Watching near table with nothing. A man is watching tv on a white table. tv above table chair next to desk tv above table. chair next to desk.",
+    "timestamp": "2026-03-29T14:34:09.722769"
+  },
+  {
+    "faiss_idx": 20,
+    "user": "User_Mom",
+    "action": "SittingIdle",
+    "instance": "sofa",
+    "interacting_items": [
+      "book"
+    ],
+    "all_items": [
+      "book",
+      "remote"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "remote",
+        "relation": "next to",
+        "object": "table2",
+        "_confidence": 1.0
+      },
+      {
+        "subject": "book",
+        "relation": "in_hand_of",
+        "object": "User_Mom"
+      }
+    ],
+    "furniture_pos": [
+      0.4,
+      5.75
+    ],
+    "mongo_id": "69c8c45136c26b43bb620c63",
+    "description": "A person is sitting on a sofa and holding a book. remote next to table2 book in_hand_of User_Mom",
+    "memory_text": "User_Mom SittingIdle near sofa with book. A person is sitting on a sofa and holding a book. remote next to table2 book in_hand_of User_Mom remote next to table2. book in_hand_of User_Mom.",
+    "timestamp": "2026-03-29T14:34:21.408751"
+  },
+  {
+    "faiss_idx": 21,
+    "user": "User_Dad",
+    "action": "Typing",
+    "instance": "desk",
+    "interacting_items": [
+      "mouse"
+    ],
+    "all_items": [
+      "computer set",
+      "mouse"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "computer set",
+        "relation": "above",
+        "object": "desk",
+        "_confidence": 1.0
+      },
+      {
+        "subject": "mouse",
+        "relation": "below",
+        "object": "desk",
+        "_confidence": 1.0
+      },
+      {
+        "subject": "mouse",
+        "relation": "in_hand_of",
+        "object": "User_Dad"
+      }
+    ],
+    "furniture_pos": [
+      -1.52,
+      0.110000014
+    ],
+    "mongo_id": "69c8c45136c26b43bb620c5f",
+    "description": "A man is sitting at a desk and typing on his laptop computer. computer set above desk mouse below desk mouse in_hand_of User_Dad",
+    "memory_text": "User_Dad Typing near desk with mouse. A man is sitting at a desk and typing on his laptop computer. computer set above desk mouse below desk mouse in_hand_of User_Dad computer set above desk. mouse below desk. mouse in_hand_of User_Dad.",
+    "timestamp": "2026-03-29T14:34:33.124207"
+  },
+  {
+    "faiss_idx": 22,
+    "user": "User_Mom",
+    "action": "Watching",
+    "instance": "sofa",
+    "interacting_items": [
+      "phone"
+    ],
+    "all_items": [
+      "banana",
+      "phone"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "banana",
+        "relation": "next to",
+        "object": "table",
+        "_confidence": "coord_fallback"
+      },
+      {
+        "subject": "tablet",
+        "relation": "in_hand_of",
+        "object": "User_Mom"
+      }
+    ],
+    "furniture_pos": [
+      0.4,
+      5.75
+    ],
+    "mongo_id": "69c8c45136c26b43bb620c63",
+    "description": "A person is sitting on a sofa and holding a tablet, watching something on the TV. banana next to table tablet in_hand_of User_Mom",
+    "memory_text": "User_Mom Watching near sofa with phone. A person is sitting on a sofa and holding a tablet, watching something on the TV. banana next to table tablet in_hand_of User_Mom banana next to table. tablet in_hand_of User_Mom.",
+    "timestamp": "2026-03-29T14:34:43.486466"
+  },
+  {
+    "faiss_idx": 23,
+    "user": "User_Dad",
+    "action": "Typing",
+    "instance": "desk",
+    "interacting_items": [
+      "computer set"
+    ],
+    "all_items": [
+      "computer set"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "computer set",
+        "relation": "above",
+        "object": "desk",
+        "_confidence": 1.0
+      },
+      {
+        "subject": "keyboard",
+        "relation": "in_hand_of",
+        "object": "User_Dad"
+      }
+    ],
+    "furniture_pos": [
+      -1.52,
+      0.110000014
+    ],
+    "mongo_id": "69c8c45136c26b43bb620c5f",
+    "description": "A man is typing on a keyboard at his desk. computer set above desk keyboard in_hand_of User_Dad",
+    "memory_text": "User_Dad Typing near desk with computer set. A man is typing on a keyboard at his desk. computer set above desk keyboard in_hand_of User_Dad computer set above desk. keyboard in_hand_of User_Dad.",
+    "timestamp": "2026-03-29T14:34:54.362104"
+  },
+  {
+    "faiss_idx": 24,
+    "user": "User_Mom",
+    "action": "SittingIdle",
+    "instance": "sofa",
+    "interacting_items": [
+      "book"
+    ],
+    "all_items": [
+      "book",
+      "remote"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "remote",
+        "relation": "next to",
+        "object": "table2",
+        "_confidence": 1.0
+      },
+      {
+        "subject": "book",
+        "relation": "in_hand_of",
+        "object": "User_Mom"
+      }
+    ],
+    "furniture_pos": [
+      0.4,
+      5.75
+    ],
+    "mongo_id": "69c8c45136c26b43bb620c63",
+    "description": "A person is sitting on a sofa and holding a book. remote next to table2 book in_hand_of User_Mom",
+    "memory_text": "User_Mom SittingIdle near sofa with book. A person is sitting on a sofa and holding a book. remote next to table2 book in_hand_of User_Mom remote next to table2. book in_hand_of User_Mom.",
+    "timestamp": "2026-03-29T14:35:06.304014"
+  },
+  {
+    "faiss_idx": 25,
+    "user": "User_Dad",
+    "action": "Watching",
+    "instance": "desk",
+    "interacting_items": [],
+    "all_items": [
+      "computer set",
+      "tv"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "tv",
+        "relation": "above",
+        "object": "desk",
+        "_confidence": 1.0
+      },
+      {
+        "subject": "computer set",
+        "relation": "below",
+        "object": "desk",
+        "_confidence": 1.0
+      }
+    ],
+    "furniture_pos": [
+      -1.52,
+      0.110000014
+    ],
+    "mongo_id": "69c8c45136c26b43bb620c5f",
+    "description": "A man sitting at a desk with his laptop and watching tv. tv above desk computer set below desk",
+    "memory_text": "User_Dad Watching near desk with nothing. A man sitting at a desk with his laptop and watching tv. tv above desk computer set below desk tv above desk. computer set below desk.",
+    "timestamp": "2026-03-29T14:35:17.215635"
+  },
+  {
+    "faiss_idx": 26,
+    "user": "User_Mom",
+    "action": "Watching",
+    "instance": "sofa",
+    "interacting_items": [],
+    "all_items": [
+      "table2"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "table2",
+        "relation": "next to",
+        "object": "sofa",
+        "_confidence": 1.0
+      }
+    ],
+    "furniture_pos": [
+      0.4,
+      5.75
+    ],
+    "mongo_id": "69c8c45136c26b43bb620c63",
+    "description": "A person is sitting on a sofa and watching something. table2 next to sofa",
+    "memory_text": "User_Mom Watching near sofa with nothing. A person is sitting on a sofa and watching something. table2 next to sofa table2 next to sofa.",
+    "timestamp": "2026-03-29T14:35:28.821661"
+  },
+  {
+    "faiss_idx": 27,
+    "user": "User_Dad",
+    "action": "Watching",
+    "instance": "desk",
+    "interacting_items": [],
+    "all_items": [
+      "computer set"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "computer set",
+        "relation": "above",
+        "object": "desk",
+        "_confidence": 1.0
+      },
+      {
+        "subject": "computer set",
+        "relation": "below",
+        "object": "desk",
+        "_confidence": 1.0
+      }
+    ],
+    "furniture_pos": [
+      -1.52,
+      0.110000014
+    ],
+    "mongo_id": "69c8c45136c26b43bb620c5f",
+    "description": "A man sitting at a desk and typing on his computer. computer set above desk computer set below desk",
+    "memory_text": "User_Dad Watching near desk with nothing. A man sitting at a desk and typing on his computer. computer set above desk computer set below desk computer set above desk. computer set below desk.",
+    "timestamp": "2026-03-29T14:35:40.044133"
+  },
+  {
+    "faiss_idx": 28,
+    "user": "User_Mom",
+    "action": "Watching",
+    "instance": "sofa",
+    "interacting_items": [],
+    "all_items": [
+      "shelf",
+      "table2",
+      "remote"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "table2",
+        "relation": "next to",
+        "object": "sofa",
+        "_confidence": 1.0
+      },
+      {
+        "subject": "shelf",
+        "relation": "above",
+        "object": "sofa",
+        "_confidence": 1.0
+      },
+      {
+        "subject": "remote",
+        "relation": "above",
+        "object": "shelf2",
+        "_confidence": 1.0
+      }
+    ],
+    "furniture_pos": [
+      0.4,
+      5.75
+    ],
+    "mongo_id": "69c8c45136c26b43bb620c63",
+    "description": "A person is sitting on a sofa and watching TV. table2 next to sofa shelf above sofa remote above shelf2",
+    "memory_text": "User_Mom Watching near sofa with nothing. A person is sitting on a sofa and watching TV. table2 next to sofa shelf above sofa remote above shelf2 table2 next to sofa. shelf above sofa. remote above shelf2.",
+    "timestamp": "2026-03-29T14:35:52.123205"
+  },
+  {
+    "faiss_idx": 29,
+    "user": "User_Dad",
+    "action": "Watching",
+    "instance": "table2",
+    "interacting_items": [],
+    "all_items": [
+      "computer set"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "computer set",
+        "relation": "above",
+        "object": "desk",
+        "_confidence": 1.0
+      },
+      {
+        "subject": "computer set",
+        "relation": "below",
+        "object": "desk",
+        "_confidence": 1.0
+      }
+    ],
+    "furniture_pos": [
+      2.517,
+      5.455
+    ],
+    "mongo_id": "69c8c45136c26b43bb620c64",
+    "description": "A man is standing at a desk and watching something on the computer monitor. computer set above desk computer set below desk",
+    "memory_text": "User_Dad Watching near table2 with nothing. A man is standing at a desk and watching something on the computer monitor. computer set above desk computer set below desk computer set above desk. computer set below desk.",
+    "timestamp": "2026-03-29T14:36:03.170328"
+  },
+  {
+    "faiss_idx": 30,
+    "user": "User_Mom",
+    "action": "SittingIdle",
+    "instance": "sofa",
+    "interacting_items": [],
+    "all_items": [
+      "banana"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "banana",
+        "relation": "next to",
+        "object": "table2",
+        "_confidence": "high"
+      }
+    ],
+    "furniture_pos": [
+      0.4,
+      5.75
+    ],
+    "mongo_id": "69c8c45136c26b43bb620c63",
+    "description": "A person is sitting on a sofa with a banana next to them. banana next to table2",
+    "memory_text": "User_Mom SittingIdle near sofa with nothing. A person is sitting on a sofa with a banana next to them. banana next to table2 banana next to table2.",
+    "timestamp": "2026-03-29T14:36:14.468715"
+  },
+  {
+    "faiss_idx": 31,
+    "user": "User_Dad",
+    "action": "Watching",
+    "instance": "table",
+    "interacting_items": [],
+    "all_items": [
+      "computer set"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "computer set",
+        "relation": "above",
+        "object": "desk",
+        "_confidence": 1.0
+      },
+      {
+        "subject": "computer set",
+        "relation": "next to",
+        "object": "desk",
+        "_confidence": 1.0
+      }
+    ],
+    "furniture_pos": [
+      2.96,
+      -0.59
+    ],
+    "mongo_id": "69c8c45136c26b43bb620c5e",
+    "description": "A man sitting at a desk with a computer monitor in front of him. computer set above desk computer set next to desk",
+    "memory_text": "User_Dad Watching near table with nothing. A man sitting at a desk with a computer monitor in front of him. computer set above desk computer set next to desk computer set above desk. computer set next to desk.",
+    "timestamp": "2026-03-29T14:36:25.801206"
+  },
+  {
+    "faiss_idx": 32,
+    "user": "User_Mom",
+    "action": "SittingIdle",
+    "instance": "sofa",
+    "interacting_items": [
+      "book"
+    ],
+    "all_items": [
+      "book"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "book",
+        "relation": "next to",
+        "object": "sofa",
+        "_confidence": "coord_ok"
+      },
+      {
+        "subject": "book",
+        "relation": "in_hand_of",
+        "object": "User_Mom"
+      }
+    ],
+    "furniture_pos": [
+      0.4,
+      5.75
+    ],
+    "mongo_id": "69c8c45136c26b43bb620c63",
+    "description": "A person is sitting on a sofa holding a book. book next to sofa book in_hand_of User_Mom",
+    "memory_text": "User_Mom SittingIdle near sofa with book. A person is sitting on a sofa holding a book. book next to sofa book in_hand_of User_Mom book next to sofa. book in_hand_of User_Mom.",
+    "timestamp": "2026-03-29T14:36:36.520812"
+  },
+  {
+    "faiss_idx": 33,
+    "user": "User_Dad",
+    "action": "Watching",
+    "instance": "desk",
+    "interacting_items": [],
+    "all_items": [
+      "computer set"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "computer set",
+        "relation": "above",
+        "object": "desk",
+        "_confidence": 1.0
+      },
+      {
+        "subject": "computer set",
+        "relation": "in front of",
+        "object": "desk",
+        "_confidence": 1.0
+      }
+    ],
+    "furniture_pos": [
+      -1.52,
+      0.110000014
+    ],
+    "mongo_id": "69c8c45136c26b43bb620c5f",
+    "description": "A man sitting at a desk with his computer on. computer set above desk computer set in front of desk",
+    "memory_text": "User_Dad Watching near desk with nothing. A man sitting at a desk with his computer on. computer set above desk computer set in front of desk computer set above desk. computer set in front of desk.",
+    "timestamp": "2026-03-29T14:36:47.659362"
+  },
+  {
+    "faiss_idx": 34,
+    "user": "User_Mom",
+    "action": "Watching",
+    "instance": "sofa",
+    "interacting_items": [],
+    "all_items": [
+      "banana"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "banana",
+        "relation": "next to",
+        "object": "table2",
+        "_confidence": "high"
+      }
+    ],
+    "furniture_pos": [
+      0.4,
+      5.75
+    ],
+    "mongo_id": "69c8c45136c26b43bb620c63",
+    "description": "A woman is sitting on a sofa and watching television. banana next to table2",
+    "memory_text": "User_Mom Watching near sofa with nothing. A woman is sitting on a sofa and watching television. banana next to table2 banana next to table2.",
+    "timestamp": "2026-03-29T14:36:58.866928"
+  },
+  {
+    "faiss_idx": 35,
+    "user": "User_Dad",
+    "action": "Watching",
+    "instance": "desk",
+    "interacting_items": [],
+    "all_items": [
+      "computer set"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "computer set",
+        "relation": "above",
+        "object": "desk",
+        "_confidence": 1.0
+      },
+      {
+        "subject": "computer set",
+        "relation": "below",
+        "object": "desk",
+        "_confidence": 1.0
+      }
+    ],
+    "furniture_pos": [
+      -1.52,
+      0.110000014
+    ],
+    "mongo_id": "69c8c45136c26b43bb620c5f",
+    "description": "A man sitting at a desk with a computer monitor in front of him. computer set above desk computer set below desk",
+    "memory_text": "User_Dad Watching near desk with nothing. A man sitting at a desk with a computer monitor in front of him. computer set above desk computer set below desk computer set above desk. computer set below desk.",
+    "timestamp": "2026-03-29T14:37:10.092454"
+  },
+  {
+    "faiss_idx": 36,
+    "user": "User_Mom",
+    "action": "SittingIdle",
+    "instance": "sofa",
+    "interacting_items": [
+      "book"
+    ],
+    "all_items": [
+      "book",
+      "table"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "table",
+        "relation": "next to",
+        "object": "sofa",
+        "_confidence": 1.0
+      },
+      {
+        "subject": "book",
+        "relation": "in_hand_of",
+        "object": "User_Mom"
+      }
+    ],
+    "furniture_pos": [
+      0.4,
+      5.75
+    ],
+    "mongo_id": "69c8c45136c26b43bb620c63",
+    "description": "A woman is sitting on a sofa and holding a book. table next to sofa book in_hand_of User_Mom",
+    "memory_text": "User_Mom SittingIdle near sofa with book. A woman is sitting on a sofa and holding a book. table next to sofa book in_hand_of User_Mom table next to sofa. book in_hand_of User_Mom.",
+    "timestamp": "2026-03-29T14:37:21.306806"
+  },
+  {
+    "faiss_idx": 37,
+    "user": "User_Dad",
+    "action": "Watching",
+    "instance": "desk",
+    "interacting_items": [],
+    "all_items": [
+      "computer set"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "computer set",
+        "relation": "above",
+        "object": "desk",
+        "_confidence": 1.0
+      },
+      {
+        "subject": "computer set",
+        "relation": "in front of",
+        "object": "desk",
+        "_confidence": 1.0
+      }
+    ],
+    "furniture_pos": [
+      -1.52,
+      0.110000014
+    ],
+    "mongo_id": "69c8c45136c26b43bb620c5f",
+    "description": "A man is sitting at a desk and typing on his computer. computer set above desk computer set in front of desk",
+    "memory_text": "User_Dad Watching near desk with nothing. A man is sitting at a desk and typing on his computer. computer set above desk computer set in front of desk computer set above desk. computer set in front of desk.",
+    "timestamp": "2026-03-29T14:37:31.744322"
+  },
+  {
+    "faiss_idx": 38,
+    "user": "User_Mom",
+    "action": "Watching",
+    "instance": "sofa",
+    "interacting_items": [],
+    "all_items": [
+      "table2"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "table2",
+        "relation": "next to",
+        "object": "sofa",
+        "_confidence": 1.0
+      }
+    ],
+    "furniture_pos": [
+      0.4,
+      5.75
+    ],
+    "mongo_id": "69c8c45136c26b43bb620c63",
+    "description": "A person is sitting on a sofa and watching something. table2 next to sofa",
+    "memory_text": "User_Mom Watching near sofa with nothing. A person is sitting on a sofa and watching something. table2 next to sofa table2 next to sofa.",
+    "timestamp": "2026-03-29T14:37:43.152831"
+  },
+  {
+    "faiss_idx": 39,
+    "user": "User_Dad",
+    "action": "Watching",
+    "instance": "desk",
+    "interacting_items": [],
+    "all_items": [
+      "computer set"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "computer set",
+        "relation": "above",
+        "object": "desk",
+        "_confidence": 1.0
+      },
+      {
+        "subject": "computer set",
+        "relation": "in front of",
+        "object": "desk",
+        "_confidence": 1.0
+      }
+    ],
+    "furniture_pos": [
+      -1.52,
+      0.110000014
+    ],
+    "mongo_id": "69c8c45136c26b43bb620c5f",
+    "description": "A man sitting at a desk with a computer monitor in front of him. computer set above desk computer set in front of desk",
+    "memory_text": "User_Dad Watching near desk with nothing. A man sitting at a desk with a computer monitor in front of him. computer set above desk computer set in front of desk computer set above desk. computer set in front of desk.",
+    "timestamp": "2026-03-29T14:37:54.410740"
+  },
+  {
+    "faiss_idx": 40,
+    "user": "User_Mom",
+    "action": "Drink",
+    "instance": "table",
+    "interacting_items": [
+      "cola"
+    ],
+    "all_items": [
+      "cola",
+      "apple"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "apple",
+        "relation": "above",
+        "object": "table",
+        "_confidence": "high"
+      },
+      {
+        "subject": "bottle",
+        "relation": "in_hand_of",
+        "object": "User_Mom"
+      }
+    ],
+    "furniture_pos": [
+      2.96,
+      -0.59
+    ],
+    "mongo_id": "69c8c45136c26b43bb620c5e",
+    "description": "A woman is drinking from a bottle on top of a table. apple above table bottle in_hand_of User_Mom",
+    "memory_text": "User_Mom Drink near table with cola. A woman is drinking from a bottle on top of a table. apple above table bottle in_hand_of User_Mom apple above table. bottle in_hand_of User_Mom.",
+    "timestamp": "2026-03-29T14:38:05.342986"
+  },
+  {
+    "faiss_idx": 41,
+    "user": "User_Dad",
+    "action": "Watching",
+    "instance": "desk",
+    "interacting_items": [],
+    "all_items": [
+      "computer set"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "computer set",
+        "relation": "above",
+        "object": "desk",
+        "_confidence": 1.0
+      },
+      {
+        "subject": "computer set",
+        "relation": "below",
+        "object": "desk",
+        "_confidence": 1.0
+      }
+    ],
+    "furniture_pos": [
+      -1.52,
+      0.110000014
+    ],
+    "mongo_id": "69c8c45136c26b43bb620c5f",
+    "description": "A man sitting at a desk with his computer on. computer set above desk computer set below desk",
+    "memory_text": "User_Dad Watching near desk with nothing. A man sitting at a desk with his computer on. computer set above desk computer set below desk computer set above desk. computer set below desk.",
+    "timestamp": "2026-03-29T14:38:16.477255"
+  },
+  {
+    "faiss_idx": 42,
+    "user": "User_Mom",
+    "action": "SittingIdle",
+    "instance": "sofa",
+    "interacting_items": [
+      "book"
+    ],
+    "all_items": [
+      "book",
+      "remote"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "remote",
+        "relation": "next to",
+        "object": "table2",
+        "_confidence": 1.0
+      },
+      {
+        "subject": "book",
+        "relation": "in_hand_of",
+        "object": "User_Mom"
+      }
+    ],
+    "furniture_pos": [
+      0.4,
+      5.75
+    ],
+    "mongo_id": "69c8c45136c26b43bb620c63",
+    "description": "A person is sitting on a sofa and holding a book. remote next to table2 book in_hand_of User_Mom",
+    "memory_text": "User_Mom SittingIdle near sofa with book. A person is sitting on a sofa and holding a book. remote next to table2 book in_hand_of User_Mom remote next to table2. book in_hand_of User_Mom.",
+    "timestamp": "2026-03-29T14:38:28.235292"
+  },
+  {
+    "faiss_idx": 43,
+    "user": "User_Dad",
+    "action": "Typing",
+    "instance": "desk",
+    "interacting_items": [
+      "mouse"
+    ],
+    "all_items": [
+      "mouse"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "mouse",
+        "relation": "next to",
+        "object": "desk",
+        "_confidence": 1.0
+      },
+      {
+        "subject": "computer mouse",
+        "relation": "in_hand_of",
+        "object": "User_Dad"
+      }
+    ],
+    "furniture_pos": [
+      -1.52,
+      0.110000014
+    ],
+    "mongo_id": "69c8c45136c26b43bb620c5f",
+    "description": "A man is typing on a computer at his desk. mouse next to desk computer mouse in_hand_of User_Dad",
+    "memory_text": "User_Dad Typing near desk with mouse. A man is typing on a computer at his desk. mouse next to desk computer mouse in_hand_of User_Dad mouse next to desk. computer mouse in_hand_of User_Dad.",
+    "timestamp": "2026-03-29T14:38:38.999302"
+  },
+  {
+    "faiss_idx": 44,
+    "user": "User_Mom",
+    "action": "Watching",
+    "instance": "sofa",
+    "interacting_items": [],
+    "all_items": [
+      "shelf",
+      "table2"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "table2",
+        "relation": "next to",
+        "object": "sofa",
+        "_confidence": 1.0
+      },
+      {
+        "subject": "shelf",
+        "relation": "above",
+        "object": "sofa",
+        "_confidence": 1.0
+      }
+    ],
+    "furniture_pos": [
+      0.4,
+      5.75
+    ],
+    "mongo_id": "69c8c45136c26b43bb620c63",
+    "description": "A person is sitting on a sofa and watching something. table2 next to sofa shelf above sofa",
+    "memory_text": "User_Mom Watching near sofa with nothing. A person is sitting on a sofa and watching something. table2 next to sofa shelf above sofa table2 next to sofa. shelf above sofa.",
+    "timestamp": "2026-03-29T14:38:50.278545"
+  },
+  {
+    "faiss_idx": 45,
+    "user": "User_Dad",
+    "action": "Watching",
+    "instance": "desk",
+    "interacting_items": [],
+    "all_items": [
+      "computer set"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "computer set",
+        "relation": "above",
+        "object": "desk",
+        "_confidence": 1.0
+      },
+      {
+        "subject": "computer set",
+        "relation": "below",
+        "object": "desk",
+        "_confidence": 1.0
+      }
+    ],
+    "furniture_pos": [
+      -1.52,
+      0.110000014
+    ],
+    "mongo_id": "69c8c45136c26b43bb620c5f",
+    "description": "A man sitting at a desk with a computer monitor in front of him. computer set above desk computer set below desk",
+    "memory_text": "User_Dad Watching near desk with nothing. A man sitting at a desk with a computer monitor in front of him. computer set above desk computer set below desk computer set above desk. computer set below desk.",
+    "timestamp": "2026-03-29T14:39:01.792672"
+  },
+  {
+    "faiss_idx": 46,
+    "user": "User_Mom",
+    "action": "Watching",
+    "instance": "sofa",
+    "interacting_items": [],
+    "all_items": [
+      "banana"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "banana",
+        "relation": "next to",
+        "object": "table2",
+        "_confidence": "high"
+      }
+    ],
+    "furniture_pos": [
+      0.4,
+      5.75
+    ],
+    "mongo_id": "69c8c45136c26b43bb620c63",
+    "description": "A woman is sitting on a couch and watching TV. banana next to table2",
+    "memory_text": "User_Mom Watching near sofa with nothing. A woman is sitting on a couch and watching TV. banana next to table2 banana next to table2.",
+    "timestamp": "2026-03-29T14:39:12.571926"
+  },
+  {
+    "faiss_idx": 47,
+    "user": "User_Dad",
+    "action": "Drink",
+    "instance": "table",
+    "interacting_items": [
+      "cola"
+    ],
+    "all_items": [
+      "cola",
+      "computer set"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "computer set",
+        "relation": "next to",
+        "object": "table2",
+        "_confidence": 1.0
+      },
+      {
+        "subject": "bottle",
+        "relation": "in_hand_of",
+        "object": "User_Dad"
+      }
+    ],
+    "furniture_pos": [
+      2.96,
+      -0.59
+    ],
+    "mongo_id": "69c8c45136c26b43bb620c5e",
+    "description": "A man is drinking from a bottle on a table. computer set next to table2 bottle in_hand_of User_Dad",
+    "memory_text": "User_Dad Drink near table with cola. A man is drinking from a bottle on a table. computer set next to table2 bottle in_hand_of User_Dad computer set next to table2. bottle in_hand_of User_Dad.",
+    "timestamp": "2026-03-29T14:39:24.075426"
+  },
+  {
+    "faiss_idx": 48,
+    "user": "User_Mom",
+    "action": "Watching",
+    "instance": "sofa",
+    "interacting_items": [],
+    "all_items": [
+      "banana"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "banana",
+        "relation": "next to",
+        "object": "table2",
+        "_confidence": "high"
+      }
+    ],
+    "furniture_pos": [
+      0.4,
+      5.75
+    ],
+    "mongo_id": "69c8c45136c26b43bb620c63",
+    "description": "A woman is sitting on a sofa and watching television. banana next to table2",
+    "memory_text": "User_Mom Watching near sofa with nothing. A woman is sitting on a sofa and watching television. banana next to table2 banana next to table2.",
+    "timestamp": "2026-03-29T14:39:35.482244"
+  },
+  {
+    "faiss_idx": 49,
+    "user": "User_Dad",
+    "action": "Watching",
+    "instance": "table",
+    "interacting_items": [],
+    "all_items": [
+      "computer set"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "computer set",
+        "relation": "above",
+        "object": "desk",
+        "_confidence": 1.0
+      },
+      {
+        "subject": "computer set",
+        "relation": "below",
+        "object": "desk",
+        "_confidence": 1.0
+      }
+    ],
+    "furniture_pos": [
+      2.96,
+      -0.59
+    ],
+    "mongo_id": "69c8c45136c26b43bb620c5e",
+    "description": "A man is standing at a desk and watching something on the computer monitor. computer set above desk computer set below desk",
+    "memory_text": "User_Dad Watching near table with nothing. A man is standing at a desk and watching something on the computer monitor. computer set above desk computer set below desk computer set above desk. computer set below desk.",
+    "timestamp": "2026-03-29T14:39:47.294471"
+  },
+  {
+    "faiss_idx": 50,
+    "user": "User_Mom",
+    "action": "Watching",
+    "instance": "sofa",
+    "interacting_items": [
+      "phone"
+    ],
+    "all_items": [
+      "banana",
+      "phone"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "banana",
+        "relation": "next to",
+        "object": "table",
+        "_confidence": "coord_fallback"
+      },
+      {
+        "subject": "tablet",
+        "relation": "in_hand_of",
+        "object": "User_Mom"
+      }
+    ],
+    "furniture_pos": [
+      0.4,
+      5.75
+    ],
+    "mongo_id": "69c8c45136c26b43bb620c63",
+    "description": "A woman is sitting on a sofa and holding a tablet, she is watching something. banana next to table tablet in_hand_of User_Mom",
+    "memory_text": "User_Mom Watching near sofa with phone. A woman is sitting on a sofa and holding a tablet, she is watching something. banana next to table tablet in_hand_of User_Mom banana next to table. tablet in_hand_of User_Mom.",
+    "timestamp": "2026-03-29T14:39:58.264313"
+  },
+  {
+    "faiss_idx": 51,
+    "user": "User_Dad",
+    "action": "Watching",
+    "instance": "table",
+    "interacting_items": [],
+    "all_items": [
+      "banana"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "banana",
+        "relation": "next to",
+        "object": "table2",
+        "_confidence": "high"
+      }
+    ],
+    "furniture_pos": [
+      2.96,
+      -0.59
+    ],
+    "mongo_id": "69c8c45136c26b43bb620c5e",
+    "description": "A person is sitting at a table and watching something on the television. banana next to table2",
+    "memory_text": "User_Dad Watching near table with nothing. A person is sitting at a table and watching something on the television. banana next to table2 banana next to table2.",
+    "timestamp": "2026-03-29T14:45:15.697465"
+  },
+  {
+    "faiss_idx": 52,
+    "user": "User_Mom",
+    "action": "Watching",
+    "instance": "table2",
+    "interacting_items": [],
+    "all_items": [
+      "computer set"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "computer set",
+        "relation": "above",
+        "object": "table2",
+        "_confidence": 1.0
+      }
+    ],
+    "furniture_pos": [
+      2.517,
+      5.455
+    ],
+    "mongo_id": "69c8c45136c26b43bb620c64",
+    "description": "A person is sitting at a table and watching something on the computer. computer set above table2",
+    "memory_text": "User_Mom Watching near table2 with nothing. A person is sitting at a table and watching something on the computer. computer set above table2 computer set above table2.",
+    "timestamp": "2026-03-29T14:45:20.211972"
+  },
+  {
+    "faiss_idx": 53,
+    "user": "User_Mom",
+    "action": "Watching",
+    "instance": "sofa",
+    "interacting_items": [
+      "book"
+    ],
+    "all_items": [
+      "shelf",
+      "book",
+      "table2",
+      "shelf2"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "table2",
+        "relation": "on",
+        "object": "sofa",
+        "_confidence": 1.0
+      },
+      {
+        "subject": "shelf",
+        "relation": "on",
+        "object": "tv",
+        "_confidence": 0.5159621238708496
+      },
+      {
+        "subject": "shelf2",
+        "relation": "on",
+        "object": "tv",
+        "_confidence": 0.5159621238708496
+      },
+      {
+        "subject": "book",
+        "relation": "in_hand_of",
+        "object": "User_Mom"
+      }
+    ],
+    "furniture_pos": [
+      0.4,
+      5.75
+    ],
+    "mongo_id": "69c8c45136c26b43bb620c63",
+    "description": "A person is sitting on a sofa and holding a book, watching the television. table2 on sofa shelf on tv shelf2 on tv book in_hand_of User_Mom",
+    "memory_text": "User_Mom Watching near sofa with book. A person is sitting on a sofa and holding a book, watching the television. table2 on sofa shelf on tv shelf2 on tv book in_hand_of User_Mom table2 on sofa. shelf on tv. shelf2 on tv. book in_hand_of User_Mom.",
+    "timestamp": "2026-03-29T14:47:14.947738"
+  }
+]

@@ -1,17 +1,3 @@
-"""
-manifold_engine.py
-------------------
-ManifoldEngine：行為特徵向量化 → UMAP 2D 投影 → HDBSCAN 聚類 → 軌跡意圖預判
-
-特徵向量設計（1158-dim）：
-  384  當前行為語意 (SBERT)
-  2    時間編碼 sin/cos(2πh/24)  ← 讓 Morning/Evening 同行為有不同位置
-  384  上一個行為語意 (SBERT)    ← 序列上下文，讓系統學到行為轉換規律
-  2    用戶座標 (x, z 正規化)
-  384  物件語意 (SBERT)
-  2    信心度 + padding
-"""
-
 import math
 import threading
 import datetime

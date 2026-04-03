@@ -13,7 +13,7 @@ from config import Config
 from modules.perception import PerceptionEngine
 from modules.memory import MemoryManager
 from modules.memory_vector import VectorMemory
-from classifier import ObjectClassifier
+from modules.classifier import ObjectClassifier
 
 from sentence_transformers import SentenceTransformer
 from modules.manifold_engine   import ManifoldEngine
@@ -62,10 +62,45 @@ proposal_engine = ServiceProposalEngine(
 
 _ollama_lock = threading.Lock()
 
-# ── SBERT-based action normalization ─────────────────────────────────────────
-# Prototype descriptions for each behavioral label.
-# SBERT encodes the VLM free-text output and finds the closest prototype.
-# No keyword rules — purely semantic similarity.
+# ── LLM Task Queue（防止多執行緒同時炸 VRAM）────────────────────────────────
+import queue as _queue
+
+_llm_task_queue   = _queue.Queue()
+_llm_task_results = {}
+_llm_task_lock    = threading.Lock()
+
+def _llm_worker():
+    """單一背景 worker，確保 GPU 一次只處理一個重型 LLM 任務"""
+    while True:
+        try:
+            task_id, fn, args, kwargs = _llm_task_queue.get(timeout=1)
+            try:
+                result = fn(*args, **kwargs)
+            except Exception as e:
+                result = None
+                print(f"[LLM Worker] Task {task_id} failed: {e}")
+            with _llm_task_lock:
+                _llm_task_results[task_id] = result
+            _llm_task_queue.task_done()
+        except _queue.Empty:
+            continue
+
+_llm_worker_thread = threading.Thread(target=_llm_worker, daemon=True)
+_llm_worker_thread.start()
+print("[LLM Queue] Background worker started")
+
+def submit_llm_task(fn, *args, **kwargs):
+    """
+    把重型 LLM 任務（fill_gap、nightly_refactor）送進隊列排隊執行。
+    一般 /interact 請求不走 queue，避免延遲疊加。
+    """
+    import uuid
+    task_id = str(uuid.uuid4())
+    _llm_task_queue.put((task_id, fn, args, kwargs))
+    _llm_task_queue.join()
+    with _llm_task_lock:
+        return _llm_task_results.pop(task_id, None)
+
 BEHAVIOR_PROTOTYPES = {
     "Drink":       "a person drinking, holding a bottle or cup, sipping a beverage",
     "SittingIdle": "a person sitting still, resting, idle on a sofa or chair",
@@ -78,11 +113,10 @@ BEHAVIOR_PROTOTYPES = {
     "Eating":      "a person eating food, having a meal",
 }
 
-_proto_vecs   = None   # cached on first call
+_proto_vecs   = None
 _proto_labels = list(BEHAVIOR_PROTOTYPES.keys())
 
 def _get_proto_vecs():
-    """Encode prototype descriptions once and cache."""
     global _proto_vecs
     if _proto_vecs is None:
         import torch
@@ -95,20 +129,8 @@ def _get_proto_vecs():
     return _proto_vecs
 
 def normalize_action_sbert(raw: str, threshold: float = 0.35) -> str:
-    """
-    Map VLM free-text output to a canonical behavior label using SBERT.
-
-    - Computes cosine similarity between the VLM description and each
-      BEHAVIOR_PROTOTYPES entry.
-    - Returns the label of the closest prototype if sim >= threshold.
-    - Falls back to the raw string if no prototype is close enough
-      (handles unknown behaviors gracefully).
-    - threshold=0.35 is conservative; typical sim for correct matches
-      is 0.45–0.75.
-    """
     if not raw or raw.strip() in ("", "none"):
         return "unknown"
-
     import torch
     q_vec      = sbert_model.encode(
         [raw], normalize_embeddings=True, convert_to_tensor=True
@@ -117,7 +139,6 @@ def normalize_action_sbert(raw: str, threshold: float = 0.35) -> str:
     best_idx   = int(sims.argmax())
     best_sim   = float(sims[best_idx])
     best_label = _proto_labels[best_idx]
-
     if best_sim >= threshold:
         print(f"[SBERT Norm] '{raw[:60]}' → '{best_label}' (sim={best_sim:.3f})")
         return best_label
@@ -173,6 +194,38 @@ def log_eval(experiment, ground_truth, vlm_output, bound_label,
     if binding_results:
         doc["binding_results"] = binding_results
     db["eval_logs"].insert_one(doc)
+
+
+# ── 夜間維護（新增）──────────────────────────────────────────────────────────
+def nightly_maintenance():
+    print("[Maintenance] 執行夜間維護...")
+    try:
+        # 1. 習慣衰減
+        db.observation_logs.update_many(
+            {}, {"$mul": {"weight": getattr(CONFIG, 'HABIT_DECAY_FACTOR', 0.95)}}
+        )
+        db.observation_logs.delete_many(
+            {"weight": {"$lt": getattr(CONFIG, 'HABIT_MIN_WEIGHT', 1.0)}}
+        )
+        print("[Maintenance] 習慣衰減完成")
+
+        # 2. 技能重構（有 SkillManager 才執行）
+        if hasattr(interaction_engine, '_has_skill_manager') and \
+           interaction_engine._has_skill_manager:
+            sm = interaction_engine.skill_manager
+            for doc in db.user_skills.find({}, {"user_id": 1}):
+                try:
+                    sm.nightly_refactor(doc["user_id"])
+                    print(f"[Maintenance] refactored skill for {doc['user_id']}")
+                except Exception as e:
+                    print(f"[Maintenance] refactor failed for {doc['user_id']}: {e}")
+
+        print("[Maintenance] 完成")
+    except Exception as e:
+        print(f"[Maintenance] Error: {e}")
+
+    # 每 24 小時再執行
+    threading.Timer(86400, nightly_maintenance).start()
 
 
 @app.route('/predict', methods=['POST'])
@@ -233,17 +286,13 @@ def predict():
         vlm_ms = int((time.time() - t0) * 1000)
 
         user_id        = perception_res["user"]
-        action         = perception_res["action"]   # raw VLM output, kept for log_eval
+        action         = perception_res["action"]
         detected_items = perception_res["items"]
         all_items      = perception_res["all_items"]
         spatial_rels   = perception_res["spatial"]
         vlm_desc       = perception_res["result"].get("context", "Observed behavior.")
         vlm_object     = perception_res["bound_instance"]
 
-        # ── Action normalization: SBERT semantic matching ─────────────────
-        # Replaces the old first-word lookup table (ACTION_NORMALIZE).
-        # normalize_action_sbert handles full VLM sentences such as
-        # "man sitting at a desk working on his laptop" → "Typing"
         action_label = normalize_action_sbert(action)
         print(f"[VLM] action='{action}' → label='{action_label}' "
               f"| object={vlm_object} | {vlm_ms}ms")
@@ -260,7 +309,7 @@ def predict():
 
         final_bound_label = memory.bind_and_update(
             user_id           = user_id,
-            action            = action_label,   # normalized label, not raw VLM output
+            action            = action_label,
             est_pos           = est_pos,
             vlm_description   = vlm_desc,
             detected_items    = detected_items,
@@ -271,12 +320,10 @@ def predict():
         )
         print(f"[Bind] '{vlm_object}' -> '{final_bound_label}'")
 
-        # log_eval: keep raw VLM output as vlm_output for Exp1 F1 calculation
-        # action_label is stored separately so Exp2 graph reads clean labels
         log_eval(
             experiment   = "exp1_exp2",
             ground_truth = activity,
-            vlm_output   = action,              # raw output for F1 comparison
+            vlm_output   = action,
             bound_label  = final_bound_label,
             user_id      = user_id,
             room         = room_name,
@@ -298,7 +345,7 @@ def predict():
 
             vector_memory.add_memory(
                 user_id           = user_id,
-                action            = action_label,   # normalized label stored in semantic_memories
+                action            = action_label,
                 furniture_label   = final_bound_label,
                 vlm_description   = f"{vlm_desc} {spatial_text}".strip(),
                 detected_items    = detected_items,
@@ -328,7 +375,6 @@ def predict():
 
         print(f"[Done] {user_id} @ {final_bound_label} -> {action_label} | {vlm_ms}ms")
 
-        # ── Manifold: feature vector → record → intent prediction ─────────
         manifold_point_id = ""
         intent_prediction = {"trigger": False, "intent": "unknown", "confidence": 0.0}
         has_proposal      = False
@@ -830,6 +876,7 @@ def interact_confirm():
         return jsonify({"error": str(e)}), 500
 
 
+# ── Module imports（放在最後，避免循環 import）────────────────────────────────
 from modules.interaction import InteractionEngine
 from modules.training_exporter import TrainingExporter
 
@@ -850,4 +897,6 @@ if __name__ == "__main__":
     print(f"   VLM model    : {CONFIG.VLM_MODEL}")
     print(f"   LLM model    : {CONFIG.LLM_MODEL}")
     print(f"   Action norm  : SBERT semantic matching ({len(BEHAVIOR_PROTOTYPES)} classes)")
+    # 啟動夜間維護（第一次在 24 小時後執行）
+    threading.Timer(86400, nightly_maintenance).start()
     app.run(host=host, port=port, debug=False)

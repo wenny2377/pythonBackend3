@@ -7,10 +7,10 @@ class Config:
 
     # ── Ollama / VLM ──
     OLLAMA_URL   = "http://localhost:11434"
-    OLLAMA_MODEL = "gemma3:4b"       # 向下相容保留
+    OLLAMA_MODEL = "llama3.1:8b"       # 向下相容保留
 
     VLM_MODEL = "llava-phi3"         # 視覺辨識 → perception.py
-    LLM_MODEL = "gemma3:4b"          # 語言推理 → interaction.py / RAG
+    LLM_MODEL = "llama3.1:8b"           # 語言推理 → interaction.py / RAG
 
     # ── MongoDB ──
     MONGO_URI = "mongodb://127.0.0.1:27017/"
@@ -34,4 +34,4 @@ class Config:
     HABIT_DECAY_FACTOR = 0.95      # 每次清理乘以此係數（0.95 = 每次衰減 5%）
     HABIT_MIN_WEIGHT   = 1.0       # weight 低於此值視為遺忘，刪除
 
-print(f"🖥️  System initialization... Running on: {Config.DEVICE}")
+print(f"  System initialization... Running on: {Config.DEVICE}")
