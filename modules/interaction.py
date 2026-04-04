@@ -35,28 +35,38 @@ Tools:
 
 2. search_object(query: str)
    Find what is currently in the home. Returns real-time object locations.
-   Each result includes: label, last_seen_on (furniture), room, Camera_ID.
+   Each result includes: label [category tag], last_seen_on (furniture), room.
    Always use this to confirm something is actually available right now.
 
 3. finish(answer: str, nav_target: str, nav_label: str)
    Give the final answer combining habit + current availability.
-   - answer: natural sentence in the SAME language as the user
+   - answer: natural sentence in the SAME language as the user. NO surrounding quotes.
    - nav_target: furniture label where the recommended object is (e.g. "table") or "unknown"
    - nav_label: same as nav_target
 
-SPATIAL REASONING RULES (具身空間推理):
-- Always check the room field in search_object results
-- If the object is NOT in the robot's current room, nav_target MUST be set to the furniture
-  label where the object was seen (do NOT set "unknown")
-- Example: robot is in bedroom, apple is in kitchen on table → nav_target="table", nav_label="table"
-- If the object IS in the current room, nav_target is still the furniture label
+CATEGORY RULES (strictly enforce):
+- User says "hungry" / "want to eat" / "wanna eat" → ONLY recommend items tagged [food].
+  NEVER recommend [drink] items for hunger. If no [food] found, say so honestly.
+- User says "thirsty" / "want to drink" / "wanna drink" → ONLY recommend items tagged [drink].
+  NEVER recommend [food] items for thirst.
+- Items with no tag are ambiguous — use common sense (cola=drink, apple=food).
+
+EFFICIENCY RULES:
+- For "hungry" or "thirsty": call search_object ONCE with the category keyword, then finish.
+  Skip search_habit unless you have steps remaining after search_object.
+- Do NOT use more steps than necessary.
+
+SPATIAL REASONING RULES:
+- Always check the room field in search_object results.
+- If the object is NOT in the robot's current room, nav_target MUST be the furniture label
+  where it was seen (never "unknown" when a location is known).
+- Example: robot in bedroom, apple seen on table in kitchen → nav_target="table"
 
 DECISION FLOW:
 - Conversational (chat/greeting/opinion) → finish immediately, no tools, nav_target="unknown"
-- Service request → search_habit + search_object → finish with best recommendation
-- If object from habit is currently available → recommend it
-- If object from habit is NOT available → recommend what IS available, mention the preference
-- If nothing found → be honest, ask user what they need
+- Service request → search_object (required) + search_habit (optional) → finish
+- If preferred item unavailable → recommend what IS available, briefly mention preference
+- If nothing found → be honest, do not invent items
 
 LIMITS: max 3 tool calls, no repeated tools, always end with finish.
 Respond ONLY with valid JSON: {"thought": "...", "tool": "...", "input": {...}}
@@ -66,15 +76,19 @@ Respond ONLY with valid JSON: {"thought": "...", "tool": "...", "input": {...}}
 # ── Tool executor ─────────────────────────────────────────────────────────────
 class ToolExecutor:
     def __init__(self, vector_memory, db):
-        self.vector = vector_memory
-        self.db     = db
+        self.vector        = vector_memory
+        self.db            = db
+        self.need_category = None   # 由 _react_process 在每次呼叫前設定
 
     def execute(self, tool_name: str, tool_input: dict) -> str:
         try:
             if tool_name == "search_habit":
                 return self._search_habit(tool_input.get("query", ""))
             elif tool_name == "search_object":
-                return self._search_object(tool_input.get("query", ""))
+                return self._search_object(
+                    tool_input.get("query", ""),
+                    category=self.need_category,   # category 從外部注入
+                )
             elif tool_name == "get_user_history":
                 return self._get_user_history(
                     tool_input.get("user_id", ""),
@@ -101,59 +115,74 @@ class ToolExecutor:
             )
         return "\n".join(lines)
 
-    def _search_object(self, query: str) -> str:
+    def _search_object(self, query: str, category: str | None = None) -> str:
         """
         三層搜尋（論文 §5.1 全知視角工具）：
-        1. FAISS 語意搜尋（快速候選）
-        2. MongoDB 最近看到的物件（TTL 過濾）
-        3. 合併去重，回傳含 Camera_ID / Room_Name 的格式讓 LLM 做空間推理
+        1. MongoDB category filter（有 category 時優先，確定性過濾）
+        2. FAISS 語意搜尋（補充候選）
+        3. 合併去重，回傳含 Room 的格式讓 LLM 做空間推理
+
+        category 由 _extract_need_category() 在呼叫前決定，
+        不讓 LLM 自行判斷哪個物件符合需求。
         """
         from datetime import datetime, timedelta
         TTL_HOURS = 2
+        cutoff    = datetime.utcnow() - timedelta(hours=TTL_HOURS)
 
-        faiss_results = self.vector.search_dynamic(query, top_k=5)
-        seen_labels   = {r.get("label","") for r in faiss_results}
+        # ── Step 1：MongoDB category filter（最精確）──
+        mongo_filter: dict = {"last_seen": {"$gte": cutoff}}
+        if category:
+            mongo_filter["category"] = category
 
-        cutoff = datetime.utcnow() - timedelta(hours=TTL_HOURS)
         recent_docs = list(self.db.dynamic_objects.find(
-            {"last_seen": {"$gte": cutoff}},
-            {"label":1,"room":1,"last_seen_on":1,
-             "furniture_pos":1,"interact_count":1,"last_seen":1}
+            mongo_filter,
+            {"label":1,"category":1,"room":1,"last_seen_on":1,
+             "furniture_pos":1,"interact_count":1,"instance_key":1}
         ).sort("interact_count", -1).limit(12))
 
+        # fallback：TTL 內沒有資料就撈全部（舊資料相容）
         if not recent_docs:
+            fallback_filter = {"category": category} if category else {}
             recent_docs = list(self.db.dynamic_objects.find(
-                {}, {"label":1,"room":1,"last_seen_on":1,
-                     "furniture_pos":1,"interact_count":1}
+                fallback_filter,
+                {"label":1,"category":1,"room":1,"last_seen_on":1,
+                 "furniture_pos":1,"interact_count":1,"instance_key":1}
             ).sort("interact_count", -1).limit(12))
 
-        combined = list(faiss_results)
-        for doc in recent_docs:
-            label = doc.get("label","").lower()
-            if label not in seen_labels:
-                combined.append({
-                    "label":         doc.get("label","?"),
-                    "last_seen_on":  doc.get("last_seen_on","?"),
-                    "room":          doc.get("room","?"),
-                    "furniture_pos": doc.get("furniture_pos"),
-                    "interact_count":doc.get("interact_count",0),
-                    "similarity":    0.0,
-                })
-                seen_labels.add(label)
+        # ── Step 2：FAISS 語意搜尋（補充 MongoDB 沒找到的）──
+        faiss_results = self.vector.search_dynamic(query, top_k=5)
+
+        # 合併，MongoDB 結果優先（category filter 過的已經是正確的）
+        seen_keys = {
+            d.get("instance_key") or d.get("label","")
+            for d in recent_docs
+        }
+        combined  = list(recent_docs)
+
+        for r in faiss_results:
+            key = r.get("instance_key") or r.get("label","")
+            # 有 category filter 時，FAISS 補充的也要檢查 category
+            if key not in seen_keys:
+                if category and r.get("category") != category:
+                    continue
+                combined.append(r)
+                seen_keys.add(key)
 
         if not combined:
+            if category:
+                return f"No {category} items currently visible in the home."
             return "No objects currently visible in the home."
 
-        # 格式包含 Room 讓 LLM 做空間推理（論文 §5.1）
+        # ── Step 3：組回傳字串，格式含 category tag 讓 LLM 確認 ──
         lines = []
         for r in combined[:8]:
-            interact = r.get("interact_count", 0)
-            freq     = f", used {interact}x" if interact > 0 else ""
-            room     = r.get("room","?")
+            interact  = r.get("interact_count", 0)
+            freq      = f", used {interact}x" if interact > 0 else ""
+            cat_tag   = f" [{r.get('category','?')}]" if r.get("category") else ""
             lines.append(
-                f"- {r.get('label','?')}: "
+                f"- {r.get('label','?')}{cat_tag}: "
                 f"on {r.get('last_seen_on','?')} "
-                f"in Room={room}{freq}"
+                f"in Room={r.get('room','?')}{freq}"
             )
         return "\n".join(lines)
 
@@ -303,8 +332,45 @@ class InteractionEngine:
                          "how many", "what is available", "show me", "list",
                          "what food", "what drink", "options", "choices"}
 
-    PHYSICAL_NEED_ZH = {"餓了", "渴了", "累了想坐", "想喝", "想吃", "想睡"}
-    PHYSICAL_NEED_EN = {"i'm hungry", "i'm thirsty", "i want to eat", "i want to drink"}
+    PHYSICAL_NEED_ZH = {"餓了", "渴了", "累了", "想喝", "想吃", "想睡", "肚子餓", "口渴"}
+    PHYSICAL_NEED_EN = {
+        "i'm hungry", "i am hungry", "i'm starving", "i am starving",
+        "i'm thirsty", "i am thirsty",
+        "i want to eat", "i wanna eat",
+        "i want to drink", "i wanna drink",
+        "feeling hungry", "feeling thirsty",
+        "need food", "need water",
+        "need something to eat", "need something to drink",
+    }
+
+    # ── 生理需求 → 物件 category 映射（確定性，不依賴 LLM）──────────────────
+    # hungry/thirsty 的語意映射在這裡解決，不讓 LLM 自己判斷
+    NEED_TO_CATEGORY_ZH = {
+        "餓了": "food", "肚子餓": "food", "想吃": "food",
+        "渴了": "drink", "口渴": "drink", "想喝": "drink",
+    }
+    NEED_TO_CATEGORY_EN = {
+        "hungry": "food", "starving": "food", "eat": "food",
+        "thirsty": "drink", "drink": "drink", "water": "drink",
+    }
+
+    def _extract_need_category(self, query: str) -> str | None:
+        """
+        從 query 抽取使用者需要的物件 category。
+        回傳 'food' | 'drink' | None
+
+        這是確定性的映射，不需要 LLM。
+        讓 search_object 在 MongoDB 查詢時直接 filter category，
+        避免 LLM 自行判斷 cola 是不是食物。
+        """
+        q = query.lower()
+        for keyword, category in self.NEED_TO_CATEGORY_ZH.items():
+            if keyword in q:
+                return category
+        for keyword, category in self.NEED_TO_CATEGORY_EN.items():
+            if keyword in q:
+                return category
+        return None
 
     def _classify_intent(self, query: str) -> str:
         """
@@ -403,10 +469,15 @@ class InteractionEngine:
         if intent == "query":
             return self._query_response(query, user_id, room)
 
-        # 執行類（service）→ ReAct + FAISS
+        # 執行類（service）→ 先抽取 need_category，再進 ReAct
+        # need_category 在這裡確定，不讓 LLM 自行判斷
+        need_category = self._extract_need_category(query)
+        print(f"[Category] need_category={need_category}")
+
         if self._has_skill_manager:
             try:
-                result = self._react_process(query, user_id, room)
+                result = self._react_process(query, user_id, room,
+                                             need_category=need_category)
                 if result:
                     self._log_conversation(
                         query=query, expanded_query=query,
@@ -445,9 +516,13 @@ class InteractionEngine:
             self.ollama_url, self.model_name,
             "You are a friendly home robot companion. "
             "Reply warmly and briefly in the same language as the user. "
-            "1-2 sentences max. Do NOT suggest navigation or services.",
+            "1-2 sentences max. "
+            "Do NOT suggest navigation or services. "
+            "Do NOT wrap your response in quotation marks.",
             f'{user_id} said: "{query}"'
         ) or "I'm here for you!"
+        # 後處理：移除 LLM 有時會加的引號
+        answer = answer.strip().strip('"').strip("'").strip()
         return {
             "status": "Success", "answer": answer,
             "nav_target": None, "nav_label": None,
@@ -675,8 +750,11 @@ class InteractionEngine:
         }
 
     # ── ReAct 流程（Service 類）───────────────────────────────────────────────
-    def _react_process(self, query, user_id, room):
+    def _react_process(self, query, user_id, room, need_category: str | None = None):
         sm = self.skill_manager
+
+        # need_category 注入 tool executor，讓 search_object 直接 filter
+        self.tool_executor.need_category = need_category
 
         # 1. 讀取或生成 SKILL.md（使用 FAISS 切片版本，論文 §4.2）
         skill_md = sm.get_skill_chunks(user_id, query)  # Top-2 切片
