@@ -1,14 +1,3 @@
-"""
-MemoryManager v3
-職責（與 perception v5 分工清楚）：
-  - bind_and_update：人的家具綁定 + observation_logs + activity_sequences
-  - dynamic_objects：完全由 perception v5 的 BulkWriteBuffer 負責，這裡不碰
-  - sync_scene：Unity /scene 同步家具靜態資料
-  - _bind_by_position_and_semantics：人的位置 + SBERT 家具綁定
-    （注意：只在 app.py 的 bind_and_update 中使用，
-            perception v5 的 bind 已改用 RoomEmbeddingCache + Top-K）
-"""
-
 import datetime
 import numpy as np
 from config import Config
@@ -24,9 +13,6 @@ class MemoryManager:
         self.sequences = self.db["activity_sequences"]
         self.model     = embedding_model
 
-    # ─────────────────────────────────────────────
-    # 場景同步（Unity /scene 呼叫）
-    # ─────────────────────────────────────────────
     def sync_scene(self, objects):
         if not objects:
             return 0
@@ -47,14 +33,10 @@ class MemoryManager:
                 )
                 count += 1
             except Exception as e:
-                print(f"⚠️ [Sync Error] {obj.get('id')}: {e}")
-        print(f"✅ [Memory] Synced {count} scene objects.")
+                print(f"[Sync Error] {obj.get('id')}: {e}")
+        print(f"[Memory] Synced {count} scene objects.")
         return count
 
-    # ─────────────────────────────────────────────
-    # 核心：人的家具綁定 + observation_logs + activity_sequences
-    # ⚠️ dynamic_objects 已由 perception v5 BulkWriteBuffer 處理，這裡不重複
-    # ─────────────────────────────────────────────
     def bind_and_update(self, user_id, action, est_pos,
                         vlm_description="",
                         detected_items=None,
@@ -72,7 +54,6 @@ class MemoryManager:
         instance_pos   = None
         instance_id    = "Unknown_ID"
 
-        # ── A. 人的家具綁定 ──
         try:
             if not target_label or target_label in ["Unknown_Area", "unknown", ""]:
                 instance_id, instance_label, instance_pos = \
@@ -80,7 +61,6 @@ class MemoryManager:
                         est_pos, target_label, max_distance, room_name=room_name
                     )
             else:
-                # perception 已給出 target_label，直接查 DB 取座標
                 matched = self.scene.find_one({
                     "label": {"$regex": target_label, "$options": "i"},
                     **({
@@ -100,9 +80,8 @@ class MemoryManager:
                         self._bind_by_semantics_only(target_label, room_name=room_name)
 
         except Exception as e:
-            print(f"❌ [Bind Error] {e}")
+            print(f"[Bind Error] {e}")
 
-        # ── B. 更新 scene_snapshots 物品欄 ──
         try:
             if instance_id != "Unknown_ID" and all_items:
                 update_ops = {
@@ -116,50 +95,17 @@ class MemoryManager:
                     for rel in spatial_relations:
                         rel_key = f"{rel['subject']}|{rel['relation']}|{rel['object']}"
                         self.scene.update_one(
-                            {"_id": matched.get("_id") if 'matched' in dir() else None} if False
-                            else {"label": instance_label},
+                            {"label": instance_label},
                             {
                                 "$inc":      {f"spatial_counts.{rel_key}": 1},
                                 "$addToSet": {"spatial_relations": rel},
                             }
                         )
                 self.scene.update_one({"label": instance_label}, update_ops)
-                print(f"[Inventory] {instance_label} ← {all_items}")
+                print(f"[Inventory] {instance_label} <- {all_items}")
         except Exception as e:
-            print(f"❌ [Inventory Error] {e}")
+            print(f"[Inventory Error] {e}")
 
-        # ── C. 更新 observation_logs（習慣強度 weight+1）──
-        try:
-            self.logs.update_one(
-                {"user": user_id, "instance": instance_label, "action": action},
-                {
-                    "$inc":      {"weight": 1},
-                    "$set": {
-                        "last_seen":    datetime.datetime.now(),
-                        "raw_vlm_desc": vlm_description,
-                        "pos":          instance_pos,
-                    },
-                    "$addToSet": {
-                        "interacting_items": {"$each": detected_items}
-                    },
-                    "$setOnInsert": {
-                        "user":     user_id,
-                        "instance": instance_label,
-                        "action":   action,
-                    },
-                },
-                upsert=True
-            )
-            if spatial_relations:
-                self.logs.update_one(
-                    {"user": user_id, "instance": instance_label, "action": action},
-                    {"$addToSet": {"observed_relations": {"$each": spatial_relations}}}
-                )
-            print(f"[ObsLog] {user_id} → {action} @ {instance_label} (+1 weight)")
-        except Exception as e:
-            print(f"❌ [Log Error] {e}")
-
-        # ── D. 更新 activity_sequences ──
         try:
             self._update_activity_sequence(
                 user_id  = user_id,
@@ -168,13 +114,10 @@ class MemoryManager:
                 items    = detected_items,
             )
         except Exception as e:
-            print(f"❌ [Sequence Error] {e}")
+            print(f"[Sequence Error] {e}")
 
         return instance_label
 
-    # ─────────────────────────────────────────────
-    # D. activity_sequences
-    # ─────────────────────────────────────────────
     def _update_activity_sequence(self, user_id, action, instance, items):
         now       = datetime.datetime.now()
         today_str = now.strftime("%Y-%m-%d")
@@ -229,11 +172,8 @@ class MemoryManager:
                 "last_updated": now,
             })
 
-        print(f"[Sequence] {user_id} → {action}@{instance} ({today_str})")
+        print(f"[Sequence] {user_id} -> {action}@{instance} ({today_str})")
 
-    # ─────────────────────────────────────────────
-    # A-1. 座標 + SBERT 家具綁定（人的位置用）
-    # ─────────────────────────────────────────────
     def _bind_by_position_and_semantics(self, est_pos, vlm_label, max_distance,
                                          room_name=""):
         if not est_pos:
@@ -277,9 +217,6 @@ class MemoryManager:
 
         return str(best_item.get('_id', '')), best_item['label'], best_item.get('pos')
 
-    # ─────────────────────────────────────────────
-    # A-2. 純 SBERT 語意綁定（fallback）
-    # ─────────────────────────────────────────────
     def _bind_by_semantics_only(self, target_label, room_name=""):
         if not self.model:
             return "Unknown_ID", "Unknown_Area", None
@@ -305,11 +242,10 @@ class MemoryManager:
                 best_item  = c
 
         if best_item and best_score > 0.40:
-            print(f"[SBERT] '{target_label}' → '{best_item['label']}' ({best_score:.2f})")
+            print(f"[SBERT] '{target_label}' -> '{best_item['label']}' ({best_score:.2f})")
             return str(best_item.get('_id', '')), best_item['label'], best_item.get('pos')
 
         return "Unknown_ID", "Unknown_Area", None
-
 
     def _semantic_rerank(self, vlm_label, nearby_list):
         max_dist   = max(d for _, d in nearby_list) + 1e-8
@@ -323,9 +259,6 @@ class MemoryManager:
                                   (np.linalg.norm(query_vec) * np.linalg.norm(label_vec) + 1e-8))
             dist_score   = 1.0 - (dist / max_dist)
             final_score  = semantic_sim * 0.6 + dist_score * 0.4
-
-            print(f"[Rerank] {item['label']}: sem={semantic_sim:.2f} "
-                  f"dist={dist:.1f}m → {final_score:.2f}")
 
             if final_score > best_score:
                 best_score = final_score

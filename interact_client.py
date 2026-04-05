@@ -1,17 +1,5 @@
-"""
-interact_client.py（完整版）
-使用方式：
-    python3 interact_client.py
-
-指令：
-    exit / quit / q  → 離開
-    switch           → 切換用戶
-    user             → 查看當前用戶
-    clear            → 清除畫面
-    help             → 顯示指令清單
-"""
-
 import requests
+import json
 import os
 
 BACKEND      = "http://127.0.0.1:5000"
@@ -19,101 +7,203 @@ DEFAULT_USER = "User_Mom"
 DEFAULT_ROOM = ""
 
 USERS = [
-    ("1", "User_Mom", "媽媽"),
-    ("2", "User_Dad", "爸爸"),
+    ("1", "User_Mom"),
+    ("2", "User_Dad"),
 ]
 
-# ─────────────────────────────────────────────
-# API 呼叫
-# ─────────────────────────────────────────────
+
+def _extract_answer(buf):
+    marker = '"answer":'
+    idx = buf.find(marker)
+    if idx == -1:
+        return None
+    start = buf.find('"', idx + len(marker))
+    if start == -1:
+        return None
+    start += 1
+    result = []
+    i = start
+    while i < len(buf):
+        c = buf[i]
+        if c == '\\' and i + 1 < len(buf):
+            nc = buf[i + 1]
+            if nc == '"':
+                result.append('"'); i += 2; continue
+            elif nc == 'n':
+                result.append('\n'); i += 2; continue
+            elif nc == '\\':
+                result.append('\\'); i += 2; continue
+        elif c == '"':
+            break
+        result.append(c)
+        i += 1
+    return "".join(result)
+
+
+def ask_stream(query, user_id, room=DEFAULT_ROOM):
+    try:
+        resp = requests.post(
+            f"{BACKEND}/interact/stream",
+            json={"query": query, "userID": user_id, "room": room},
+            stream=True,
+            timeout=90,
+        )
+        resp.raise_for_status()
+    except requests.exceptions.ConnectionError:
+        print("[error] cannot connect to backend")
+        return None
+    except Exception as e:
+        print(f"[error] {e}")
+        return None
+
+    print("\n[robot]  ", end="", flush=True)
+
+    raw_buf      = ""
+    plain_buf    = ""
+    final_result = {}
+    last_len     = 0
+    is_json_mode = None
+
+    for raw_line in resp.iter_lines():
+        if not raw_line:
+            continue
+        line = raw_line.decode("utf-8") if isinstance(raw_line, bytes) else raw_line
+        if not line.startswith("data: "):
+            continue
+        try:
+            event = json.loads(line[6:])
+        except json.JSONDecodeError:
+            continue
+
+        etype = event.get("type", "")
+
+        if etype == "intent":
+            intent = event.get("intent", "")
+            is_json_mode = intent not in ("chat", "query", "interrupt")
+            continue
+
+        if etype == "token":
+            token = event.get("content", "")
+
+            if is_json_mode is False:
+                print(token, end="", flush=True)
+                plain_buf += token
+
+            elif is_json_mode is True:
+                raw_buf += token
+                visible = _extract_answer(raw_buf)
+                if visible is not None:
+                    new_part = visible[last_len:]
+                    if new_part:
+                        print(new_part, end="", flush=True)
+                        last_len = len(visible)
+
+            else:
+                raw_buf   += token
+                plain_buf += token
+                visible = _extract_answer(raw_buf)
+                if visible is not None:
+                    is_json_mode = True
+                    new_part = visible[last_len:]
+                    if new_part:
+                        print(new_part, end="", flush=True)
+                        last_len = len(visible)
+                else:
+                    print(token, end="", flush=True)
+
+        elif etype == "done":
+            if is_json_mode is False:
+                answer_text = plain_buf.strip().strip('"').strip("'")
+            else:
+                answer_text = (
+                    _extract_answer(raw_buf) or plain_buf
+                ).strip().strip('"').strip("'")
+
+            if not answer_text:
+                answer_text = "(no response)"
+
+            final_result = {
+                "status":          "Success",
+                "answer":          answer_text,
+                "nav_target":      event.get("nav_target"),
+                "nav_label":       event.get("nav_label", ""),
+                "confidence":      event.get("confidence", 0.8),
+                "intent_type":     event.get("intent_type", "oneshot"),
+                "is_personalized": event.get("is_personalized", False),
+                "options":         event.get("options", []),
+                "recommendations": [],
+            }
+            break
+
+    print()
+    return final_result if final_result else None
+
+
 def ask(query, user_id, room=DEFAULT_ROOM):
     try:
-        resp = requests.post(f"{BACKEND}/interact", json={
-            "query":  query,
-            "userID": user_id,
-            "room":   room,
-        }, timeout=60)
+        resp = requests.post(
+            f"{BACKEND}/interact",
+            json={"query": query, "userID": user_id, "room": room},
+            timeout=60,
+        )
         resp.raise_for_status()
         return resp.json()
     except requests.exceptions.ConnectionError:
-        print("❌ 無法連線到後端，請確認 app.py 已啟動")
+        print("[error] cannot connect to backend")
         return None
     except requests.exceptions.Timeout:
-        print("❌ 後端回應逾時（60s），LLM 可能還在跑")
+        print("[error] request timed out (60s)")
         return None
     except Exception as e:
-        print(f"❌ 錯誤：{e}")
+        print(f"[error] {e}")
         return None
 
 
 def confirm(choice, nav_target, nav_label, user_id, query):
     try:
-        resp = requests.post(f"{BACKEND}/interact/confirm", json={
-            "choice":     choice,
-            "nav_target": nav_target,
-            "nav_label":  nav_label,
-            "userID":     user_id,
-            "query":      query,
-        }, timeout=10)
+        resp = requests.post(
+            f"{BACKEND}/interact/confirm",
+            json={
+                "choice":     choice,
+                "nav_target": nav_target,
+                "nav_label":  nav_label,
+                "userID":     user_id,
+                "query":      query,
+            },
+            timeout=10,
+        )
         resp.raise_for_status()
         return resp.json()
     except Exception as e:
-        print(f"❌ confirm 失敗：{e}")
+        print(f"[error] confirm failed: {e}")
         return None
 
 
 def check_backend():
     try:
-        requests.get(f"{BACKEND}/", timeout=3)
-        return True
+        requests.options(f"{BACKEND}/interact/stream", timeout=3)
+        return True, True
     except Exception:
-        return False
+        pass
+    try:
+        requests.get(f"{BACKEND}/", timeout=3)
+        return True, False
+    except Exception:
+        return False, False
 
 
-# ─────────────────────────────────────────────
-# 選擇用戶
-# ─────────────────────────────────────────────
-def select_user(current=None):
-    print("\n請選擇用戶：")
-    for num, uid, name in USERS:
-        print(f"  {num}. {uid}（{name}）")
-    print(f"  3. 自行輸入")
-    if current:
-        print(f"  Enter. 維持目前（{current}）")
-
-    choice = input("\n輸入選項：").strip()
-
-    for num, uid, _ in USERS:
-        if choice == num:
-            return uid
-
-    if choice == "3":
-        custom = input("輸入用戶 ID：").strip()
-        return custom if custom else (current or DEFAULT_USER)
-
-    if choice == "" and current:
-        return current
-
-    return current or DEFAULT_USER
-
-
-# ─────────────────────────────────────────────
-# 顯示回答
-# ─────────────────────────────────────────────
-def display_result(result, user_id, query):
+def display_nav(result, user_id, query, answer_printed=False):
     if not result:
         return False
-
-    status = result.get("status", "")
-    if status == "error" or "error" in result:
-        print(f"❌ 後端錯誤：{result.get('error', result)}\n")
+    if "error" in result:
+        print(f"[error] {result.get('error')}")
         return False
 
-    # 主要回答
-    answer = result.get("answer", "（無回答）")
-    print(f"\n🤖  {answer}")
+    if not answer_printed:
+        answer = result.get("answer", "")
+        if answer:
+            print(f"\n[robot]  {answer}")
 
-    # 導航目標
     nav_target   = result.get("nav_target")
     nav_label    = result.get("nav_label", "")
     confidence   = result.get("confidence", 0)
@@ -121,73 +211,105 @@ def display_result(result, user_id, query):
     personalized = result.get("is_personalized", False)
 
     if nav_target:
-        pers_tag = "✨ 個人化" if personalized else ""
-        print(f"   📍 {nav_label}  座標={nav_target}  信心度={confidence:.0%}  {pers_tag}")
+        tag = "  [personalized]" if personalized else ""
+        print(f"   [nav] {nav_label}  pos={nav_target}  conf={confidence:.0%}{tag}")
 
     if intent_type:
-        print(f"   🏷  意圖類型：{intent_type}")
+        print(f"   [intent] {intent_type}")
 
-    # 多選項
     options = result.get("options", [])
     if options and len(options) > 1:
-        print("\n請選擇：")
+        print("")
         for opt in options:
             print(f"  {opt['id']}. {opt['label']}")
 
         try:
-            sel = input("\n輸入選項編號（Enter 取消）：").strip()
+            sel = input("\nselect (Enter to skip): ").strip()
             if not sel:
-                print("已取消。\n")
+                print("")
                 return True
-            sel = int(sel)
+            sel_int = int(sel)
         except (ValueError, KeyboardInterrupt):
-            print("已取消。\n")
+            print("")
             return True
 
-        confirm_result = confirm(
-            choice     = sel,
-            nav_target = nav_target,
-            nav_label  = nav_label,
-            user_id    = user_id,
-            query      = query,
+        cr = confirm(
+            choice=sel_int, nav_target=nav_target,
+            nav_label=nav_label, user_id=user_id, query=query,
         )
-        if confirm_result:
-            msg = confirm_result.get("message", "")
+        if cr:
+            msg = cr.get("message", "")
             if msg:
-                print(f"\n✅  {msg}")
-            if confirm_result.get("status") == "navigate":
-                dest = confirm_result.get("nav_label", "")
-                pos  = confirm_result.get("nav_target", "")
-                print(f"   🚀 前往：{dest}  {pos}")
+                print(f"\n[ok] {msg}")
+            if cr.get("status") == "navigate":
+                print(f"   [navigate] -> {cr.get('nav_label')}  {cr.get('nav_target')}")
 
     print()
     return True
 
 
-# ─────────────────────────────────────────────
-# 主程式
-# ─────────────────────────────────────────────
+def select_user(current=None):
+    print("\nselect user:")
+    for num, uid in USERS:
+        print(f"  {num}. {uid}")
+    print("  3. custom")
+    if current:
+        print(f"  Enter. keep current ({current})")
+
+    choice = input("\n> ").strip()
+    for num, uid in USERS:
+        if choice == num:
+            return uid
+    if choice == "3":
+        custom = input("user id: ").strip()
+        return custom if custom else (current or DEFAULT_USER)
+    if choice == "" and current:
+        return current
+    return current or DEFAULT_USER
+
+
+def print_help():
+    print("""
+commands:
+  exit / quit / q  - exit
+  switch           - switch user
+  user             - show current user
+  clear            - clear screen
+  help             - show this
+
+examples:
+  I am hungry
+  I am thirsty
+  where is the remote
+  bring me water
+  are there any fruits
+""")
+
+
 def main():
-    print("=" * 50)
-    print("  🤖  Robot Brain — Interaction Client")
-    print("=" * 50)
+    print("=" * 48)
+    print("  Robot Brain - Interaction Client")
+    print("=" * 48)
 
-    # 確認後端是否在線
-    if not check_backend():
-        print("\n⚠️  後端未回應，請先啟動：")
-        print("   Terminal 1: ollama serve")
-        print("   Terminal 2: python3 app.py\n")
+    online, has_stream = check_backend()
+    if not online:
+        print("\n[warn] backend not responding")
+        print("  terminal 1: ollama serve")
+        print("  terminal 2: python3 app.py\n")
+    elif has_stream:
+        print("[ok] connected | stream mode")
+    else:
+        print("[warn] connected | stream not available | fallback mode")
 
-    # 選擇用戶
     user_id = select_user()
-    print(f"\n✅  已連線 | 用戶：{user_id}")
-    print("指令：exit 離開 | switch 切換用戶 | user 查看 | clear 清除 | help 說明\n")
+    print(f"\n[ok] user: {user_id}")
+    print("commands: exit / switch / user / clear / help\n")
 
     while True:
         try:
-            query = input(f"[{user_id}] ❓  ").strip()
+            query = input(f"[{user_id}] > ").strip()
         except (KeyboardInterrupt, EOFError):
-            print("\n再見！")
+            print("\ngoodbye")
             break
 
         if not query:
@@ -195,45 +317,32 @@ def main():
 
         q = query.lower()
 
-        # ── 系統指令 ──
         if q in ("exit", "quit", "q"):
-            print("再見！")
+            print("goodbye")
             break
-
         if q == "user":
-            print(f"   現在用戶：{user_id}\n")
+            print(f"  current user: {user_id}\n")
             continue
-
         if q == "switch":
             user_id = select_user(current=user_id)
-            print(f"   ✅ 切換到：{user_id}\n")
+            print(f"  [ok] switched to: {user_id}\n")
             continue
-
         if q == "clear":
             os.system("clear" if os.name != "nt" else "cls")
             continue
-
         if q == "help":
-            print("""
-指令清單：
-  exit / quit / q  → 離開程式
-  switch           → 切換用戶
-  user             → 查看當前用戶
-  clear            → 清除畫面
-  help             → 顯示此說明
-
-範例問題：
-  我想喝東西
-  我想休息
-  我的手機在哪裡
-  今天我做了什麼
-""")
+            print_help()
             continue
 
-        # ── 查詢後端 ──
-        print("⏳  查詢中...")
+        if has_stream:
+            result = ask_stream(query, user_id=user_id)
+            if result is not None:
+                display_nav(result, user_id=user_id, query=query, answer_printed=True)
+                continue
+
+        print("[thinking]")
         result = ask(query, user_id=user_id)
-        display_result(result, user_id=user_id, query=query)
+        display_nav(result, user_id=user_id, query=query, answer_printed=False)
 
 
 if __name__ == "__main__":

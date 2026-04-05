@@ -4,15 +4,15 @@ import json
 import os
 import datetime
 from sentence_transformers import SentenceTransformer
-
+from config import Config
 
 class VectorMemory:
 
-    def __init__(self, index_path="robot_memory.index",
-                       meta_path="robot_memory_meta.json",
-                       dynamic_index_path="dynamic_memory.index",
-                       dynamic_meta_path="dynamic_memory_meta.json",
-                       device="cuda"):
+    def __init__(self, index_path=Config.FAISS_INDEX_PATH,
+                        meta_path=Config.FAISS_META_PATH,
+                        dynamic_index_path=Config.DYNAMIC_INDEX_PATH,
+                        dynamic_meta_path=Config.DYNAMIC_META_PATH,
+                        device="cuda"):
 
         self.model = SentenceTransformer('paraphrase-MiniLM-L6-v2', device=device)
         self.dim = 384

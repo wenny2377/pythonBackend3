@@ -1,11 +1,13 @@
 import json, logging, re, requests
 from datetime import datetime, timedelta
 from pymongo import MongoClient
-
+from config import Config
 logger       = logging.getLogger(__name__)
-LLM_TIMEOUT  = 60
-LLM_TEMP     = 0.3
-STALE_DAYS   = 30
+
+LLM_TIMEOUT = Config.LLM_TIMEOUT
+LLM_TEMP    = Config.LLM_TEMPERATURE
+STALE_DAYS  = getattr(Config, 'SKILL_STALE_DAYS', 30)
+
 MAX_SKILL_LEN = 1200
 MAX_BULLETS  = 5
 
