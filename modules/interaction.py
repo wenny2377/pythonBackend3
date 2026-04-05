@@ -372,7 +372,7 @@ Reply with one word only: service, query, or chat"""
                     }])
                     print(f"[BgEvolve] Skill updated for {user_id}")
 
-                has_gap, missing = sm.detect_gap(user_id, query)
+                has_gap, missing = sm.detect_gap(user_id, query, answer)
                 if has_gap and missing:
                     print(f"[BgEvolve] Gap: {missing} -> fill_gap()")
                     sm.fill_gap(user_id, query, missing)

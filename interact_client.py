@@ -97,6 +97,9 @@ def ask_stream(query, user_id, room=DEFAULT_ROOM):
                     if new_part:
                         print(new_part, end="", flush=True)
                         last_len = len(visible)
+                else:
+                    if len(raw_buf) > 200 and last_len == 0:
+                        print(".", end="", flush=True)
 
             else:
                 raw_buf   += token
@@ -181,13 +184,8 @@ def confirm(choice, nav_target, nav_label, user_id, query):
 
 def check_backend():
     try:
-        requests.options(f"{BACKEND}/interact/stream", timeout=3)
-        return True, True
-    except Exception:
-        pass
-    try:
         requests.get(f"{BACKEND}/", timeout=3)
-        return True, False
+        return True, True
     except Exception:
         return False, False
 
@@ -210,9 +208,12 @@ def display_nav(result, user_id, query, answer_printed=False):
     intent_type  = result.get("intent_type", "")
     personalized = result.get("is_personalized", False)
 
-    if nav_target:
+    if nav_label and nav_label not in ("", "unknown"):
         tag = "  [personalized]" if personalized else ""
-        print(f"   [nav] {nav_label}  pos={nav_target}  conf={confidence:.0%}{tag}")
+        if isinstance(nav_target, (list, tuple)) and len(nav_target) >= 2:
+            print(f"   [nav] {nav_label}  pos=[{nav_target[0]:.2f}, {nav_target[1]:.2f}]  conf={confidence:.0%}{tag}")
+        else:
+            print(f"   [nav] {nav_label}{tag}")
 
     if intent_type:
         print(f"   [intent] {intent_type}")
