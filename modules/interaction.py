@@ -354,25 +354,37 @@ Reply with one word only: service, query, or chat"""
         if not self._has_skill_manager:
             return
 
+        import re as _re, json as _json
+
+        plain_answer = answer
+        try:
+            m = _re.search(r'\{.*\}', answer, _re.DOTALL)
+            if m:
+                parsed = _json.loads(m.group(0))
+                if "answer" in parsed:
+                    plain_answer = parsed["answer"]
+        except Exception:
+            pass
+
         def _bg():
             try:
                 sm     = self.skill_manager
                 should = sm.should_update(
-                    user_id=user_id, query=query, answer=answer, trace=[],
+                    user_id=user_id, query=query, answer=plain_answer, trace=[],
                 )
                 if should:
-                    sm.update(user_id, query, answer, trace=[{
+                    sm.update(user_id, query, plain_answer, trace=[{
                         "step":   1,
                         "tool":   "oneshot",
                         "input":  {"query": query},
                         "result": (
-                            f"User: \"{query}\"\nRobot: \"{answer}\"\n"
+                            f"User: \"{query}\"\nRobot: \"{plain_answer}\"\n"
                             f"Objects:\n{env_snapshot}\nRecommended: {rec_items}"
                         ),
                     }])
                     print(f"[BgEvolve] Skill updated for {user_id}")
 
-                has_gap, missing = sm.detect_gap(user_id, query, answer)
+                has_gap, missing = sm.detect_gap(user_id, query, plain_answer)
                 if has_gap and missing:
                     print(f"[BgEvolve] Gap: {missing} -> fill_gap()")
                     sm.fill_gap(user_id, query, missing)

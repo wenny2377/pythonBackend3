@@ -1,0 +1,42 @@
+=================================================================
+Experiment 3: Behavioral Manifold Learning
+Generated: 2026-04-07 10:12
+=================================================================
+Total observations:  96
+Clusters found:      2
+Noise points:        9
+Silhouette Score S:  0.6472
+Acceptance criterion: S ≥ 0.50  →  ✓ PASSED (S ≥ 0.50)
+
+Cluster composition:
+  Cluster 0 (n=21): dominant=Watching (21), slot=Afternoon (10)
+  Cluster 1 (n=66): dominant=Watching (25), slot=Morning (35)
+
+Behavior distribution:
+  Watching: 46
+  Drink: 17
+  Typing: 12
+  SittingIdle: 8
+  Standing: 6
+  Eating: 3
+  Walking: 2
+  Looking at a phone: 1
+  Reading: 1
+
+Time slot distribution:
+  Morning: 46
+  Afternoon: 29
+  Noon: 12
+  Evening: 9
+
+── For thesis (copy-paste) ──────────────────────────────────
+The UMAP manifold projection of 96 behavioral observations
+(1,158-dim feature vectors) produces 2 distinct clusters
+identified by HDBSCAN, achieving a mean Silhouette Score of
+S = 0.6472
+(≥ 0.50 acceptance threshold).
+Each cluster corresponds to a coherent behavioral habit
+combining action semantics, temporal context, and spatial
+location, confirming that the training-free 1,158-dim
+feature vector captures the latent structure of user
+behavioral habits without any gradient-based training (RQ4).

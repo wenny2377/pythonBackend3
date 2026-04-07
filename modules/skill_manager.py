@@ -13,7 +13,7 @@ LLM_TEMP    = Config.LLM_TEMPERATURE
 STALE_DAYS  = getattr(Config, 'SKILL_STALE_DAYS', 30)
 
 MAX_SKILL_LEN         = 2500
-MAX_BULLETS           = 8
+MAX_BULLETS           = 10
 SKILL_CHUNK_TOP_K     = 2
 SBERT_DEDUP_THRESHOLD = 0.85
 SUPPORT_THRESHOLD     = 2
@@ -395,15 +395,31 @@ class SkillManager:
         self._chunk_skill_md(fallback, user_id)
         return fallback
 
-    def detect_gap(self, user_id, query):
+    def detect_gap(self, user_id, query, answer: str = "") -> tuple:
+        NEGATIVE_SIGNALS = {
+            "sorry", "no ", "not available", "cannot find",
+            "don't see", "do not see", "not in", "unavailable",
+            "out of", "we don't have", "i don't have",
+            "don't have", "doesn't have", "does not have",
+            "couldn't find", "could not find", "can't find",
+            "not found", "none available", "not here",
+        }
+        if answer:
+            ans_lower = answer.lower()
+            if not any(sig in ans_lower for sig in NEGATIVE_SIGNALS):
+                return False, ""
+
         doc = self.db.user_skills.find_one({"user_id": user_id})
         if not doc:
             return True, "no skill profile"
+
         result = _call_llm_json(
             self.ollama_url, self.model_name, GAP_SYSTEM,
-            f'User request: "{query}"\n\n'
+            f'User request: "{query}"\n'
+            f'Robot answer: "{answer}"\n\n'
             f'Current SKILL.md:\n{doc["skill_md"]}\n\n'
-            f'Does SKILL.md have a rule for this? If NOT -> has_gap: true',
+            f'Does SKILL.md have a specific rule for handling this FAILED request? '
+            f'has_gap: true ONLY if the robot failed (said sorry/not found) AND no rule exists.',
         )
         if result is None:
             return False, ""
@@ -546,29 +562,55 @@ class SkillManager:
         if not doc:
             return self.generate(user_id)
 
-        current    = doc["skill_md"]
-        trace_text = "\n".join(
-            f"Step {t['step']}: {t['tool']} -> {str(t['result'])[:80]}"
-            for t in trace
-        )
-        user_prompt = (
-            f"Current SKILL.md:\n{current}\n\n"
-            f"Conversation:\n"
-            f"User: \"{query}\"\n"
-            f"Robot: \"{answer}\"\n"
-            f"Trace:\n{trace_text}\n\n"
-            f"Update SKILL.md with any new explicit preferences or corrections."
+        current = doc["skill_md"]
+
+        PREF_EXTRACT_SYSTEM = (
+            "You are a preference extractor for a home robot. "
+            "Extract ONE explicit preference or correction from the conversation. "
+            "Output ONE bullet starting with '- '. "
+            "Examples: "
+            "'- User dislikes cola' "
+            "'- User prefers juice over water' "
+            "'- Do not recommend cola to this user' "
+            "If no explicit preference or correction exists, output exactly: NONE"
         )
 
-        updated = _call_llm(self.ollama_url, self.model_name, UPDATE_SYSTEM, user_prompt)
-        if updated:
-            updated = _normalize_bullets(updated)
-            valid, reason = validate_skill(updated)
-            if valid:
-                self._save(user_id, updated)
-                self._chunk_skill_md(updated, user_id)
-                return updated
-            logger.warning(f"[SkillManager] Update failed: {reason}")
+        new_bullet = _call_llm(
+            self.ollama_url, self.model_name,
+            PREF_EXTRACT_SYSTEM,
+            f'User said: "{query}"\nRobot answered: "{answer}"',
+            max_tokens=60,
+        )
+
+        if not new_bullet or new_bullet.strip().upper() == "NONE":
+            logger.info("[update] No explicit preference found, skipping")
+            return current
+
+        new_bullet = new_bullet.strip()
+        if not new_bullet.startswith('-'):
+            new_bullet = f"- {new_bullet}"
+
+        ans_lower = answer.lower()
+        q_lower   = query.lower()
+
+        if any(w in q_lower for w in ("not like", "dislike", "don't like", "hate", "never", "stop")):
+            section = "## What NOT to do"
+        elif any(w in q_lower for w in ("prefer", "like", "want", "love", "enjoy")):
+            section = "## Preferences"
+        else:
+            section = "## Preferences"
+
+        updated = _insert_bullet(current, section, new_bullet)
+        updated = _normalize_bullets(updated)
+
+        valid, reason = validate_skill(updated)
+        if valid:
+            self._save(user_id, updated)
+            self._chunk_skill_md(updated, user_id)
+            logger.info(f"[update] Bullet added to {section}: {new_bullet}")
+            return updated
+
+        logger.warning(f"[SkillManager] Update failed: {reason}")
         return current
 
     def check_stale(self, user_id):

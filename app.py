@@ -289,6 +289,32 @@ def _stream_ollama(system: str, user_prompt: str):
         yield f"data: {json.dumps({'type': 'token', 'content': 'Sorry, an error occurred.'})}\n\n"
 
 
+_robot_state = {
+    "nav_target":  None,
+    "nav_label":   "",
+    "last_answer": "",
+    "highlight":   "",
+}
+
+
+@app.route('/nav_target', methods=['GET'])
+def get_nav_target():
+    return jsonify({
+        "nav_target": _robot_state["nav_target"],
+        "nav_label":  _robot_state["nav_label"],
+    })
+
+
+@app.route('/highlight', methods=['GET'])
+def get_highlight():
+    return jsonify({"label": _robot_state["highlight"]})
+
+
+@app.route('/last_answer', methods=['GET'])
+def get_last_answer():
+    return jsonify({"answer": _robot_state["last_answer"]})
+
+
 @app.route('/interact/stream', methods=['POST'])
 def interact_stream():
     data    = request.get_json()
@@ -306,8 +332,11 @@ def interact_stream():
         yield f"data: {json.dumps({'type': 'intent', 'intent': intent})}\n\n"
 
         if intent == "interrupt":
-            is_zh  = any('\u4e00' <= c <= '\u9fff' for c in query)
-            answer = "Good, stopping now." if not is_zh else "好的，已停止。"
+            answer = "Understood, stopping now."
+            _robot_state["last_answer"] = answer
+            _robot_state["nav_target"]  = None
+            _robot_state["nav_label"]   = ""
+            _robot_state["highlight"]   = ""
             yield f"data: {json.dumps({'type': 'token', 'content': answer})}\n\n"
             yield f"data: {json.dumps({'type': 'done', 'nav_target': None, 'nav_label': None, 'confidence': 1.0, 'intent_type': 'interrupt', 'options': [], 'is_personalized': False})}\n\n"
             return
@@ -315,10 +344,22 @@ def interact_stream():
         if intent == "chat":
             system = (
                 "You are a friendly home robot companion. "
-                "Reply warmly and briefly in the same language as the user. "
+                "Reply warmly and briefly in English. "
                 "1-2 sentences max. Do NOT wrap in quotes. Do NOT suggest navigation."
             )
-            yield from _stream_ollama(system, f'{user_id} said: "{query}"')
+            chat_buf = ""
+            for ev in _stream_ollama(system, f'{user_id} said: "{query}"'):
+                yield ev
+                try:
+                    parsed = json.loads(ev.replace("data: ", "").strip())
+                    if parsed.get("type") == "token":
+                        chat_buf += parsed.get("content", "")
+                except Exception:
+                    pass
+            _robot_state["last_answer"] = chat_buf.strip().strip('"').strip("'")
+            _robot_state["nav_target"]  = None
+            _robot_state["nav_label"]   = ""
+            _robot_state["highlight"]   = ""
             yield f"data: {json.dumps({'type': 'done', 'nav_target': None, 'nav_label': None, 'confidence': 1.0, 'intent_type': 'chat', 'options': [], 'is_personalized': False})}\n\n"
             return
 
@@ -327,6 +368,10 @@ def interact_stream():
             answer = result.get("answer", "")
             for char in answer:
                 yield f"data: {json.dumps({'type': 'token', 'content': char})}\n\n"
+            _robot_state["last_answer"] = answer
+            _robot_state["nav_target"]  = result.get("nav_target")
+            _robot_state["nav_label"]   = result.get("nav_label", "")
+            _robot_state["highlight"]   = result.get("nav_label", "")
             yield f"data: {json.dumps({'type': 'done', 'nav_target': result.get('nav_target'), 'nav_label': result.get('nav_label'), 'confidence': result.get('confidence', 0.85), 'intent_type': 'query', 'options': result.get('options', []), 'is_personalized': False})}\n\n"
             return
 
@@ -355,7 +400,7 @@ def interact_stream():
             f"Reply with the JSON format specified."
         )
 
-        buffer  = ""
+        buffer = ""
         for event_line in _stream_ollama(system, user_prompt):
             yield event_line
             try:
@@ -367,22 +412,29 @@ def interact_stream():
 
         nav_target      = None
         nav_label       = "unknown"
+        plain_answer    = ""
         options         = []
         is_personalized = bool(skill_md and "(No skill profile" not in skill_md)
 
         try:
             m = re.search(r'\{.*\}', buffer, re.DOTALL)
             if m:
-                rj        = json.loads(m.group(0))
-                raw_nav   = rj.get("nav_target", "unknown")
-                nav_label = rj.get("nav_label", raw_nav)
-                nav_target = (
+                rj           = json.loads(m.group(0))
+                plain_answer = rj.get("answer", "").strip().strip('"').strip("'")
+                raw_nav      = rj.get("nav_target", "unknown")
+                nav_label    = rj.get("nav_label", raw_nav)
+                nav_target   = (
                     interaction_engine._resolve_pos(raw_nav)
                     if raw_nav and raw_nav != "unknown" else None
                 )
                 options = interaction_engine._build_options(nav_target, nav_label, query)
         except Exception as e:
             print(f"[Stream] JSON parse error: {e}")
+
+        _robot_state["last_answer"] = plain_answer or buffer.strip()
+        _robot_state["nav_target"]  = nav_target
+        _robot_state["nav_label"]   = nav_label if nav_label != "unknown" else ""
+        _robot_state["highlight"]   = nav_label if nav_label != "unknown" else ""
 
         interaction_engine._schedule_skill_update(
             user_id=user_id, query=query,
