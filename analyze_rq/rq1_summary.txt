@@ -1,0 +1,22 @@
+=================================================================
+RQ1: Intent Classification Accuracy
+Generated: 2026-04-09 15:18
+=================================================================
+
+Total queries    : 18
+Correct          : 17
+Overall accuracy : 94%
+
+By intent class:
+  service : 7/8 (88%)
+  query   : 5/5 (100%)
+  chat    : 5/5 (100%)
+
+Errors:
+  x  User_Mom    I am tired, I need to sit down            expected=service  actual=chat
+
+For thesis:
+The LLM-based intent classifier correctly classified 17 of 18
+test queries (accuracy = 94%) across three intent classes
+(service, query, chat), without any handcrafted keyword rules.
+Target threshold: 85%. Result: PASSED.

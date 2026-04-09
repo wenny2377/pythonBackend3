@@ -382,14 +382,11 @@ Reply with one word only: service, query, or chat"""
                             f"Objects:\n{env_snapshot}\nRecommended: {rec_items}"
                         ),
                     }])
-                    print(f"[BgEvolve] Skill updated for {user_id}")
-
-                has_gap, missing = sm.detect_gap(user_id, query, plain_answer)
-                if has_gap and missing:
-                    print(f"[BgEvolve] Gap: {missing} -> fill_gap()")
-                    sm.fill_gap(user_id, query, missing)
+                    print(f"[BgEvolve] Skill updated for {user_id}", flush=True)
             except Exception as e:
-                logger.warning(f"[BgEvolve] Error: {e}")
+                print(f"[BgEvolve] Error: {e}", flush=True)
+                import traceback
+                traceback.print_exc()
 
         threading.Thread(target=_bg, daemon=True).start()
 

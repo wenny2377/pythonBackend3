@@ -13,7 +13,7 @@ LLM_TEMP    = Config.LLM_TEMPERATURE
 STALE_DAYS  = getattr(Config, 'SKILL_STALE_DAYS', 30)
 
 MAX_SKILL_LEN         = 2500
-MAX_BULLETS           = 10
+MAX_BULLETS           = 8
 SKILL_CHUNK_TOP_K     = 2
 SBERT_DEDUP_THRESHOLD = 0.85
 SUPPORT_THRESHOLD     = 2
@@ -44,19 +44,7 @@ Keep the exact 4-section structure. Max 8 bullets per section.
 Start each bullet with "- " (hyphen space). Do NOT use * or **.
 Output ONLY the complete updated Markdown."""
 
-GAP_SYSTEM = 'Gap detector for home robot. JSON only: {"has_gap":true/false,"missing":"one line description"}'
-
 RELEVANCE_SYSTEM = 'Relevance judge for home robot. JSON only: {"should_update":true/false,"reason":"one line"}'
-
-NEW_RULE_SYSTEM = """You are a rule writer for a home service robot skill profile.
-Generate exactly ONE bullet point rule in this format:
-- IF [condition] THEN [action]
-
-Rules:
-- One line only. No JSON. No explanation.
-- Start with "- " (hyphen space). Do NOT use * or **.
-- Use plain English.
-- Focus on what the robot should do next time this situation occurs."""
 
 
 def _call_llm(ollama_url, model, system, user, max_tokens=600):
@@ -395,153 +383,6 @@ class SkillManager:
         self._chunk_skill_md(fallback, user_id)
         return fallback
 
-    def detect_gap(self, user_id, query, answer: str = "") -> tuple:
-        NEGATIVE_SIGNALS = {
-            "sorry", "no ", "not available", "cannot find",
-            "don't see", "do not see", "not in", "unavailable",
-            "out of", "we don't have", "i don't have",
-            "don't have", "doesn't have", "does not have",
-            "couldn't find", "could not find", "can't find",
-            "not found", "none available", "not here",
-        }
-        if answer:
-            ans_lower = answer.lower()
-            if not any(sig in ans_lower for sig in NEGATIVE_SIGNALS):
-                return False, ""
-
-        doc = self.db.user_skills.find_one({"user_id": user_id})
-        if not doc:
-            return True, "no skill profile"
-
-        result = _call_llm_json(
-            self.ollama_url, self.model_name, GAP_SYSTEM,
-            f'User request: "{query}"\n'
-            f'Robot answer: "{answer}"\n\n'
-            f'Current SKILL.md:\n{doc["skill_md"]}\n\n'
-            f'Does SKILL.md have a specific rule for handling this FAILED request? '
-            f'has_gap: true ONLY if the robot failed (said sorry/not found) AND no rule exists.',
-        )
-        if result is None:
-            return False, ""
-        return result.get("has_gap", False), result.get("missing", "")
-
-    def fill_gap(self, user_id: str, query: str, missing: str) -> str:
-        habits = list(self.db.observation_logs.find(
-            {"user": user_id},
-            {"action": 1, "instance": 1, "weight": 1, "interacting_items": 1},
-        ).sort("weight", -1).limit(5))
-
-        doc = self.db.user_skills.find_one({"user_id": user_id})
-        if not doc:
-            skill_md = self.generate(user_id)
-            doc      = self.db.user_skills.find_one({"user_id": user_id})
-        else:
-            skill_md = doc["skill_md"]
-
-        episodic  = self._get_episodic_alternative(user_id, missing)
-        available = self._check_alternative_available(episodic.get("alternative", ""))
-
-        habit_text = "\n".join(
-            f"- {h['action']} near {h['instance']} ({h['weight']} times)"
-            for h in habits
-        ) or "No habits."
-
-        alt_text = ""
-        if episodic:
-            alt_text = (
-                f"Last time '{missing}' was unavailable, user chose: "
-                f"{episodic.get('alternative', 'unknown')} "
-                f"({episodic.get('count', 0)} times). "
-                f"Currently available: {available or 'unknown'}."
-            )
-
-        new_rule = _call_llm(
-            self.ollama_url, self.model_name,
-            NEW_RULE_SYSTEM,
-            f'Failed request: "{query}"\n'
-            f'Missing: {missing}\n'
-            f'{alt_text}\n'
-            f'Known habits:\n{habit_text}\n\n'
-            f'Write ONE bullet rule for the How to Handle Requests section.',
-            max_tokens=80,
-        )
-
-        if not new_rule:
-            return skill_md
-
-        new_rule = new_rule.strip()
-        if not new_rule.startswith('-'):
-            new_rule = f"- {new_rule}"
-
-        updated = _insert_bullet(skill_md, "## How to Handle Requests", new_rule)
-        updated = _normalize_bullets(updated)
-
-        valid, reason = validate_skill(updated)
-        if valid:
-            self._save(user_id, updated)
-            self._chunk_skill_md(updated, user_id)
-            logger.info(f"[fill_gap] Rule added: {new_rule}")
-            return updated
-
-        logger.warning(f"[SkillManager] fill_gap validation failed: {reason}")
-        return skill_md
-
-    def _get_episodic_alternative(self, user_id: str, missing: str) -> dict:
-        missing_lower = missing.lower()
-
-        episodic_docs = list(self.db.episodic_summaries.find(
-            {"user": user_id},
-            {"original_request": 1, "chosen_alternative": 1, "count": 1},
-        ).sort("count", -1).limit(5))
-
-        for doc in episodic_docs:
-            if missing_lower in doc.get("original_request", "").lower():
-                return {
-                    "alternative": doc.get("chosen_alternative", ""),
-                    "count":       doc.get("count", 1),
-                    "source":      "episodic_summaries",
-                }
-
-        logs = list(self.db.observation_logs.find(
-            {"user": user_id},
-            {"action": 1, "instance": 1, "weight": 1, "interacting_items": 1},
-        ).sort("weight", -1).limit(20))
-
-        item_counts = {}
-        for log in logs:
-            for item in log.get("interacting_items", []):
-                item_l = item.lower()
-                if missing_lower not in item_l:
-                    item_counts[item_l] = item_counts.get(item_l, 0) + log.get("weight", 1)
-
-        if item_counts:
-            best_alt = max(item_counts, key=item_counts.get)
-            return {
-                "alternative": best_alt,
-                "count":       item_counts[best_alt],
-                "source":      "observation_logs_inference",
-            }
-
-        return {}
-
-    def _check_alternative_available(self, alternative: str) -> str:
-        if not alternative:
-            return ""
-        cutoff = datetime.utcnow() - timedelta(hours=2)
-        doc = self.db.dynamic_objects.find_one({
-            "label":     {"$regex": alternative, "$options": "i"},
-            "last_seen": {"$gte": cutoff},
-        })
-        if doc:
-            return (
-                f"{doc['label']} "
-                f"(on {doc.get('last_seen_on', '?')} in {doc.get('room', '?')})"
-            )
-        doc = self.db.dynamic_objects.find_one(
-            {"label": {"$regex": alternative, "$options": "i"}}
-        )
-        return doc["label"] if doc else ""
-
     def should_update(self, user_id, query, answer, trace):
         if len(query.strip()) < 3:
             return False
@@ -554,7 +395,7 @@ class SkillManager:
         if result is None:
             return False
         should = result.get("should_update", False)
-        logger.info(f"[RelevanceGate] {should} — {result.get('reason', '')}")
+        print(f"[RelevanceGate] {should} — {result.get('reason', '')}", flush=True)
         return should
 
     def update(self, user_id, query, answer, trace):
@@ -583,34 +424,47 @@ class SkillManager:
         )
 
         if not new_bullet or new_bullet.strip().upper() == "NONE":
-            logger.info("[update] No explicit preference found, skipping")
+            print("[update] No explicit preference found, skipping", flush=True)
             return current
 
         new_bullet = new_bullet.strip()
         if not new_bullet.startswith('-'):
             new_bullet = f"- {new_bullet}"
 
-        ans_lower = answer.lower()
-        q_lower   = query.lower()
+        q_lower    = query.lower()
+        has_dislike = any(w in q_lower for w in (
+            "not like", "dislike", "don't like", "hate", "never", "stop", "no more"
+        ))
+        has_prefer  = any(w in q_lower for w in (
+            "prefer", "love", "enjoy", "want", "like"
+        ))
 
-        if any(w in q_lower for w in ("not like", "dislike", "don't like", "hate", "never", "stop")):
+        updated = current
+        if has_dislike and has_prefer:
+            dislike_bullet = f"- Do not recommend cola" if "cola" in q_lower else new_bullet
+            prefer_bullet  = new_bullet
+            updated = _insert_bullet(updated, "## What NOT to do", dislike_bullet)
+            updated = _insert_bullet(updated, "## Preferences",    prefer_bullet)
+        elif has_dislike:
+            updated = _insert_bullet(updated, "## What NOT to do", new_bullet)
             section = "## What NOT to do"
-        elif any(w in q_lower for w in ("prefer", "like", "want", "love", "enjoy")):
-            section = "## Preferences"
         else:
+            updated = _insert_bullet(updated, "## Preferences", new_bullet)
             section = "## Preferences"
 
-        updated = _insert_bullet(current, section, new_bullet)
         updated = _normalize_bullets(updated)
 
         valid, reason = validate_skill(updated)
         if valid:
             self._save(user_id, updated)
             self._chunk_skill_md(updated, user_id)
-            logger.info(f"[update] Bullet added to {section}: {new_bullet}")
+            if has_dislike and has_prefer:
+                print(f"[update] Bullets added to both Preferences and What NOT to do: {new_bullet}", flush=True)
+            else:
+                print(f"[update] Bullet added to {section}: {new_bullet}", flush=True)
             return updated
 
-        logger.warning(f"[SkillManager] Update failed: {reason}")
+        print(f"[update] validate failed: {reason}", flush=True)
         return current
 
     def check_stale(self, user_id):

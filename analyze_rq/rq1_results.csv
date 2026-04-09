@@ -1,0 +1,19 @@
+index,query,user_id,expected,actual,correct
+1,I am thirsty,User_Mom,service,service,True
+2,I want something to drink,User_Mom,service,service,True
+3,"I am tired, I need to sit down",User_Mom,service,chat,False
+4,I am hungry,User_Mom,service,service,True
+5,get me something to eat,User_Mom,service,service,True
+6,bring me the remote,User_Mom,service,service,True
+7,I wanna drink,User_Dad,service,service,True
+8,something refreshing please,User_Dad,service,service,True
+9,are there any fruits,User_Mom,query,query,True
+10,what drinks do we have,User_Mom,query,query,True
+11,where is the remote,User_Mom,query,query,True
+12,is there any cola,User_Dad,query,query,True
+13,where is mom,User_Dad,query,query,True
+14,I hate my boss,User_Mom,chat,chat,True
+15,I feel great today,User_Dad,chat,chat,True
+16,good morning,User_Mom,chat,chat,True
+17,thank you so much,User_Mom,chat,chat,True
+18,I am exhausted,User_Dad,chat,chat,True

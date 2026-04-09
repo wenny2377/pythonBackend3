@@ -1,33 +1,35 @@
-"""
-reset_all.py
-開發用完全重置腳本
-執行方式：python reset_all.py
-"""
-
 import os
 import shutil
+from datetime import datetime
 from pymongo import MongoClient
 
 MONGO_URI = "mongodb://127.0.0.1:27017/"
 DB_NAME   = "robot_rag_db"
 
-client = MongoClient(MONGO_URI)
+CLEAN_SKILL_TEMPLATE = """# {user_id} Skill Profile
+*Version 1 | Updated: {date}*
 
-print("\n📋 MongoDB 現有資料庫：", client.list_database_names())
-print(f"🎯 目標 DB：{DB_NAME}\n")
+## Behavior Patterns
+<!-- Observed: action + location + frequency only -->
 
-db = client[DB_NAME]
+## Preferences
+<!-- No confirmed preferences yet -->
 
-print("📊 清除前各 collection 筆數：")
-for col_name in db.list_collection_names():
-    print(f"  [{col_name}] {db[col_name].count_documents({})} 筆")
+## How to Handle Requests
+- Check object availability before recommending
+- If requested item is unavailable, suggest nearest alternative
 
-print("\n⚠️  開始清空...\n")
+## What NOT to do
+- Do not invent object locations
+- Do not recommend items not in the environment snapshot
+"""
 
-cols = [
+SKILL_USERS = ["User_Mom", "User_Dad"]
+
+COLLECTIONS_TO_CLEAR = [
     "eval_logs",
     "observation_logs",
-    "exp_checkpoints",
+    "exp_checkpoint_logs",
     "activity_sequences",
     "conversation_logs",
     "raw_objects",
@@ -35,33 +37,61 @@ cols = [
     "scene_snapshots",
     "semantic_memories",
     "navigation_logs",
-    # ── 新增：Manifold 相關 ──
     "manifold_points",
     "behavior_clusters",
     "service_proposals",
     "intent_stats",
+    "skill_chunks",
+    "episodic_summaries",
 ]
-for col in cols:
-    n = db[col].delete_many({}).deleted_count
-    print(f"  [{col}] 刪除 {n} 筆")
 
-# ── FAISS 檔案 ──
-faiss_files = [
+FAISS_FILES = [
     "robot_memory.index",
     "robot_memory_meta.json",
     "dynamic_memory.index",
     "dynamic_memory_meta.json",
 ]
-for path in faiss_files:
+
+client = MongoClient(MONGO_URI)
+db     = client[DB_NAME]
+
+print(f"\nReset script — target DB: {DB_NAME}\n")
+
+print("Record counts before reset:")
+for col in db.list_collection_names():
+    print(f"  [{col}] {db[col].count_documents({})} records")
+
+print("\nClearing collections...")
+for col in COLLECTIONS_TO_CLEAR:
+    n = db[col].delete_many({}).deleted_count
+    print(f"  [{col}] deleted {n} records")
+
+print("\nResetting SKILL.md for all users...")
+date = datetime.now().strftime("%Y-%m-%d")
+for user_id in SKILL_USERS:
+    clean = CLEAN_SKILL_TEMPLATE.format(user_id=user_id, date=date)
+    db.user_skills.update_one(
+        {"user_id": user_id},
+        {"$set": {
+            "skill_md":   clean,
+            "version":    1,
+            "updated_at": datetime.utcnow(),
+            "is_stale":   False,
+        }},
+        upsert=True,
+    )
+    print(f"  [{user_id}] SKILL.md reset to version 1")
+
+print("\nRemoving FAISS index files...")
+for path in FAISS_FILES:
     if os.path.exists(path):
         os.remove(path)
-        print(f"  [FAISS] 刪除 {path}")
+        print(f"  [FAISS] removed {path}")
     else:
-        print(f"  [FAISS] 不存在（跳過）{path}")
+        print(f"  [FAISS] not found (skip): {path}")
 
-# ── debug_images ──
 if os.path.exists("debug_images"):
     shutil.rmtree("debug_images")
-    print("  [debug_images] 已清空")
+    print("\n  [debug_images] removed")
 
-print("\n✅ 完成，重啟 Flask：python app.py\n")
+print("\nDone. Restart Flask: python3 app.py\n")

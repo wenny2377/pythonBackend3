@@ -356,10 +356,15 @@ def interact_stream():
                         chat_buf += parsed.get("content", "")
                 except Exception:
                     pass
-            _robot_state["last_answer"] = chat_buf.strip().strip('"').strip("'")
+            chat_answer = chat_buf.strip().strip('"').strip("'")
+            _robot_state["last_answer"] = chat_answer
             _robot_state["nav_target"]  = None
             _robot_state["nav_label"]   = ""
             _robot_state["highlight"]   = ""
+            interaction_engine._schedule_skill_update(
+                user_id=user_id, query=query,
+                answer=chat_answer, env_snapshot="", rec_items=[],
+            )
             yield f"data: {json.dumps({'type': 'done', 'nav_target': None, 'nav_label': None, 'confidence': 1.0, 'intent_type': 'chat', 'options': [], 'is_personalized': False})}\n\n"
             return
 
