@@ -648,6 +648,9 @@ def predict():
                 )
                 has_proposal = proposal_result.get("has_proposal", False)
 
+            # Check if any habits have reached threshold → auto-update SKILL.md
+            habit_learner.check_and_update(user_id)
+
         except Exception as manifold_err:
             print(f"[Manifold] non-critical error: {manifold_err}")
 
@@ -807,6 +810,20 @@ def dynamic_sync():
                     interacted_by  = dyn_doc.get("interacted_by", []),
                 )
             count += 1
+
+        # Remove stale unity objects not in this sync batch
+        unity_labels = [
+            obj.get('label', '').lower().strip()
+            for obj in objects
+            if obj.get('source') == 'unity' and obj.get('label', '').strip()
+        ]
+        if unity_labels:
+            stale = db.dynamic_objects.delete_many({
+                "source": "unity",
+                "label":  {"$nin": unity_labels},
+            })
+            if stale.deleted_count > 0:
+                print(f"[DynamicSync] Removed {stale.deleted_count} stale objects")
 
         print(f"[DynamicSync] {count} objects updated")
         return jsonify({"status": "Success", "updated": count}), 200
@@ -1077,6 +1094,7 @@ def interact_confirm():
 
 from modules.interaction import InteractionEngine
 from modules.training_exporter import TrainingExporter
+from modules.habit_learner import HabitLearner
 
 interaction_engine = InteractionEngine(
     mongo_client  = mongo_client,
@@ -1085,6 +1103,53 @@ interaction_engine = InteractionEngine(
     model_name    = CONFIG.LLM_MODEL,
 )
 training_exporter = TrainingExporter(mongo_client)
+
+# Initialize HabitLearner after interaction_engine so skill_manager is ready
+habit_learner = HabitLearner(
+    db_client     = mongo_client,
+    skill_manager = interaction_engine.skill_manager,
+)
+
+
+@app.route('/habit_feedback', methods=['POST'])
+def habit_feedback():
+    """
+    Called when user accepts or rejects a service proposal.
+    Body: {"user_id": "...", "result": "accepted|rejected", "intent": "...", "item": "..."}
+    """
+    try:
+        data    = request.get_json()
+        user_id = data.get("user_id", "")
+        result  = data.get("result", "")
+        intent  = data.get("intent", "")
+        item    = data.get("item", "")
+
+        if result == "rejected":
+            habit_learner.handle_rejection(user_id, intent, item)
+        elif result == "accepted":
+            habit_learner.handle_acceptance(user_id, intent, item)
+
+        return jsonify({"status": "ok"}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/habit_check', methods=['POST'])
+def habit_check():
+    """
+    Manually trigger HabitLearner.check_and_update() for a user.
+    Used by analyze3.py for RQ3 evaluation.
+    Body: {"user_id": "..."}
+    """
+    try:
+        data    = request.get_json()
+        user_id = data.get("user_id", "")
+        if not user_id:
+            return jsonify({"error": "user_id required"}), 400
+        habit_learner.check_and_update(user_id)
+        return jsonify({"status": "ok", "user_id": user_id}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 if __name__ == "__main__":

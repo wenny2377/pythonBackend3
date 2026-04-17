@@ -44,7 +44,15 @@ Keep the exact 4-section structure. Max 8 bullets per section.
 Start each bullet with "- " (hyphen space). Do NOT use * or **.
 Output ONLY the complete updated Markdown."""
 
-RELEVANCE_SYSTEM = 'Relevance judge for home robot. JSON only: {"should_update":true/false,"reason":"one line"}'
+RELEVANCE_SYSTEM = (
+    'Relevance judge for home robot. '
+    'JSON only: {"should_update":true/false,"reason":"one line"}\n'
+    'should_update: true ONLY if the user expresses an explicit preference, '
+    'correction, or rejection about FOOD, DRINK, or HOME OBJECTS '
+    '(e.g. juice, cola, milk, remote, sofa). '
+    'Ignore preferences about people, emotions, relationships, or topics '
+    'unrelated to home objects and services.'
+)
 
 
 def _call_llm(ollama_url, model, system, user, max_tokens=600):
@@ -158,9 +166,14 @@ def _insert_bullet(skill_md: str, section: str, bullet: str) -> str:
     if not bullet.startswith('-'):
         bullet = f"- {bullet}"
 
-    existing_bullets = [l for l in block.split('\n') if l.strip().startswith('-')]
+    existing_bullets = [l.strip() for l in block.split('\n') if l.strip().startswith('-')]
     if len(existing_bullets) >= MAX_BULLETS:
         logger.info(f"[SkillManager] Section '{section}' at max bullets, skipping insert")
+        return skill_md
+
+    bullet_lower = bullet.lower()
+    if any(bullet_lower == b.lower() for b in existing_bullets):
+        print(f"[insert] Duplicate bullet skipped: {bullet}", flush=True)
         return skill_md
 
     updated_block = block.rstrip() + f"\n{bullet}\n"

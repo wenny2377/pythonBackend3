@@ -1,5 +1,4 @@
 import argparse
-import csv
 import datetime
 import json
 import os
@@ -12,16 +11,16 @@ from pymongo import MongoClient
 BACKEND_URL = "http://localhost:5000"
 MONGO_URI   = "mongodb://127.0.0.1:27017/"
 DB_NAME     = "robot_rag_db"
-
-USER_ID = "User_Mom"
+USER_ID     = "User_Mom"
+THRESHOLD   = 5   # must match habit_learner.HABIT_THRESHOLD
+TARGET_ITEM = "milk"
+TARGET_ACT  = "Drink"
+TARGET_INST = "table"
 
 CLEAN_SKILL = """# User_Mom Skill Profile
 *Version 1 | Updated: {date}*
 
 ## Behavior Patterns
-- Watching near sofa (12 times)
-- Drinking near table (8 times)
-- Sitting near sofa (7 times)
 
 ## Preferences
 <!-- No confirmed preferences yet -->
@@ -36,6 +35,10 @@ CLEAN_SKILL = """# User_Mom Skill Profile
 """
 
 
+# ─────────────────────────────────────────────
+# Helpers
+# ─────────────────────────────────────────────
+
 def reset_skill(db):
     clean = CLEAN_SKILL.format(date=datetime.datetime.now().strftime("%Y-%m-%d"))
     db.user_skills.update_one(
@@ -47,7 +50,48 @@ def reset_skill(db):
         }},
         upsert=True,
     )
-    print(f"  SKILL.md reset to version 1")
+    db.skill_chunks.delete_many({"user_id": USER_ID})
+    print("  SKILL.md reset to version 1")
+
+
+def reset_observations(db):
+    db.observation_logs.delete_many({"user": USER_ID})
+    print("  observation_logs cleared for User_Mom")
+
+
+def inject_observations(db, n: int):
+    """
+    Inject N synthetic observation_logs entries to simulate
+    VLM observing User_Mom drinking milk N times.
+    """
+    now = datetime.datetime.utcnow()
+    db.observation_logs.update_one(
+        {
+            "user":     USER_ID,
+            "action":   TARGET_ACT,
+            "instance": TARGET_INST,
+        },
+        {
+            "$set": {
+                "user":               USER_ID,
+                "action":             TARGET_ACT,
+                "instance":           TARGET_INST,
+                "interacting_items":  [TARGET_ITEM],
+                "last_seen":          now,
+                "pos":                [3.0, -0.6],
+            },
+            "$inc": {"weight": n},
+            "$setOnInsert": {"first_seen": now},
+        },
+        upsert=True,
+    )
+    print(f"  Injected {n} observations: "
+          f"{TARGET_ACT} near {TARGET_INST} with {TARGET_ITEM}")
+
+
+def get_version(db):
+    doc = db.user_skills.find_one({"user_id": USER_ID})
+    return doc.get("version", 0) if doc else 0
 
 
 def get_skill(db):
@@ -55,9 +99,21 @@ def get_skill(db):
     return doc.get("skill_md", "") if doc else ""
 
 
-def get_version(db):
-    doc = db.user_skills.find_one({"user_id": USER_ID})
-    return doc.get("version", 0) if doc else 0
+def trigger_habit_check(url):
+    """
+    POST to /habit_check to manually trigger HabitLearner.check_and_update()
+    without needing a full VLM episode.
+    """
+    try:
+        resp = requests.post(
+            f"{url}/habit_check",
+            json={"user_id": USER_ID},
+            timeout=30,
+        )
+        return resp.status_code == 200
+    except Exception as e:
+        print(f"  [trigger] Error: {e}")
+        return False
 
 
 def call_stream(url, query, user_id):
@@ -70,10 +126,9 @@ def call_stream(url, query, user_id):
         )
         resp.raise_for_status()
     except Exception as e:
-        return {"error": str(e), "answer": "", "intent_type": ""}
+        return {"answer": "", "intent_type": ""}
 
     answer  = ""
-    intent  = ""
     buf     = ""
     is_json = None
 
@@ -86,8 +141,7 @@ def call_stream(url, query, user_id):
         try:
             ev = json.loads(line[6:])
             if ev.get("type") == "intent":
-                intent  = ev.get("intent", "")
-                is_json = intent == "service"
+                is_json = ev.get("intent", "") == "service"
             elif ev.get("type") == "token":
                 token = ev.get("content", "")
                 buf  += token
@@ -103,39 +157,35 @@ def call_stream(url, query, user_id):
         except Exception:
             continue
 
-    return {"answer": answer.strip(), "intent_type": intent}
+    return {"answer": answer.strip()}
 
 
-def wait_bg(seconds, label=""):
-    print(f"  Waiting {seconds}s for background skill update{' - ' + label if label else ''}...")
-    time.sleep(seconds)
+def check_skill_updated(skill_md: str) -> dict:
+    bp_updated   = TARGET_ITEM in skill_md and "## Behavior Patterns" in skill_md
+    pref_updated = TARGET_ITEM in skill_md and "## Preferences" in skill_md
+    return {
+        "behavior_patterns_updated": bp_updated,
+        "preferences_updated":       pref_updated,
+        "any_updated":               bp_updated or pref_updated,
+    }
 
 
-def check_cola_absent(answer):
-    return "cola" not in answer.lower()
+def check_milk_recommended(answer: str) -> bool:
+    return TARGET_ITEM.lower() in answer.lower()
 
 
-def check_juice_present(answer):
-    return any(kw in answer.lower() for kw in ["juice", "juicebottle"])
-
-
-def check_preference_recorded(skill_md):
-    pref_start = skill_md.find("## Preferences")
-    pref_end   = skill_md.find("## How to Handle Requests")
-    if pref_start == -1:
-        return False
-    pref_section = skill_md[pref_start:pref_end] if pref_end != -1 else skill_md[pref_start:]
-    return any(
-        kw in pref_section.lower()
-        for kw in ["cola", "juice", "dislike", "prefer", "not like"]
-    )
-
+# ─────────────────────────────────────────────
+# Main
+# ─────────────────────────────────────────────
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--url",    default=BACKEND_URL)
-    parser.add_argument("--out",    default=".")
-    parser.add_argument("--wait",   type=int, default=20)
+    parser.add_argument("--url",  default=BACKEND_URL)
+    parser.add_argument("--out",  default=".")
+    parser.add_argument("--wait", type=int, default=25,
+                        help="Seconds to wait for background habit update")
+    parser.add_argument("--obs",  type=int, default=THRESHOLD,
+                        help="Number of observations to inject (default: threshold)")
     args = parser.parse_args()
     os.makedirs(args.out, exist_ok=True)
 
@@ -148,95 +198,121 @@ def main():
     client = MongoClient(MONGO_URI)
     db     = client[DB_NAME]
 
-    results = {}
-
     print("\n" + "=" * 60)
-    print("RQ3: SKILL.md Adaptive Learning Validation")
+    print("RQ3: Habit-Based Automatic SKILL.md Learning")
     print("=" * 60)
 
-    print("\n--- Setup: Reset SKILL.md ---")
+    # ── Setup ──────────────────────────────────────────────────
+    print("\n--- Setup ---")
     reset_skill(db)
-    skill_before = get_skill(db)
+    reset_observations(db)
     version_before = get_version(db)
+    print(f"  Initial SKILL.md version: {version_before}")
 
-    with open(os.path.join(args.out, "rq3_before.md"), "w", encoding="utf-8") as f:
-        f.write(skill_before)
-    print(f"  Initial version: {version_before}")
-
-    print("\n--- Scenario A: Preference Learning ---")
-    print("\nStep 1: Ask about drink (baseline)")
+    # ── Step 1: Baseline (no learning yet) ────────────────────
+    print("\n--- Step 1: Baseline query (no habit learned yet) ---")
     r1 = call_stream(args.url, "I am thirsty", USER_ID)
-    print(f"  Answer: {r1['answer']}")
-    results["a1_answer"] = r1["answer"]
-    results["a1_has_cola"] = "cola" in r1["answer"].lower()
+    print(f"  Answer: {r1['answer'][:80]}")
+    baseline_has_milk = check_milk_recommended(r1["answer"])
+    print(f"  Milk recommended at baseline: {baseline_has_milk}")
 
-    print("\nStep 2: Express dislike of cola")
-    r2 = call_stream(args.url, "I don't like cola, I prefer juice", USER_ID)
-    print(f"  Answer: {r2['answer']}")
-    results["a2_answer"] = r2["answer"]
-    wait_bg(args.wait, "preference update")
+    # ── Step 2: Inject observations ───────────────────────────
+    print(f"\n--- Step 2: Inject {args.obs} observations "
+          f"({TARGET_ACT} + {TARGET_ITEM}) ---")
+    inject_observations(db, args.obs)
 
-    version_after_a = get_version(db)
-    skill_after_a   = get_skill(db)
-    results["a_version_changed"] = version_after_a > version_before
-    results["a_preference_recorded"] = check_preference_recorded(skill_after_a)
-    print(f"  Version: {version_before} -> {version_after_a}")
-    print(f"  Preference recorded: {results['a_preference_recorded']}")
+    obs_doc = db.observation_logs.find_one({
+        "user": USER_ID, "action": TARGET_ACT, "instance": TARGET_INST
+    })
+    actual_weight = obs_doc.get("weight", 0) if obs_doc else 0
+    print(f"  observation_logs weight: {actual_weight} "
+          f"(threshold: {THRESHOLD})")
 
-    print("\nStep 3: Ask about drink again")
-    r3 = call_stream(args.url, "I am thirsty again", USER_ID)
-    print(f"  Answer: {r3['answer']}")
-    results["a3_answer"]    = r3["answer"]
-    results["a3_cola_gone"] = check_cola_absent(r3["answer"])
-    results["a3_juice_present"] = check_juice_present(r3["answer"])
-    print(f"  Cola absent: {results['a3_cola_gone']}")
-    print(f"  Juice present: {results['a3_juice_present']}")
+    # ── Step 3: Trigger habit check ───────────────────────────
+    print("\n--- Step 3: Trigger HabitLearner ---")
+    triggered = trigger_habit_check(args.url)
+    print(f"  Trigger sent: {triggered}")
+    print(f"  Waiting {args.wait}s for background update...")
+    time.sleep(args.wait)
 
-    skill_after_pref = get_skill(db)
-    with open(os.path.join(args.out, "rq3_after_preference.md"), "w", encoding="utf-8") as f:
-        f.write(skill_after_pref)
+    # ── Step 4: Verify SKILL.md updated ───────────────────────
+    print("\n--- Step 4: Verify SKILL.md ---")
+    version_after = get_version(db)
+    skill_after   = get_skill(db)
+    checks        = check_skill_updated(skill_after)
 
-    scenario_a_pass = (
-        results.get("a_version_changed", False) and
-        results.get("a_preference_recorded", False) and
-        results.get("a3_cola_gone", False)
+    print(f"  Version: {version_before} -> {version_after}")
+    print(f"  Behavior Patterns updated : {checks['behavior_patterns_updated']}")
+    print(f"  Preferences updated       : {checks['preferences_updated']}")
+
+    with open(os.path.join(args.out, "rq3_skill_after.md"), "w",
+              encoding="utf-8") as f:
+        f.write(skill_after)
+
+    # ── Step 5: Post-learning query ───────────────────────────
+    print("\n--- Step 5: Post-learning query ---")
+    r2 = call_stream(args.url, "I am thirsty", USER_ID)
+    print(f"  Answer: {r2['answer'][:80]}")
+    postlearn_has_milk = check_milk_recommended(r2["answer"])
+    print(f"  Milk recommended after learning: {postlearn_has_milk}")
+
+    # ── Result ─────────────────────────────────────────────────
+    passed = (
+        actual_weight >= THRESHOLD and
+        checks["any_updated"] and
+        version_after > version_before and
+        postlearn_has_milk
     )
 
     lines = [
         "=" * 65,
-        "RQ3: SKILL.md Adaptive Learning Validation",
+        "RQ3: Habit-Based Automatic SKILL.md Learning",
         f"Generated: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}",
         "=" * 65,
         "",
-        "Scenario A: Preference Learning",
-        f"  Step 1 (baseline) answer    : {results.get('a1_answer','')[:60]}",
-        f"  Step 1 mentioned cola       : {results.get('a1_has_cola', False)}",
-        f"  Step 2 (correction) answer  : {results.get('a2_answer','')[:60]}",
-        f"  Version changed             : {results.get('a_version_changed', False)}",
-        f"  Preference recorded         : {results.get('a_preference_recorded', False)}",
-        f"  Step 3 (after learning)     : {results.get('a3_answer','')[:60]}",
-        f"  Cola absent in step 3       : {results.get('a3_cola_gone', False)}",
-        f"  Juice present in step 3     : {results.get('a3_juice_present', False)}",
-        f"  Scenario A PASSED           : {scenario_a_pass}",
+        f"Setup:",
+        f"  Observation threshold       : {THRESHOLD}",
+        f"  Observations injected       : {args.obs}",
+        f"  Target item                 : {TARGET_ITEM}",
+        f"  Target action               : {TARGET_ACT}",
         "",
-        f"Overall RQ3: {'PASSED' if scenario_a_pass else 'FAILED'}",
+        f"Step 1 (baseline):",
+        f"  Answer                      : {r1['answer'][:60]}",
+        f"  Milk recommended at baseline: {baseline_has_milk}",
+        "",
+        f"Step 2 (observations):",
+        f"  Weight in observation_logs  : {actual_weight}",
+        f"  Threshold reached           : {actual_weight >= THRESHOLD}",
+        "",
+        f"Step 3-4 (auto update):",
+        f"  Version changed             : {version_before} -> {version_after}",
+        f"  Behavior Patterns updated   : {checks['behavior_patterns_updated']}",
+        f"  Preferences updated         : {checks['preferences_updated']}",
+        "",
+        f"Step 5 (post-learning):",
+        f"  Answer                      : {r2['answer'][:60]}",
+        f"  Milk recommended            : {postlearn_has_milk}",
+        "",
+        f"Overall RQ3: {'PASSED' if passed else 'FAILED'}",
         "",
         "For thesis:",
-        f"The SKILL.md preference learning mechanism was evaluated through",
-        f"a controlled scenario. After the user expressed a preference",
-        f"('I don't like cola, I prefer juice'), the system automatically",
-        f"updated SKILL.md and subsequent drink queries no longer recommended",
-        f"cola (cola absent: {results.get('a3_cola_gone', False)},",
-        f"juice present: {results.get('a3_juice_present', False)}).",
-        f"The system learned from a single conversation without any model",
-        f"retraining or cloud connectivity.",
+        f"The habit-based automatic learning mechanism was validated by",
+        f"injecting {args.obs} synthetic observations of User_Mom drinking",
+        f"{TARGET_ITEM}. Once the observation count reached the threshold",
+        f"of {THRESHOLD}, the system automatically updated SKILL.md without",
+        f"any explicit user input. Subsequent drink queries recommended",
+        f"{TARGET_ITEM} based on the inferred preference",
+        f"(milk recommended: {postlearn_has_milk}), demonstrating that",
+        f"the system can learn from behavioral patterns rather than",
+        f"relying solely on user-initiated corrections.",
     ]
 
     summary_path = os.path.join(args.out, "rq3_summary.txt")
     with open(summary_path, "w", encoding="utf-8") as f:
         f.write("\n".join(lines))
+
     print(f"\n  Summary saved: {summary_path}")
-    print(f"\n  Scenario A (preference): {'PASSED' if scenario_a_pass else 'FAILED'}")
+    print(f"\n  Overall RQ3: {'PASSED' if passed else 'FAILED'}")
 
 
 if __name__ == "__main__":

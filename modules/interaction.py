@@ -4,6 +4,7 @@ import json
 import re
 import logging
 import threading
+from collections import defaultdict
 
 from config import Config
 
@@ -15,6 +16,7 @@ LLM_TOKENS               = Config.LLM_MAX_TOKENS
 SNAPSHOT_TTL_HOURS       = Config.SNAPSHOT_TTL_HOURS
 SNAPSHOT_MAX_ITEMS       = Config.SNAPSHOT_MAX_ITEMS
 SBERT_CATEGORY_THRESHOLD = 0.35
+CONV_BUFFER_MAX_TURNS    = 5
 
 ONE_SHOT_SYSTEM = """You are a home service robot assistant.
 
@@ -128,6 +130,9 @@ class InteractionEngine:
         self._sbert       = None
         self._need_vecs   = None
         self._init_sbert()
+
+        # Conversation buffer: {user_id: [{"role": ..., "content": ...}]}
+        self._conv_buffer = defaultdict(list)
 
     def _init_sbert(self):
         try:
@@ -297,12 +302,25 @@ Reply with one word only: service, query, or chat"""
             env_snapshot=env_snapshot,
             skill_md=skill_md,
         )
+
+        # Extract explicit dislike/prefer rules from skill_md for hard enforcement
+        skill_rules = ""
+        if skill_md and "(No skill profile" not in skill_md:
+            lines = [l.strip() for l in skill_md.split('\n')
+                     if l.strip().startswith('-') and
+                     any(w in l.lower() for w in
+                         ('prefer', 'not recommend', 'dislike', 'do not recommend'))]
+            if lines:
+                skill_rules = "\nCRITICAL — enforce these rules strictly:\n" + \
+                              "\n".join(lines) + "\n"
+
         user_prompt = (
             f"User ID: {user_id}\n"
             f"User said: \"{query}\"\n"
             f"Robot current room: {room}\n"
             f"Known furniture: {', '.join(furniture_labels) or 'unknown'}\n"
-            f"Time: {datetime.datetime.now().strftime('%H:%M')}\n\n"
+            f"Time: {datetime.datetime.now().strftime('%H:%M')}\n"
+            f"{skill_rules}\n"
             f"Reply with the JSON format specified."
         )
 
@@ -437,15 +455,65 @@ Reply with one word only: service, query, or chat"""
             "recommendations": [], "is_personalized": False,
         }
 
+    def _buf_add(self, user_id: str, role: str, content: str):
+        buf = self._conv_buffer[user_id]
+        buf.append({"role": role, "content": content})
+        # Keep last MAX_TURNS * 2 messages (user + assistant pairs)
+        if len(buf) > CONV_BUFFER_MAX_TURNS * 2:
+            self._conv_buffer[user_id] = buf[-(CONV_BUFFER_MAX_TURNS * 2):]
+
+    def _buf_get(self, user_id: str) -> list:
+        return self._conv_buffer.get(user_id, [])
+
+    def _buf_clear(self, user_id: str):
+        self._conv_buffer[user_id] = []
+
+    def _call_llm_with_buffer(self, user_id: str, system: str,
+                               query: str, max_tokens: int = None) -> str:
+        """LLM call with conversation history injected."""
+        history  = self._buf_get(user_id)
+        messages = [{"role": "system", "content": system}]
+        messages.extend(history)
+        messages.append({"role": "user", "content": query})
+
+        try:
+            resp = requests.post(
+                f"{self.ollama_url}/api/chat",
+                json={
+                    "model":    self.model_name,
+                    "messages": messages,
+                    "stream":   False,
+                    "options":  {
+                        "temperature": LLM_TEMP,
+                        "num_predict": max_tokens or LLM_TOKENS,
+                    },
+                },
+                timeout=LLM_TIMEOUT,
+            )
+            resp.raise_for_status()
+            answer = resp.json()["message"]["content"].strip()
+            # Update buffer
+            self._buf_add(user_id, "user",      query)
+            self._buf_add(user_id, "assistant", answer)
+            return answer
+        except Exception as e:
+            logger.error(f"[Buffer LLM] failed: {e}")
+            return ""
+
     def _chat_response(self, query, user_id):
-        answer = _call_llm(
-            self.ollama_url, self.model_name,
-            CHAT_SYSTEM,
-            f'{user_id} said: "{query}"',
+        answer = self._call_llm_with_buffer(
+            user_id, CHAT_SYSTEM, query
         ) or "I am here for you!"
+        answer = answer.strip().strip('"').strip("'")
+
+        self._schedule_skill_update(
+            user_id=user_id, query=query,
+            answer=answer, env_snapshot="", rec_items=[],
+        )
+
         return {
             "status": "Success",
-            "answer": answer.strip().strip('"').strip("'"),
+            "answer": answer,
             "nav_target": None, "nav_label": None,
             "options": [{"id": 3, "label": "Close"}],
             "confidence": 1.0, "intent_type": "chat",
