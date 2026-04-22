@@ -3,8 +3,8 @@ from datetime import datetime
 from pymongo import MongoClient
 from config import Config
 
-HABIT_THRESHOLD    = 5    # observations needed to write to SKILL.md
-REJECTION_PENALTY  = -3   # weight deduction on user rejection
+HABIT_THRESHOLD   = 5
+REJECTION_PENALTY = -3
 
 
 class HabitLearner:
@@ -13,15 +13,7 @@ class HabitLearner:
         self.db            = db_client[Config.DB_NAME]
         self.skill_manager = skill_manager
 
-    # ─────────────────────────────────────────────
-    # Public API
-    # ─────────────────────────────────────────────
-
     def check_and_update(self, user_id: str):
-        """
-        Check observation_logs for habits that have reached the threshold.
-        Called in background after each /predict episode.
-        """
         def _bg():
             try:
                 self._run_habit_update(user_id)
@@ -32,49 +24,29 @@ class HabitLearner:
         threading.Thread(target=_bg, daemon=True).start()
 
     def handle_rejection(self, user_id: str, intent: str, item: str):
-        """
-        Called when user rejects a service proposal.
-        Penalizes the relevant habit and writes a What NOT to do rule.
-        """
         if not item:
             return
 
-        # Penalize weight
         result = self.db.observation_logs.update_many(
-            {
-                "user":               user_id,
-                "interacting_items":  item,
-            },
+            {"user": user_id, "interacting_items": item},
             {"$inc": {"weight": REJECTION_PENALTY}},
         )
         print(f"[HabitLearner] Rejection penalty applied to '{item}' "
               f"for {user_id} ({result.modified_count} entries)", flush=True)
 
-        # Write prohibition rule
         bullet = f"- Do not proactively suggest {item} to this user"
         self._insert_if_new(user_id, "## What NOT to do", bullet)
 
     def handle_acceptance(self, user_id: str, intent: str, item: str):
-        """
-        Called when user accepts a service proposal.
-        Reinforces the relevant habit.
-        """
         if not item:
             return
 
         self.db.observation_logs.update_many(
-            {
-                "user":              user_id,
-                "interacting_items": item,
-            },
+            {"user": user_id, "interacting_items": item},
             {"$inc": {"weight": 1}},
         )
         print(f"[HabitLearner] Acceptance reinforcement for '{item}' "
               f"for {user_id}", flush=True)
-
-    # ─────────────────────────────────────────────
-    # Internal
-    # ─────────────────────────────────────────────
 
     def _run_habit_update(self, user_id: str):
         habits = list(self.db.observation_logs.find({
@@ -95,14 +67,12 @@ class HabitLearner:
             if not action or not instance:
                 continue
 
-            # Write to Behavior Patterns
-            item_str = f" with {', '.join(items)}" if items else ""
+            item_str  = f" with {', '.join(items)}" if items else ""
             bp_bullet = f"- {action} near {instance}{item_str} ({weight} times)"
-            changed = self._insert_if_new(user_id, "## Behavior Patterns", bp_bullet)
+            changed   = self._insert_if_new(user_id, "## Behavior Patterns", bp_bullet)
             if changed:
                 updated = True
 
-            # Infer preference from frequently used items
             for item in items:
                 pref_bullet = (
                     f"- User frequently uses {item} during {action} "
@@ -116,11 +86,6 @@ class HabitLearner:
             print(f"[HabitLearner] SKILL.md auto-updated for {user_id}", flush=True)
 
     def _insert_if_new(self, user_id: str, section: str, bullet: str) -> bool:
-        """
-        Insert bullet into SKILL.md section only if semantically new.
-        Uses FAISS similarity to detect near-duplicates.
-        Returns True if inserted.
-        """
         sm  = self.skill_manager
         doc = self.db.user_skills.find_one({"user_id": user_id})
         if not doc:
@@ -128,10 +93,14 @@ class HabitLearner:
 
         current = doc.get("skill_md", "")
 
-        # Check for semantic duplicate via FAISS
+        print(f"\n[SkillEvolution] Candidate: \"{bullet[:60]}\"", flush=True)
+        print(f"[SkillEvolution] Section  : {section}", flush=True)
+
         if self._is_duplicate(bullet, current, section):
-            print(f"[HabitLearner] Duplicate skipped: {bullet[:60]}", flush=True)
+            print(f"[SkillEvolution] x Dedup check FAILED: too similar to existing",
+                  flush=True)
             return False
+        print(f"[SkillEvolution] v Dedup check PASSED", flush=True)
 
         from modules.skill_manager import _insert_bullet, _normalize_bullets, validate_skill
         updated = _insert_bullet(current, section, bullet)
@@ -139,26 +108,22 @@ class HabitLearner:
 
         valid, reason = validate_skill(updated)
         if not valid:
-            print(f"[HabitLearner] Validate failed: {reason}", flush=True)
+            print(f"[SkillEvolution] x Validate FAILED: {reason}", flush=True)
             return False
+        print(f"[SkillEvolution] v Validate PASSED", flush=True)
+        print(f"[SkillEvolution] -> WRITTEN to {section}", flush=True)
 
         sm._save(user_id, updated)
         sm._chunk_skill_md(updated, user_id)
-        print(f"[HabitLearner] Inserted into {section}: {bullet[:60]}", flush=True)
         return True
 
     def _is_duplicate(self, new_bullet: str, skill_md: str, section: str,
-                      threshold: float = 0.92) -> bool:
-        """
-        Check if new_bullet is semantically similar to existing bullets
-        in the target section using SBERT cosine similarity.
-        """
+                      threshold: float = 0.78) -> bool:
         try:
             import numpy as np
             from sentence_transformers import SentenceTransformer
 
-            # Extract existing bullets in the section
-            idx   = skill_md.find(section)
+            idx = skill_md.find(section)
             if idx == -1:
                 return False
 
@@ -179,14 +144,16 @@ class HabitLearner:
             if not bullets:
                 return False
 
-            model   = SentenceTransformer("paraphrase-MiniLM-L6-v2")
-            new_vec = model.encode([new_bullet], normalize_embeddings=True)[0]
+            model    = SentenceTransformer("paraphrase-MiniLM-L6-v2")
+            new_vec  = model.encode([new_bullet], normalize_embeddings=True)[0]
             old_vecs = model.encode(bullets, normalize_embeddings=True)
 
-            sims = np.dot(old_vecs, new_vec)
-            return float(sims.max()) >= threshold
+            sims     = np.dot(old_vecs, new_vec)
+            max_sim  = float(sims.max())
+            print(f"[SkillEvolution]   max similarity: {max_sim:.3f} "
+                  f"(threshold: {threshold})", flush=True)
+            return max_sim >= threshold
 
         except Exception as e:
-            print(f"[HabitLearner] FAISS duplicate check failed: {e}", flush=True)
-            # Fall back to exact match
+            print(f"[HabitLearner] duplicate check failed: {e}", flush=True)
             return new_bullet.lower() in skill_md.lower()

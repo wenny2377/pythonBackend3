@@ -54,8 +54,6 @@ STRICT RULES:
 - Only provide emotional support or casual conversation.
 - Do NOT wrap your response in quotation marks."""
 
-
-
 NEED_DESCRIPTIONS = {
     "food": (
         "The user is hungry and wants something to eat: "
@@ -67,7 +65,25 @@ NEED_DESCRIPTIONS = {
     ),
 }
 
+NEGATION_PATTERNS = [
+    "don't want", "dont want", "not want",
+    "don't like", "dont like", "not like",
+    "don't need", "dont need",
+    "not today", "something else", "another one",
+    "change", "switch", "instead", "other",
+    "no juice", "no cola", "no milk", "no water",
+]
 
+REFERENCE_PATTERNS = [
+    "bring it", "get it", "fetch it",
+    "bring that", "get that", "that one",
+    "help me get", "help me grab",
+]
+
+CONFIRM_PATTERNS = [
+    "yes", "ok", "okay", "sure", "please do",
+    "go ahead", "that works", "sounds good",
+]
 
 
 def _call_llm(ollama_url, model, system, user, max_tokens=LLM_TOKENS):
@@ -106,6 +122,19 @@ def _call_llm_json(ollama_url, model, system, user, max_tokens=300):
     return None
 
 
+class SessionState:
+    def __init__(self):
+        self.last_nav_label   = ""
+        self.last_nav_target  = None
+        self.last_recommended = []
+        self.excluded_items   = set()
+        self.last_intent      = ""
+        self.pending_confirm  = False
+
+    def reset(self):
+        self.__init__()
+
+
 class InteractionEngine:
 
     def __init__(self, mongo_client, vector_memory, ollama_url, model_name):
@@ -117,7 +146,7 @@ class InteractionEngine:
 
         try:
             from modules.skill_manager import SkillManager
-            self.skill_manager      = SkillManager(
+            self.skill_manager = SkillManager(
                 db_client  = mongo_client,
                 ollama_url = ollama_url,
                 model_name = model_name,
@@ -131,8 +160,8 @@ class InteractionEngine:
         self._need_vecs   = None
         self._init_sbert()
 
-        # Conversation buffer: {user_id: [{"role": ..., "content": ...}]}
         self._conv_buffer = defaultdict(list)
+        self._sessions    = {}
 
     def _init_sbert(self):
         try:
@@ -148,6 +177,140 @@ class InteractionEngine:
         for key, text in descriptions.items():
             vecs[key] = self._sbert.encode(text, normalize_embeddings=True)
         return vecs
+
+    def _get_session(self, user_id: str) -> SessionState:
+        if user_id not in self._sessions:
+            self._sessions[user_id] = SessionState()
+        return self._sessions[user_id]
+
+    def _reset_session(self, user_id: str):
+        self._sessions[user_id] = SessionState()
+        print(f"[Session] Reset for {user_id}")
+
+    def _is_negation(self, query: str, user_id: str) -> str | None:
+        query_lower = query.lower().strip()
+        session     = self._get_session(user_id)
+
+        has_negation = any(p in query_lower for p in NEGATION_PATTERNS)
+        if not has_negation:
+            return None
+
+        if not session.last_recommended:
+            return None
+
+        for item in session.last_recommended:
+            if item.lower() in query_lower:
+                return item
+
+        return session.last_recommended[0]
+
+    def _resolve_reference(self, query: str,
+                            session: SessionState) -> str:
+        query_lower = query.lower().strip()
+
+        is_confirm = any(p in query_lower for p in CONFIRM_PATTERNS)
+        if is_confirm and session.last_nav_label:
+            resolved = f"get {session.last_nav_label}"
+            print(f"[Session] Confirm resolved: '{query}' -> '{resolved}'")
+            return resolved
+
+        has_ref = any(p in query_lower for p in REFERENCE_PATTERNS)
+        if has_ref and session.last_nav_label:
+            resolved = f"{query} ({session.last_nav_label})"
+            print(f"[Session] Reference resolved: '{query}' -> '{resolved}'")
+            return resolved
+
+        return query
+
+    def _recommend_excluding(self, session: SessionState,
+                              user_id: str, room: str,
+                              query: str) -> dict:
+        from datetime import timedelta
+        cutoff = datetime.datetime.utcnow() - timedelta(hours=2)
+
+        docs = list(self.db.dynamic_objects.find(
+            {
+                "last_seen": {"$gte": cutoff},
+                "category":  "drink",
+                "label":     {"$nin": list(session.excluded_items)},
+            },
+            {"label": 1, "last_seen_on": 1, "room": 1}
+        ))
+
+        if not docs:
+            docs = list(self.db.dynamic_objects.find(
+                {
+                    "category": "drink",
+                    "label":    {"$nin": list(session.excluded_items)},
+                },
+                {"label": 1, "last_seen_on": 1, "room": 1}
+            ).limit(5))
+
+        if not docs:
+            answer = (
+                "I'm sorry, there are no other drinks "
+                "available at home right now."
+            )
+            return {
+                "status":          "Success",
+                "answer":          answer,
+                "nav_target":      None,
+                "nav_label":       None,
+                "options":         [{"id": 3, "label": "Close"}],
+                "confidence":      0.8,
+                "intent_type":     "service",
+                "recommendations": [],
+                "is_personalized": True,
+            }
+
+        session.last_recommended = [d["label"] for d in docs[:3]]
+
+        items_str    = ", ".join(
+            f"{d['label']} (on {d.get('last_seen_on', '?')})"
+            for d in docs[:3]
+        )
+        excluded_str = ", ".join(session.excluded_items)
+
+        system = (
+            "You are a friendly home robot assistant. "
+            "The user declined the previous recommendation. "
+            "Suggest alternatives naturally in one sentence. "
+            "Do not mention the excluded items again. "
+            "Do not wrap your response in quotation marks."
+        )
+        user_prompt = (
+            f"User said: \"{query}\"\n"
+            f"Available alternatives: {items_str}\n"
+            f"Do NOT suggest: {excluded_str}\n"
+            f"Reply in one natural sentence."
+        )
+
+        answer = _call_llm(
+            self.ollama_url, self.model_name,
+            system, user_prompt, max_tokens=80
+        ) or f"There's also {items_str} available."
+
+        nav_label  = docs[0].get("last_seen_on") if docs else None
+        nav_target = self._resolve_pos(nav_label)
+
+        session.last_nav_label  = nav_label or ""
+        session.last_nav_target = nav_target
+        session.pending_confirm = bool(nav_target)
+
+        print(f"[Session] Excluded: {session.excluded_items}")
+        print(f"[Session] New recommendation: {session.last_recommended}")
+
+        return {
+            "status":          "Success",
+            "answer":          answer,
+            "nav_target":      nav_target,
+            "nav_label":       nav_label,
+            "options":         self._build_options(nav_target, nav_label, query),
+            "confidence":      0.85,
+            "intent_type":     "service",
+            "recommendations": [{"label": d["label"]} for d in docs[:3]],
+            "is_personalized": True,
+        }
 
     INTERRUPT_KEYWORDS = {
         "stop", "cancel", "abort", "never mind", "forget it",
@@ -303,7 +466,6 @@ Reply with one word only: service, query, or chat"""
             skill_md=skill_md,
         )
 
-        # Extract explicit dislike/prefer rules from skill_md for hard enforcement
         skill_rules = ""
         if skill_md and "(No skill profile" not in skill_md:
             lines = [l.strip() for l in skill_md.split('\n')
@@ -412,15 +574,43 @@ Reply with one word only: service, query, or chat"""
                 user_pos=None, room=""):
         print(f"\n[Interact] user={user_id} | query='{query}' | room={room}")
 
+        session = self._get_session(user_id)
+
+        if any(kw in query.lower() for kw in self.INTERRUPT_KEYWORDS):
+            self._reset_session(user_id)
+            return self._interrupt_response(query, user_id)
+
+        negated = self._is_negation(query, user_id)
+        if negated:
+            session.excluded_items.add(negated.lower())
+            print(f"[Session] Negation detected: '{negated}' excluded")
+            result = self._recommend_excluding(session, user_id, room, query)
+            self._schedule_skill_update(
+                user_id=user_id, query=query,
+                answer=result["answer"],
+                env_snapshot="", rec_items=[],
+            )
+            return result
+
+        resolved_query = self._resolve_reference(query, session)
+        if resolved_query != query:
+            query = resolved_query
+
         intent = self._classify_intent(query)
         print(f"[Classify] intent={intent}")
 
         if intent == "interrupt":
+            self._reset_session(user_id)
             return self._interrupt_response(query, user_id)
+
         if intent == "chat":
             return self._chat_response(query, user_id)
+
         if intent == "query":
-            return self._query_response(query, user_id, room)
+            result = self._query_response(query, user_id, room)
+            session.last_nav_label  = result.get("nav_label", "")
+            session.last_nav_target = result.get("nav_target")
+            return result
 
         need_category = self._extract_need_category(query)
         print(f"[Category] need_category={need_category}")
@@ -431,6 +621,14 @@ Reply with one word only: service, query, or chat"""
         )
 
         if result:
+            session.last_nav_label   = result.get("nav_label", "")
+            session.last_nav_target  = result.get("nav_target")
+            session.last_recommended = [
+                r.get("label", "") for r in result.get("recommendations", [])
+            ]
+            session.last_intent     = "service"
+            session.pending_confirm = bool(result.get("nav_target"))
+
             self._log_conversation(
                 query=query, expanded_query=query,
                 intent_type="oneshot", user_id=user_id,
@@ -458,7 +656,6 @@ Reply with one word only: service, query, or chat"""
     def _buf_add(self, user_id: str, role: str, content: str):
         buf = self._conv_buffer[user_id]
         buf.append({"role": role, "content": content})
-        # Keep last MAX_TURNS * 2 messages (user + assistant pairs)
         if len(buf) > CONV_BUFFER_MAX_TURNS * 2:
             self._conv_buffer[user_id] = buf[-(CONV_BUFFER_MAX_TURNS * 2):]
 
@@ -470,7 +667,6 @@ Reply with one word only: service, query, or chat"""
 
     def _call_llm_with_buffer(self, user_id: str, system: str,
                                query: str, max_tokens: int = None) -> str:
-        """LLM call with conversation history injected."""
         history  = self._buf_get(user_id)
         messages = [{"role": "system", "content": system}]
         messages.extend(history)
@@ -492,7 +688,6 @@ Reply with one word only: service, query, or chat"""
             )
             resp.raise_for_status()
             answer = resp.json()["message"]["content"].strip()
-            # Update buffer
             self._buf_add(user_id, "user",      query)
             self._buf_add(user_id, "assistant", answer)
             return answer
@@ -538,6 +733,32 @@ Reply with one word only: service, query, or chat"""
             return "drink"
         return None
 
+    def _extract_specific_item(self, query: str) -> str | None:
+        q = query.lower().strip()
+        patterns = [
+            r"is there any (\w+)",
+            r"do we have any (\w+)",
+            r"do you have (\w+)",
+            r"is there (\w+)",
+            r"any (\w+) at home",
+            r"where is (?:the |my )?(\w+)",
+            r"i want (?:some |a |an )?(\w+)",
+            r"i need (?:some |a |an )?(\w+)",
+            r"get me (?:some |a |an )?(\w+)",
+        ]
+        STOP_WORDS = {
+            "any", "some", "the", "a", "an", "there",
+            "food", "drink", "drinks", "snack", "snacks",
+            "fruit", "fruits", "water", "something",
+        }
+        for pattern in patterns:
+            m = re.search(pattern, q)
+            if m:
+                item = m.group(1).strip()
+                if item not in STOP_WORDS and len(item) > 2:
+                    return item
+        return None
+
     def _query_response(self, query, user_id, room):
         from datetime import timedelta
 
@@ -566,6 +787,29 @@ Reply with one word only: service, query, or chat"""
                 "confidence": 0.9, "intent_type": "query",
                 "recommendations": [], "is_personalized": False,
             }
+
+        specific_item = self._extract_specific_item(query)
+        if specific_item:
+            found = self.db.dynamic_objects.find_one(
+                {"label": {"$regex": f"^{specific_item}$", "$options": "i"}}
+            )
+            if not found:
+                found = self.db.dynamic_objects.find_one(
+                    {"label": {"$regex": specific_item, "$options": "i"}}
+                )
+            if not found:
+                print(f"[Query] Specific item '{specific_item}' not found in DB")
+                return {
+                    "status":          "Success",
+                    "answer":          f"I don't see any {specific_item} at home right now.",
+                    "nav_target":      None,
+                    "nav_label":       None,
+                    "options":         [{"id": 3, "label": "Close"}],
+                    "confidence":      0.9,
+                    "intent_type":     "query",
+                    "recommendations": [],
+                    "is_personalized": False,
+                }
 
         query_category = self._detect_query_category(query)
 

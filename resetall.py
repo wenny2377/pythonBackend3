@@ -1,5 +1,6 @@
 import os
 import shutil
+import argparse
 from datetime import datetime
 from pymongo import MongoClient
 
@@ -52,46 +53,75 @@ FAISS_FILES = [
     "dynamic_memory_meta.json",
 ]
 
-client = MongoClient(MONGO_URI)
-db     = client[DB_NAME]
 
-print(f"\nReset script — target DB: {DB_NAME}\n")
-
-print("Record counts before reset:")
-for col in db.list_collection_names():
-    print(f"  [{col}] {db[col].count_documents({})} records")
-
-print("\nClearing collections...")
-for col in COLLECTIONS_TO_CLEAR:
-    n = db[col].delete_many({}).deleted_count
-    print(f"  [{col}] deleted {n} records")
-
-print("\nResetting SKILL.md for all users...")
-date = datetime.now().strftime("%Y-%m-%d")
-for user_id in SKILL_USERS:
-    clean = CLEAN_SKILL_TEMPLATE.format(user_id=user_id, date=date)
-    db.user_skills.update_one(
-        {"user_id": user_id},
-        {"$set": {
-            "skill_md":   clean,
-            "version":    1,
-            "updated_at": datetime.utcnow(),
-            "is_stale":   False,
-        }},
-        upsert=True,
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--keep-scene", action="store_true",
+        help="Keep scene_snapshots (furniture positions, skip re-scan)"
     )
-    print(f"  [{user_id}] SKILL.md reset to version 1")
+    args = parser.parse_args()
 
-print("\nRemoving FAISS index files...")
-for path in FAISS_FILES:
-    if os.path.exists(path):
-        os.remove(path)
-        print(f"  [FAISS] removed {path}")
-    else:
-        print(f"  [FAISS] not found (skip): {path}")
+    client = MongoClient(MONGO_URI)
+    db     = client[DB_NAME]
 
-if os.path.exists("debug_images"):
-    shutil.rmtree("debug_images")
-    print("\n  [debug_images] removed")
+    print(f"\n{'='*50}")
+    print(f"  Reset Script  |  DB: {DB_NAME}")
+    if args.keep_scene:
+        print(f"  Mode: keep scene_snapshots")
+    print(f"{'='*50}\n")
 
-print("\nDone. Restart Flask: python3 app.py\n")
+    print("Record counts before reset:")
+    for col in sorted(db.list_collection_names()):
+        n = db[col].count_documents({})
+        if n > 0:
+            print(f"  [{col}] {n} records")
+
+    print("\nClearing collections...")
+    to_clear = [
+        c for c in COLLECTIONS_TO_CLEAR
+        if not (args.keep_scene and c == "scene_snapshots")
+    ]
+    for col in to_clear:
+        n = db[col].delete_many({}).deleted_count
+        if n > 0:
+            print(f"  [{col}] deleted {n}")
+        else:
+            print(f"  [{col}] already empty")
+
+    print("\nResetting SKILL.md...")
+    date = datetime.now().strftime("%Y-%m-%d")
+    for user_id in SKILL_USERS:
+        clean = CLEAN_SKILL_TEMPLATE.format(
+            user_id=user_id, date=date)
+        db.user_skills.update_one(
+            {"user_id": user_id},
+            {"$set": {
+                "skill_md":   clean,
+                "version":    1,
+                "updated_at": datetime.utcnow(),
+                "is_stale":   False,
+            }},
+            upsert=True,
+        )
+        print(f"  [{user_id}] reset to v1")
+
+    print("\nRemoving FAISS index files...")
+    for path in FAISS_FILES:
+        if os.path.exists(path):
+            os.remove(path)
+            print(f"  [FAISS] removed {path}")
+        else:
+            print(f"  [FAISS] not found (skip): {path}")
+
+    if os.path.exists("debug_images"):
+        shutil.rmtree("debug_images")
+        print("\n  [debug_images] removed")
+
+    print(f"\n{'='*50}")
+    print(f"  Done. Next: python3 app.py")
+    print(f"{'='*50}\n")
+
+
+if __name__ == "__main__":
+    main()

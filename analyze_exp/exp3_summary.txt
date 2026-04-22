@@ -1,39 +1,38 @@
 =================================================================
 Experiment 3: Behavioral Manifold Learning
-Generated: 2026-04-07 10:12
+Generated: 2026-04-22 11:13
 =================================================================
-Total observations:  96
-Clusters found:      2
-Noise points:        9
-Silhouette Score S:  0.6472
+Total observations:  63
+Clusters found:      5
+Noise points:        0
+Silhouette Score S:  0.8024
 Acceptance criterion: S ≥ 0.50  →  ✓ PASSED (S ≥ 0.50)
 
 Cluster composition:
-  Cluster 0 (n=21): dominant=Watching (21), slot=Afternoon (10)
-  Cluster 1 (n=66): dominant=Watching (25), slot=Morning (35)
+  Cluster 0 (n=12): dominant=Watching (12), slot=Noon (6)
+  Cluster 1 (n=10): dominant=Drink (10), slot=Morning (5)
+  Cluster 2 (n=7): dominant=Watching (5), slot=Noon (3)
+  Cluster 3 (n=12): dominant=Standing (8), slot=Noon (8)
+  Cluster 4 (n=22): dominant=Typing (12), slot=Noon (9)
 
 Behavior distribution:
-  Watching: 46
-  Drink: 17
+  Watching: 30
   Typing: 12
-  SittingIdle: 8
-  Standing: 6
-  Eating: 3
-  Walking: 2
-  Looking at a phone: 1
+  Drink: 10
+  Standing: 8
+  SittingIdle: 2
   Reading: 1
 
 Time slot distribution:
-  Morning: 46
-  Afternoon: 29
-  Noon: 12
-  Evening: 9
+  Noon: 30
+  Morning: 21
+  Afternoon: 12
 
 ── For thesis (copy-paste) ──────────────────────────────────
-The UMAP manifold projection of 96 behavioral observations
-(1,158-dim feature vectors) produces 2 distinct clusters
+The UMAP manifold projection of 63 behavioral observations
+(1,158-dim feature vectors) produces 5 distinct clusters
 identified by HDBSCAN, achieving a mean Silhouette Score of
-S = 0.6472
+S = 0.8024
 (≥ 0.50 acceptance threshold).
 Each cluster corresponds to a coherent behavioral habit
 combining action semantics, temporal context, and spatial
