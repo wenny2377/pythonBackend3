@@ -21,7 +21,6 @@ STRUCTURAL_BLACKLIST = {
     "concrete floor", "tile floor", "carpet", "baseboard"
 }
 
-# VLM 自由描述時可能用的別名 → DB label
 LABEL_NORMALIZE_MAP = {
     "remote control":  "remote",
     "tv remote":       "remote",
@@ -51,11 +50,36 @@ LABEL_NORMALIZE_MAP = {
 BULK_WRITE_THRESHOLD = 20
 BULK_WRITE_INTERVAL  = 30.0
 
-# 驗證閾值
-SEMANTIC_THRESHOLD   = 0.35   # SBERT 語意相似度下限
-COORD_VERIFY_DIST    = 2.0    # 座標驗證：物件到家具的合理距離上限 (m)
-COORD_MATCH_DIST     = 1.5    # 座標+語意都符合 → high confidence
+SEMANTIC_THRESHOLD = 0.35
+COORD_VERIFY_DIST  = 2.0
+COORD_MATCH_DIST   = 1.5
 
+BEHAVIOR_PROTOTYPES = {
+    "Drink":       "a person drinking, holding a bottle or cup, sipping a beverage",
+    "SittingIdle": "a person sitting still, resting, idle on a sofa or chair",
+    "Reading":     "a person reading a book, holding a book, looking at pages",
+    "Typing":      "a person typing on a keyboard, working at a computer or laptop",
+    "Watching":    "a person watching television, looking at a screen or monitor",
+    "Standing":    "a person standing still, not doing anything specific",
+    "Walking":     "a person walking, moving across the room",
+    "Sleeping":    "a person sleeping, lying down, resting on a bed",
+    "Eating":      "a person eating food, having a meal",
+}
+
+NORMALIZE_THRESHOLD = 0.55
+
+
+def _get_time_slot(virtual_hour) -> str:
+    if virtual_hour is None:
+        return "Unknown"
+    try:
+        h = float(virtual_hour)
+        if h < 10:  return "Morning"
+        if h < 13:  return "Noon"
+        if h < 18:  return "Afternoon"
+        return "Evening"
+    except Exception:
+        return "Unknown"
 
 
 class RoomEmbeddingCache:
@@ -84,14 +108,17 @@ class RoomEmbeddingCache:
         ]
         if self._labels:
             embs = self.model.encode(
-                self._labels, normalize_embeddings=True, show_progress_bar=False
+                self._labels, normalize_embeddings=True,
+                show_progress_bar=False
             )
             self._embeddings = embs.astype("float32")
         else:
             self._embeddings = None
-        print(f"[RoomCache] Room '{room_name}' → {len(self._labels)} furniture cached")
+        print(f"[RoomCache] Room '{room_name}' -> "
+              f"{len(self._labels)} furniture cached")
 
-    def bind_topk(self, vlm_label: str, k: int = 3, threshold: float = 0.35):
+    def bind_topk(self, vlm_label: str, k: int = 3,
+                   threshold: float = 0.35):
         if self._embeddings is None or not self._labels:
             return []
         q_emb = self.model.encode(
@@ -113,9 +140,6 @@ class RoomEmbeddingCache:
         return self._room
 
 
-# ══════════════════════════════════════════════
-#  Change Streams Sync
-# ══════════════════════════════════════════════
 class ChangeStreamSync:
     def __init__(self, scene_col, room_cache: RoomEmbeddingCache):
         self.scene_col  = scene_col
@@ -130,11 +154,12 @@ class ChangeStreamSync:
         docs = list(self.scene_col.find({}))
         with self._lock:
             self._map = {d.get("label", ""): d for d in docs}
-        print(f"    [ChangeSync] Loaded {len(self._map)} scene objects into memory")
+        print(f"    [ChangeSync] Loaded {len(self._map)} scene objects")
 
     def start(self):
         self._running = True
-        self._thread  = threading.Thread(target=self._watch_loop, daemon=True)
+        self._thread  = threading.Thread(
+            target=self._watch_loop, daemon=True)
         self._thread.start()
 
     def stop(self):
@@ -142,7 +167,8 @@ class ChangeStreamSync:
 
     def _watch_loop(self):
         try:
-            with self.scene_col.watch(full_document="updateLookup") as stream:
+            with self.scene_col.watch(
+                    full_document="updateLookup") as stream:
                 print("    [ChangeSync] Change Stream mode")
                 for change in stream:
                     if not self._running:
@@ -155,16 +181,18 @@ class ChangeStreamSync:
                             self._map[label] = doc
                         room = doc.get("room", doc.get("room_name", ""))
                         if self.room_cache.current_room and \
-                           self.room_cache.current_room.lower() in room.lower():
+                           self.room_cache.current_room.lower() \
+                           in room.lower():
                             self.room_cache.switch_room(
-                                self.room_cache.current_room, self.scene_col
-                            )
+                                self.room_cache.current_room,
+                                self.scene_col)
                     elif op == "delete":
-                        key = change.get("documentKey", {}).get("label", "")
+                        key = change.get(
+                            "documentKey", {}).get("label", "")
                         with self._lock:
                             self._map.pop(key, None)
         except Exception:
-            print("    [ChangeSync] Polling mode (every 10secs）")
+            print("    [ChangeSync] Polling mode (every 10secs)")
             self._poll_loop()
 
     def _poll_loop(self):
@@ -174,16 +202,18 @@ class ChangeStreamSync:
                 with self._lock:
                     new_map = {d.get("label", ""): d for d in docs}
                     changed = set(new_map) - set(self._map) | \
-                              {k for k in new_map if new_map[k] != self._map.get(k)}
+                              {k for k in new_map
+                               if new_map[k] != self._map.get(k)}
                     self._map = new_map
                 if changed:
-                    print(f"    [ChangeSync] Polled {len(docs)} docs, changed={changed}")
+                    print(f"    [ChangeSync] Polled {len(docs)} docs, "
+                          f"changed={changed}")
                     if self.room_cache.current_room:
                         self.room_cache.switch_room(
-                            self.room_cache.current_room, self.scene_col
-                        )
+                            self.room_cache.current_room,
+                            self.scene_col)
             except Exception as e:
-                print(f"   ⚠️ [ChangeSync] Poll error: {e}")
+                print(f"    [ChangeSync] Poll error: {e}")
             time.sleep(10)
 
     def get(self, label: str):
@@ -206,13 +236,14 @@ class ChangeStreamSync:
 
 class BulkWriteBuffer:
     def __init__(self, dynamics_col):
-        self.col        = dynamics_col
-        self._last      = {}
-        self._pending   = []
-        self._last_flush= time.time()
-        self._lock      = threading.Lock()
+        self.col         = dynamics_col
+        self._last       = {}
+        self._pending    = []
+        self._last_flush = time.time()
+        self._lock       = threading.Lock()
 
-    def upsert(self, label: str, update_op: dict, now: datetime.datetime):
+    def upsert(self, label: str, update_op: dict,
+                now: datetime.datetime):
         key       = label
         new_state = (
             update_op.get("$set", {}).get("last_seen_on", ""),
@@ -224,7 +255,8 @@ class BulkWriteBuffer:
             if old_state == new_state:
                 return False
             self._last[key] = new_state
-            self._pending.append(UpdateOne({"label": label}, update_op, upsert=True))
+            self._pending.append(
+                UpdateOne({"label": label}, update_op, upsert=True))
             elapsed      = time.time() - self._last_flush
             should_flush = (
                 len(self._pending) >= BULK_WRITE_THRESHOLD or
@@ -244,7 +276,8 @@ class BulkWriteBuffer:
         try:
             result = self.col.bulk_write(ops, ordered=False)
             print(f"    [BulkWrite] Flushed {len(ops)} ops "
-                  f"(upserted={result.upserted_count}, modified={result.modified_count})")
+                  f"(upserted={result.upserted_count}, "
+                  f"modified={result.modified_count})")
         except Exception as e:
             print(f"    [BulkWrite] Failed: {e}")
 
@@ -256,21 +289,26 @@ class BulkWriteBuffer:
         with self._lock:
             return len(self._pending)
 
+
 class FAISSMemoryStore:
-    def __init__(self, sbert_model: SentenceTransformer, dim: int = 384):
+    def __init__(self, sbert_model: SentenceTransformer,
+                 dim: int = 384):
         self.model    = sbert_model
         self.dim      = dim
         self.index    = faiss.IndexFlatIP(dim)
         self.metadata = []
 
     def build_memory_text(self, user, action, instance,
-                          interacting_items, all_items, spatial_relations) -> str:
+                           interacting_items, all_items,
+                           spatial_relations) -> str:
         parts = [f"{user} {action} near {instance}"]
         if interacting_items:
             parts[0] += f" with {', '.join(interacting_items)}"
         parts[0] += "."
         for rel in spatial_relations:
-            s = rel.get("subject",""); r = rel.get("relation",""); o = rel.get("object","")
+            s = rel.get("subject", "")
+            r = rel.get("relation", "")
+            o = rel.get("object", "")
             if s and r and o:
                 parts.append(f"{s} {r} {o}.")
         bg = [i for i in all_items if i not in interacting_items]
@@ -319,14 +357,54 @@ class PerceptionEngine:
         self.col_activity = self.db["activity_sequences"]
         self.col_dynamics = self.db["dynamic_objects"]
 
-        self.sbert      = SentenceTransformer(sbert_model_name)
-        self.room_cache = RoomEmbeddingCache(self.sbert)
-        self.scene_sync = ChangeStreamSync(self.col_scene, self.room_cache)
+        self.sbert       = SentenceTransformer(sbert_model_name)
+        self.room_cache  = RoomEmbeddingCache(self.sbert)
+        self.scene_sync  = ChangeStreamSync(
+            self.col_scene, self.room_cache)
         self.scene_sync.start()
         self.bulk_buffer = BulkWriteBuffer(self.col_dynamics)
         self.faiss_store = FAISSMemoryStore(self.sbert)
 
-    def _get_user_id(self, img_b64: str, hint: str = "Unknown_User") -> str:
+        self._proto_vecs   = None
+        self._proto_labels = list(BEHAVIOR_PROTOTYPES.keys())
+
+    def _get_proto_vecs(self):
+        if self._proto_vecs is None:
+            descs = list(BEHAVIOR_PROTOTYPES.values())
+            self._proto_vecs = self.sbert.encode(
+                descs, normalize_embeddings=True
+            ).astype("float32")
+            print(f"[SBERT] prototype vectors built "
+                  f"({len(self._proto_labels)} classes)")
+        return self._proto_vecs
+
+    def _normalize_action(self, raw: str) -> str:
+        if not raw or raw.strip() in ("", "none", "unknown"):
+            return raw
+        try:
+            proto_vecs = self._get_proto_vecs()
+            raw_vec    = self.sbert.encode(
+                [raw], normalize_embeddings=True
+            )[0].astype("float32")
+            sims     = proto_vecs @ raw_vec
+            best_idx = int(np.argmax(sims))
+            best_sim = float(sims[best_idx])
+            best_lbl = self._proto_labels[best_idx]
+            if best_sim >= NORMALIZE_THRESHOLD:
+                if raw != best_lbl:
+                    print(f"[Normalize] '{raw[:50]}' "
+                          f"-> '{best_lbl}' (sim={best_sim:.2f})")
+                return best_lbl
+            print(f"[Normalize] '{raw[:50]}' kept "
+                  f"(best={best_lbl} sim={best_sim:.2f} "
+                  f"< {NORMALIZE_THRESHOLD})")
+            return raw
+        except Exception as e:
+            print(f"[Normalize] failed: {e}")
+            return raw
+
+    def _get_user_id(self, img_b64: str,
+                      hint: str = "Unknown_User") -> str:
         if not self.face_app or not self.face_bank:
             return hint
         try:
@@ -336,9 +414,12 @@ class PerceptionEngine:
             faces = self.face_app.get(img)
             if not faces:
                 return hint
-            face = sorted(faces,
-                          key=lambda x: (x.bbox[2]-x.bbox[0])*(x.bbox[3]-x.bbox[1]),
-                          reverse=True)[0]
+            face = sorted(
+                faces,
+                key=lambda x: (
+                    x.bbox[2]-x.bbox[0])*(x.bbox[3]-x.bbox[1]),
+                reverse=True
+            )[0]
             emb = face.normed_embedding
             best, max_sim = hint, 0.0
             for name, known in self.face_bank.items():
@@ -347,15 +428,16 @@ class PerceptionEngine:
                     max_sim, best = sim, name
             return best if max_sim > 0.40 else hint
         except Exception as e:
-            print(f"⚠️ Face ReID: {e}")
+            print(f"Face ReID: {e}")
             return hint
 
-    def _nearest_by_coord(self, user_pos: dict, room_name: str, max_dist: float = 3.0):
+    def _nearest_by_coord(self, user_pos: dict, room_name: str,
+                           max_dist: float = 3.0):
         if not user_pos:
             return None, float('inf')
         ux, uz = user_pos.get("x", 0), user_pos.get("z", 0)
-        docs   = self.scene_sync.find_by_room(room_name) if room_name \
-                 else self.scene_sync.all_docs()
+        docs   = self.scene_sync.find_by_room(room_name) \
+                 if room_name else self.scene_sync.all_docs()
         if not docs:
             docs = self.scene_sync.all_docs()
         best_doc, best_dist = None, float('inf')
@@ -370,118 +452,108 @@ class PerceptionEngine:
             dist = math.sqrt((ux - fx)**2 + (uz - fz)**2)
             if dist < best_dist:
                 best_dist, best_doc = dist, doc
-        return (best_doc, best_dist) if best_doc and best_dist <= max_dist else (None, best_dist)
+        return (best_doc, best_dist) \
+               if best_doc and best_dist <= max_dist \
+               else (None, best_dist)
 
     def _normalize_label(self, raw: str) -> str:
-        """VLM 自由描述的名稱 → 標準化"""
         raw = raw.lower().strip()
         return LABEL_NORMALIZE_MAP.get(raw, raw)
 
     def _semantic_match_furniture(self, vlm_name: str, k: int = 3):
-
-        norm = self._normalize_label(vlm_name)
-        # 先查完全匹配（有就直接用，不需要 SBERT）
+        norm  = self._normalize_label(vlm_name)
         exact = self.scene_sync.get(norm)
         if exact:
             return [(exact, 1.0)]
-        # SBERT Top-K
-        return self.room_cache.bind_topk(norm, k=k, threshold=SEMANTIC_THRESHOLD)
+        return self.room_cache.bind_topk(
+            norm, k=k, threshold=SEMANTIC_THRESHOLD)
 
     def _semantic_match_dynamic(self, vlm_name: str):
-
-        norm = self._normalize_label(vlm_name)
-        # 先查完全匹配
+        norm  = self._normalize_label(vlm_name)
         exact = self.col_dynamics.find_one({"label": norm})
         if exact:
             return norm, 1.0
-        # SBERT 對現有動態物件做語意匹配
         all_dyn = list(self.col_dynamics.find({}, {"label": 1}))
         if not all_dyn:
-            return norm, 0.5   # DB 沒資料，相信 VLM
+            return norm, 0.5
         labels = [d["label"] for d in all_dyn]
-        embs   = self.sbert.encode(labels, normalize_embeddings=True).astype("float32")
-        q_emb  = self.sbert.encode([norm], normalize_embeddings=True)[0].astype("float32")
+        embs   = self.sbert.encode(
+            labels, normalize_embeddings=True).astype("float32")
+        q_emb  = self.sbert.encode(
+            [norm], normalize_embeddings=True)[0].astype("float32")
         sims   = embs @ q_emb
         best_i = int(np.argmax(sims))
         best_s = float(sims[best_i])
         if best_s >= SEMANTIC_THRESHOLD:
             return labels[best_i], best_s
-        return norm, 0.0   # 語意太低 → 用原始名稱（可能是新物件）
+        return norm, 0.0
 
     def _verify_with_coord(self, topk_furniture, obj_sensor_pos):
-
         if not obj_sensor_pos or not topk_furniture:
-            return topk_furniture[0] if topk_furniture else (None, "unknown")
-
+            return topk_furniture[0] if topk_furniture \
+                   else (None, "unknown")
         ox, oz = obj_sensor_pos[0], obj_sensor_pos[1]
-
-        # 找在 Top-K 裡距離最近的
         best_doc, best_dist, best_score = None, float('inf'), 0.0
         for doc, score in topk_furniture:
             pos = doc.get("pos")
             if isinstance(pos, list) and len(pos) >= 2:
-                dist = math.sqrt((ox - pos[0])**2 + (oz - pos[1])**2)
+                dist = math.sqrt(
+                    (ox-pos[0])**2 + (oz-pos[1])**2)
                 if dist < best_dist:
-                    best_dist, best_doc, best_score = dist, doc, score
-
+                    best_dist, best_doc, best_score = \
+                        dist, doc, score
         if best_doc is None:
             return topk_furniture[0][0], "sbert_only"
-
         if best_dist <= COORD_MATCH_DIST:
             conf = "high" if best_score >= 0.7 else "medium"
-            print(f"    [Verify] '{best_doc.get('label')}' dist={best_dist:.2f}m score={best_score:.2f} → {conf}")
+            print(f"    [Verify] '{best_doc.get('label')}' "
+                  f"dist={best_dist:.2f}m -> {conf}")
             return best_doc, conf
         elif best_dist <= COORD_VERIFY_DIST:
-            print(f"    [Verify] '{best_doc.get('label')}' dist={best_dist:.2f}m → coord_ok")
+            print(f"    [Verify] '{best_doc.get('label')}' "
+                  f"dist={best_dist:.2f}m -> coord_ok")
             return best_doc, "coord_ok"
         else:
-            # 語意說這個家具，但座標太遠 → 改用座標最近的
-            print(f"    [Verify] '{best_doc.get('label')}' dist={best_dist:.2f}m too far → coord_fallback")
+            print(f"    [Verify] '{best_doc.get('label')}' "
+                  f"dist={best_dist:.2f}m -> coord_fallback")
             return None, "coord_fallback"
 
-    def _bind_furniture(self, vlm_label: str, user_pos: dict, room_name: str):
-        """
-        人的位置綁定：
-        Step 1: 語意匹配 VLM 說的家具名稱
-        Step 2: 座標驗證
-        Step 3: fallback 到座標最近
-        """
-        topk       = self._semantic_match_furniture(vlm_label, k=3)
-        coord_doc, coord_dist = self._nearest_by_coord(user_pos, room_name)
-
+    def _bind_furniture(self, vlm_label: str, user_pos: dict,
+                         room_name: str):
+        topk                  = self._semantic_match_furniture(
+            vlm_label, k=3)
+        coord_doc, coord_dist = self._nearest_by_coord(
+            user_pos, room_name)
         if not topk and not coord_doc:
             return None, "unknown"
-
-        if topk:
-            # 用人的座標驗證語意結果
-            if user_pos:
-                user_sensor = [user_pos.get("x", 0), user_pos.get("z", 0)]
-                doc, conf = self._verify_with_coord(topk, user_sensor)
-                if doc:
-                    return doc, conf
-
+        if topk and user_pos:
+            user_sensor = [
+                user_pos.get("x", 0), user_pos.get("z", 0)]
+            doc, conf = self._verify_with_coord(topk, user_sensor)
+            if doc:
+                return doc, conf
         if coord_doc and coord_dist < 1.5:
             return coord_doc, "coord_priority"
         if coord_doc:
             return coord_doc, "coord_only"
         if topk:
             return topk[0][0], "sbert_low"
-
         return None, "unknown"
 
-
-    def _build_prompt(self, room_name, room_furniture, coord_label, coord_dist) -> str:
+    def _build_prompt(self, room_name, room_furniture,
+                       coord_label, coord_dist) -> str:
         furniture_hint = ""
         if room_furniture:
-            furniture_hint = f"\nKNOWN FURNITURE in this room: {', '.join(room_furniture)}.\n"
-
+            furniture_hint = (
+                f"\nKNOWN FURNITURE in this room: "
+                f"{', '.join(room_furniture)}.\n"
+            )
         coord_hint = ""
         if coord_label and coord_dist < 3.0:
             coord_hint = (
-                f"\nSPATIAL HINT: The person is approximately {coord_dist:.1f}m "
-                f"from '{coord_label}'.\n"
+                f"\nSPATIAL HINT: The person is approximately "
+                f"{coord_dist:.1f}m from '{coord_label}'.\n"
             )
-
         return f"""You are a scene analysis system for a home robot.
 Your job is to describe EXACTLY what you observe in this image.
 Room: "{room_name}".
@@ -489,8 +561,8 @@ Room: "{room_name}".
 Reply ONLY in valid JSON. No markdown, no explanation.
 
 {{
-  "action": "what the person is doing — be specific (sleeping/eating/drinking/typing/watching/cooking/exercising/standing/...)",
-  "person_holding": ["objects the person is visibly holding in their hands — [] if none"],
+  "action": "what the person is doing (sleeping/eating/drinking/typing/watching/exercising/standing/...)",
+  "person_holding": ["objects the person is visibly holding — [] if none"],
   "person_near": "name of the furniture or surface the person is closest to",
   "objects_on_furniture": [
     {{"object": "item name", "on": "furniture name", "relation": "on/in/next_to/above"}}
@@ -499,42 +571,34 @@ Reply ONLY in valid JSON. No markdown, no explanation.
 }}
 
 OBSERVATION RULES:
-- action: describe the ACTIVITY, not the posture.
-  PRIORITY: what is the person DOING with their body or objects?
-  Holding bottle/cup → "drinking". Holding food → "eating".
-  At keyboard/computer → "typing". Looking at screen/tv → "watching".
-  Lying down/eyes closed → "sleeping". Swinging arm → "exercising".
-  Use "standing" ONLY if the person is idle with nothing in hand and no clear activity.
-- person_holding: ONLY objects physically in the person's hands. If holding bottle → ["bottle"].
-- person_near: the closest furniture or surface the person is at. Any name is fine.
-- objects_on_furniture: ALL portable objects visible on surfaces (NOT in hands).
-  Each item needs: what it is, what surface it is on, and the spatial relation.
-- description: one natural sentence summarizing the scene.
-- NEVER include wall/floor/ceiling/window/door in any field.
+- action: describe the ACTIVITY. Holding bottle/cup -> "drinking".
+  At keyboard -> "typing". Looking at screen -> "watching".
+  Lying down -> "sleeping". Use "standing" only if idle.
+- person_holding: ONLY objects in the person's hands.
+- person_near: closest furniture. Any name is fine.
+- objects_on_furniture: ALL portable objects on surfaces.
+- NEVER include wall/floor/ceiling/window/door.
 """
 
     def _parse_vlm_output(self, raw: str) -> dict:
-
         try:
             data = json.loads(self._extract_json(raw))
         except Exception:
             return {}
-
         action         = data.get("action", "none").lower().strip()
         person_holding = data.get("person_holding", [])
-        person_near    = data.get("person_near", "unknown").lower().strip()
+        person_near    = data.get(
+            "person_near", "unknown").lower().strip()
         objs_on_furn   = data.get("objects_on_furniture", [])
         description    = data.get("description", "")
-
-        # 轉換 objects_on_furniture → spatial_relations
         spatial_relations = []
         scene_items       = []
         for entry in objs_on_furn:
             if not isinstance(entry, dict):
                 continue
-            obj  = entry.get("object", "").lower().strip()
-            on   = entry.get("on",     "").lower().strip()
-            rel  = entry.get("relation", "on").lower().strip()
+            obj = entry.get("object", "").lower().strip()
+            on  = entry.get("on",     "").lower().strip()
+            rel = entry.get("relation", "on").lower().strip()
             if obj and on:
                 scene_items.append(obj)
                 spatial_relations.append({
@@ -542,7 +606,6 @@ OBSERVATION RULES:
                     "relation": rel,
                     "object":   on,
                 })
-
         interacting_items = [
             i.lower().strip() for i in person_holding
             if isinstance(i, str) and i.lower().strip()
@@ -551,38 +614,35 @@ OBSERVATION RULES:
             spatial_relations.append({
                 "subject":  item,
                 "relation": "in_hand_of",
-                "object":   "person",   # 後續由 hint_user_id 替換
+                "object":   "person",
             })
-
         return {
             "action":            action,
-            "main_object":       person_near,         # VLM 原始名稱
-            "interacting_items": interacting_items,   # VLM 原始名稱
-            "scene_items":       scene_items,         # VLM 原始名稱
-            "spatial_relations": spatial_relations,   # VLM 原始名稱
+            "main_object":       person_near,
+            "interacting_items": interacting_items,
+            "scene_items":       scene_items,
+            "spatial_relations": spatial_relations,
             "description":       description,
         }
 
-    def _validate_scene_graph(self, parsed: dict, user_pos: dict, room_name: str, user_id: str):
-
+    def _validate_scene_graph(self, parsed: dict, user_pos: dict,
+                               room_name: str, user_id: str):
         print(f"    [Validate] Starting scene graph validation...")
-
-        # 1. 驗證人的位置（main_object）
-        vlm_furn    = parsed.get("main_object", "unknown")
-        bound_doc, confidence = self._bind_furniture(vlm_furn, user_pos, room_name)
-        bound_label = bound_doc.get("label", "Unknown_Area") if bound_doc else "Unknown_Area"
-        bound_room  = (bound_doc.get("room") or bound_doc.get("room_name", room_name)
+        vlm_furn              = parsed.get("main_object", "unknown")
+        bound_doc, confidence = self._bind_furniture(
+            vlm_furn, user_pos, room_name)
+        bound_label = bound_doc.get("label", "Unknown_Area") \
+                      if bound_doc else "Unknown_Area"
+        bound_room  = (bound_doc.get("room") or
+                       bound_doc.get("room_name", room_name)
                        if bound_doc else room_name)
-        print(f"    [Validate] person_near: '{vlm_furn}' → '{bound_label}' (conf={confidence})")
-
-        # 2. 驗證每條 spatial_relation
+        print(f"    [Validate] person_near: '{vlm_furn}' "
+              f"-> '{bound_label}' (conf={confidence})")
         validated_spatial = []
         for rel in parsed.get("spatial_relations", []):
             subj = rel.get("subject", "").lower().strip()
             obj  = rel.get("object",  "").lower().strip()
-            r    = rel.get("relation","on").lower().strip()
-
-            # person → user_id
+            r    = rel.get("relation", "on").lower().strip()
             if obj == "person":
                 validated_spatial.append({
                     "subject":  self._normalize_label(subj),
@@ -590,48 +650,42 @@ OBSERVATION RULES:
                     "object":   user_id,
                 })
                 continue
-
-
-            topk_furn = self._semantic_match_furniture(obj, k=3)
-
-            # 如果物件有 sensor_pos，做座標驗證
-            obj_norm    = self._normalize_label(subj)
-            dyn_doc     = self.col_dynamics.find_one({"label": obj_norm})
-            sensor_pos  = dyn_doc.get("sensor_pos") if dyn_doc else None
-
+            topk_furn  = self._semantic_match_furniture(obj, k=3)
+            obj_norm   = self._normalize_label(subj)
+            dyn_doc    = self.col_dynamics.find_one(
+                {"label": obj_norm})
+            sensor_pos = dyn_doc.get("sensor_pos") \
+                         if dyn_doc else None
             if topk_furn:
-                furn_doc, furn_conf = self._verify_with_coord(topk_furn, sensor_pos)
-                furn_label = furn_doc.get("label", obj) if furn_doc else obj
+                furn_doc, furn_conf = self._verify_with_coord(
+                    topk_furn, sensor_pos)
+                furn_label = furn_doc.get("label", obj) \
+                             if furn_doc else obj
             else:
                 furn_label = self._normalize_label(obj)
                 furn_conf  = "no_match"
-
-            # 物件名稱標準化
-            matched_subj, subj_score = self._semantic_match_dynamic(subj)
-            print(f"    [Validate] '{subj}'→'{matched_subj}'(score={subj_score:.2f}) "
-                  f"on '{obj}'→'{furn_label}'(conf={furn_conf})")
-
+            matched_subj, subj_score = \
+                self._semantic_match_dynamic(subj)
+            print(f"    [Validate] '{subj}'->'{matched_subj}'"
+                  f"(score={subj_score:.2f}) "
+                  f"on '{obj}'->'{furn_label}'(conf={furn_conf})")
             validated_spatial.append({
-                "subject":  matched_subj,
-                "relation": r,
-                "object":   furn_label,
+                "subject":     matched_subj,
+                "relation":    r,
+                "object":      furn_label,
                 "_confidence": furn_conf,
             })
-
-        # 3. 驗證 interacting_items（只標準化名稱，不做位置驗證）
         validated_interact = []
         for item in parsed.get("interacting_items", []):
             matched, score = self._semantic_match_dynamic(item)
-            print(f"    [Validate] holding '{item}' → '{matched}' (score={score:.2f})")
+            print(f"    [Validate] holding '{item}' "
+                  f"-> '{matched}' (score={score:.2f})")
             validated_interact.append(matched)
-
-        # 4. scene_items 從 validated_spatial 裡取（已驗證過）
         validated_scene = [
             r["subject"] for r in validated_spatial
             if r.get("relation") not in ("in_hand_of", "held_by")
                and r.get("object") != user_id
         ]
-
         return {
             "bound_doc":         bound_doc,
             "bound_label":       bound_label,
@@ -640,11 +694,11 @@ OBSERVATION RULES:
             "action":            parsed.get("action", "none"),
             "interacting_items": validated_interact,
             "scene_items":       validated_scene,
-            "all_items":         list(set(validated_interact + validated_scene)),
+            "all_items":         list(set(
+                validated_interact + validated_scene)),
             "spatial_relations": validated_spatial,
             "description":       parsed.get("description", ""),
         }
-
 
     def analyze_action_burst(self, payload: dict) -> dict:
         image_list   = payload.get("image_list", [])
@@ -653,74 +707,92 @@ OBSERVATION RULES:
         node_scores  = payload.get("node_scores", [])
         user_pos     = payload.get("user_pos", None)
         room_name    = payload.get("room_name", "")
+        virtual_hour = payload.get("virtual_hour", None)
+        virtual_day  = payload.get("virtual_day", None)
 
         if not image_list:
             return self._empty_result(hint_user_id)
 
-        # 切房間（事件驅動，同房間不重建）
         self.room_cache.switch_room(room_name, self.col_scene)
         if not self.room_cache.all_docs:
-            print(f"   ⚠️  [RoomCache] Empty for room={room_name}, fallback to full DB load")
+            print(f"    [RoomCache] Empty for room={room_name}, "
+                  f"fallback to full DB")
             self.room_cache._room = None
             self.room_cache.switch_room("", self.col_scene)
 
-        # 座標預查（給 prompt 的 hint 用）
-        coord_doc, coord_dist = self._nearest_by_coord(user_pos, room_name)
-        coord_label = coord_doc.get("label", "") if coord_doc else ""
+        coord_doc, coord_dist = self._nearest_by_coord(
+            user_pos, room_name)
+        coord_label    = coord_doc.get("label", "") \
+                         if coord_doc else ""
+        room_furniture = [
+            d.get("label", "") for d in self.room_cache.all_docs
+            if d.get("label")
+        ]
+        prompt         = self._build_prompt(
+            room_name, room_furniture, coord_label, coord_dist)
+        sample_indices = self._select_sample_indices(
+            image_list, node_scores)
 
-        # 房間家具清單（給 prompt 的 hint 用）
-        room_furniture = [d.get("label", "") for d in self.room_cache.all_docs if d.get("label")]
-
-        prompt         = self._build_prompt(room_name, room_furniture, coord_label, coord_dist)
-        sample_indices = self._select_sample_indices(image_list, node_scores)
-
-        user_votes   = []
-        parsed_list  = []   # 每幀的 parsed 結果
+        user_votes  = []
+        parsed_list = []
 
         for idx in sample_indices:
             try:
                 img_b64   = image_list[idx]
                 uid       = self._get_user_id(img_b64, hint_user_id)
                 user_votes.append(uid)
-
-                img_clean = img_b64.split(',')[1] if ',' in img_b64 else img_b64
+                img_clean = img_b64.split(',')[1] \
+                            if ',' in img_b64 else img_b64
                 api_body  = {
                     "model":    self.model,
-                    "messages": [{"role": "user", "content": prompt, "images": [img_clean]}],
-                    "stream":   False,
-                    "options":  {"temperature": 0.05, "num_predict": 900},
+                    "messages": [{
+                        "role":    "user",
+                        "content": prompt,
+                        "images":  [img_clean],
+                    }],
+                    "stream":  False,
+                    "options": {
+                        "temperature": 0.05,
+                        "num_predict": 900,
+                    },
                 }
-                resp      = requests.post(f"{self.url}/api/chat", json=api_body, timeout=120)
-                raw       = resp.json().get("message", {}).get("content", "").strip()
-                node_name = source_nodes[idx] if idx < len(source_nodes) else f"node_{idx}"
+                resp      = requests.post(
+                    f"{self.url}/api/chat",
+                    json=api_body, timeout=120)
+                raw       = resp.json().get(
+                    "message", {}).get("content", "").strip()
+                node_name = source_nodes[idx] \
+                            if idx < len(source_nodes) \
+                            else f"node_{idx}"
                 print(f" [Frame {idx}|{node_name}] {raw[:150]}")
-
                 parsed = self._parse_vlm_output(raw)
                 if not parsed:
                     continue
-
                 act = parsed.get("action", "none")
-                if act in {"none", "unknown", "n/a", "not visible", "cannot determine", ""}:
+                if act in {"none", "unknown", "n/a",
+                           "not visible", "cannot determine", ""}:
                     continue
-
                 parsed_list.append(parsed)
-
             except Exception as e:
-                print(f"❌ [Frame {idx}] {e}")
+                print(f"[Frame {idx}] error: {e}")
 
         if not parsed_list:
             return self._empty_result(
-                max(set(user_votes), key=user_votes.count) if user_votes else hint_user_id
+                max(set(user_votes), key=user_votes.count)
+                if user_votes else hint_user_id
             )
 
-        # 多幀投票（action + main_object）
-        final_user   = max(set(user_votes), key=user_votes.count) if user_votes else hint_user_id
+        final_user   = max(set(user_votes), key=user_votes.count) \
+                       if user_votes else hint_user_id
         action_votes = [p["action"] for p in parsed_list]
         object_votes = [p["main_object"] for p in parsed_list]
-        final_action = max(set(action_votes), key=action_votes.count)
+        raw_action   = max(set(action_votes), key=action_votes.count)
         final_object = max(set(object_votes), key=object_votes.count)
 
-        best_parsed = parsed_list[action_votes.index(final_action)]
+        final_action = self._normalize_action(raw_action)
+
+        best_idx    = action_votes.index(raw_action)
+        best_parsed = parsed_list[best_idx]
         best_parsed["action"]      = final_action
         best_parsed["main_object"] = final_object
 
@@ -745,18 +817,28 @@ OBSERVATION RULES:
             "spatial_relations": validated["spatial_relations"],
             "context":           validated["description"],
             "_vlm_raw_object":   final_object,
+            "_vlm_raw_action":   raw_action,
             "_coord_label":      coord_label,
-            "_coord_dist":       round(coord_dist, 2) if coord_dist != float('inf') else None,
+            "_coord_dist":       round(coord_dist, 2)
+                                 if coord_dist != float('inf')
+                                 else None,
             "_confidence":       confidence,
         }
 
-        # Pipeline 寫入
-        self._update_scene_snapshot(bound_doc, validated["interacting_items"],
-                                    validated["scene_items"], validated["spatial_relations"])
-        self._update_observation_log(final_user, final_action, bound_doc,
-                                     validated["interacting_items"],
-                                     validated["spatial_relations"],
-                                     validated["description"])
+        self._update_scene_snapshot(
+            bound_doc,
+            validated["interacting_items"],
+            validated["scene_items"],
+            validated["spatial_relations"],
+        )
+        self._update_observation_log(
+            final_user, final_action, bound_doc,
+            validated["interacting_items"],
+            validated["spatial_relations"],
+            validated["description"],
+            virtual_hour,
+            virtual_day,
+        )
         self._update_dynamic_objects(
             user_id           = final_user,
             interacting_items = validated["interacting_items"],
@@ -766,19 +848,26 @@ OBSERVATION RULES:
             room_name         = bound_room,
             user_pos          = user_pos,
         )
-        self._write_semantic_memory(final_user, final_action, bound_doc,
-                                    confidence, result, source_nodes)
-        self._update_activity_sequence(final_user, final_action, bound_label)
+        self._write_semantic_memory(
+            final_user, final_action, bound_doc,
+            confidence, result, source_nodes,
+        )
+        self._update_activity_sequence(
+            final_user, final_action, bound_label)
 
         mem_doc  = self.col_memory.find_one(
-            {"user": final_user, "action": final_action}, sort=[("timestamp", -1)]
+            {"user": final_user, "action": final_action},
+            sort=[("timestamp", -1)],
         )
         mongo_id = str(mem_doc["_id"]) if mem_doc else ""
-        self._index_to_faiss(final_user, final_action, bound_doc, result, mongo_id)
+        self._index_to_faiss(
+            final_user, final_action, bound_doc, result, mongo_id)
 
-        print(f"\n [Done] {final_user} → {final_action} @ {bound_label} "
+        print(f"\n [Done] {final_user} -> {final_action} "
+              f"@ {bound_label} "
               f"(room={bound_room}, conf={confidence}, "
-              f"pending_writes={self.bulk_buffer.pending_count})\n")
+              f"day={virtual_day}, slot={_get_time_slot(virtual_hour)}, "
+              f"pending={self.bulk_buffer.pending_count})\n")
 
         return {
             "user":           final_user,
@@ -791,7 +880,6 @@ OBSERVATION RULES:
             "bound_room":     bound_room,
             "confidence":     confidence,
         }
-
 
     def _extract_json(self, raw: str) -> str:
         cleaned = re.sub(r'```(?:json)?\s*', '', raw).strip()
@@ -808,7 +896,7 @@ OBSERVATION RULES:
                     candidate = text[:i].rstrip(',') + '}}'
                     try:
                         json.loads(candidate)
-                        print(f"   🔧 [JSON Repair] Truncated JSON fixed")
+                        print(f"    [JSON Repair] Truncated JSON fixed")
                         return candidate
                     except Exception:
                         continue
@@ -817,18 +905,25 @@ OBSERVATION RULES:
     def _merge_spatial(self, pool: list) -> list:
         seen, out = set(), []
         for rel in pool:
-            key = f"{rel['subject']}|{rel['relation']}|{rel['object']}"
+            key = (f"{rel['subject']}|"
+                   f"{rel['relation']}|"
+                   f"{rel['object']}")
             if key not in seen:
                 seen.add(key)
                 out.append(rel)
         return out
 
-    def _select_sample_indices(self, image_list, node_scores, max_samples=3):
+    def _select_sample_indices(self, image_list, node_scores,
+                                max_samples=3):
         n = len(image_list)
         if n <= max_samples:
             return list(range(n))
         if node_scores and len(node_scores) == n:
-            return sorted(range(n), key=lambda i: node_scores[i], reverse=True)[:max_samples]
+            return sorted(
+                range(n),
+                key=lambda i: node_scores[i],
+                reverse=True,
+            )[:max_samples]
         step = n / max_samples
         return [int(i * step) for i in range(max_samples)]
 
@@ -844,11 +939,13 @@ OBSERVATION RULES:
                                 scene_items, spatial_relations):
         if not bound_doc:
             return
-        doc_id    = bound_doc.get("_id")
-        all_items = list(set(interacting_items + scene_items))
+        doc_id     = bound_doc.get("_id")
+        all_items  = list(set(interacting_items + scene_items))
         counts_inc = {}
         for rel in spatial_relations:
-            s = rel.get("subject",""); r = rel.get("relation",""); o = rel.get("object","")
+            s = rel.get("subject", "")
+            r = rel.get("relation", "")
+            o = rel.get("object", "")
             if s and r and o:
                 counts_inc[f"spatial_counts.{s}|{r}|{o}"] = 1
         update_op = {
@@ -864,96 +961,143 @@ OBSERVATION RULES:
         self.col_scene.update_one({"_id": doc_id}, update_op)
 
     def _update_observation_log(self, user, action, bound_doc,
-                                 interacting_items, spatial_relations, raw_desc):
+                                 interacting_items, spatial_relations,
+                                 raw_desc,
+                                 virtual_hour=None,
+                                 virtual_day=None):
         if not bound_doc:
             return
-        instance = bound_doc.get("label", "Unknown")
-        pos_raw  = bound_doc.get("pos")
-        pos_xy   = pos_raw if isinstance(pos_raw, list) else [
+
+        instance  = bound_doc.get("label", "Unknown")
+        pos_raw   = bound_doc.get("pos")
+        pos_xy    = pos_raw if isinstance(pos_raw, list) else [
             bound_doc.get("x", 0), bound_doc.get("z", 0)
         ]
+        time_slot = _get_time_slot(virtual_hour)
+
+        # Day key: use virtual_day if provided, else real date
+        today = str(virtual_day) \
+                if virtual_day is not None \
+                else datetime.datetime.utcnow().strftime("%Y-%m-%d")
+
+        # Check if already counted today in this time_slot
+        existing = self.col_obs.find_one({
+            "user":      user,
+            "instance":  instance,
+            "action":    action,
+            "time_slot": time_slot,
+            "last_date": today,
+        })
+
+        if existing:
+            # Already counted today → just update last_seen
+            self.col_obs.update_one(
+                {"_id": existing["_id"]},
+                {"$set": {
+                    "last_seen":    datetime.datetime.utcnow(),
+                    "raw_vlm_desc": raw_desc,
+                }}
+            )
+            print(f"[ObsLog] {user} -> {action} @ {instance} "
+                  f"[{time_slot}] day={today} already counted, skip")
+            return
+
+        # First time today in this time_slot → weight +1
         self.col_obs.find_one_and_update(
-            {"user": user, "instance": instance, "action": action},
+            {
+                "user":      user,
+                "instance":  instance,
+                "action":    action,
+                "time_slot": time_slot,
+            },
             {
                 "$inc":      {"weight": 1},
-                "$addToSet": {"interacting_items": {"$each": interacting_items}},
+                "$addToSet": {
+                    "interacting_items": {"$each": interacting_items}
+                },
                 "$set": {
                     "observed_relations": spatial_relations,
                     "pos":               pos_xy,
                     "last_seen":         datetime.datetime.utcnow(),
+                    "last_date":         today,
                     "raw_vlm_desc":      raw_desc,
                 },
-                "$setOnInsert": {"user": user, "instance": instance, "action": action},
+                "$setOnInsert": {
+                    "user":      user,
+                    "instance":  instance,
+                    "action":    action,
+                    "time_slot": time_slot,
+                },
             },
             upsert=True,
-            return_document=ReturnDocument.AFTER
+            return_document=ReturnDocument.AFTER,
         )
-        print(f"[ObsLog] {user} → {action} @ {instance} (+1 weight)")
+        print(f"[ObsLog] {user} -> {action} @ {instance} "
+              f"[{time_slot}] day={today} +1 weight")
 
-    def _update_dynamic_objects(self, user_id, interacting_items, scene_items,
-                                 spatial_relations, bound_doc, room_name, user_pos=None):
+    def _update_dynamic_objects(self, user_id, interacting_items,
+                                 scene_items, spatial_relations,
+                                 bound_doc, room_name,
+                                 user_pos=None):
         now         = datetime.datetime.utcnow()
-        bound_label = bound_doc.get("label", "Unknown_Area") if bound_doc else "Unknown_Area"
+        bound_label = bound_doc.get("label", "Unknown_Area") \
+                      if bound_doc else "Unknown_Area"
         bound_pos   = bound_doc.get("pos") if bound_doc else None
 
-        # spatial_relations 裡已驗證過，直接用
-        # ⚠️ key 要 normalize，因為 _upsert 裡 label 已被 normalize
         item_rel_map       = {}
         item_furniture_map = {}
         for rel in spatial_relations:
-            subj = rel.get("subject","").lower().strip()
-            obj  = rel.get("object", "").lower().strip()
-            r    = rel.get("relation","on").lower().strip()
+            subj = rel.get("subject", "").lower().strip()
+            obj  = rel.get("object",  "").lower().strip()
+            r    = rel.get("relation", "on").lower().strip()
             if subj:
                 norm_subj = LABEL_NORMALIZE_MAP.get(subj, subj)
                 item_rel_map[norm_subj]       = r
                 item_furniture_map[norm_subj] = obj
-                # 原始名稱也保留，避免已是標準名的情況漏掉
-                item_rel_map[subj]       = r
-                item_furniture_map[subj] = obj
+                item_rel_map[subj]            = r
+                item_furniture_map[subj]      = obj
 
         def _resolve_furniture(label: str, relation: str):
-            if relation in ("in_hand_of", "held_by", "carrying", "in_hand"):
-                # 物件在人手上 → last_seen_on = user_id，不是家具
+            if relation in ("in_hand_of", "held_by",
+                            "carrying", "in_hand"):
                 return user_id, None
             vlm_furn = item_furniture_map.get(label)
-            if vlm_furn and vlm_furn not in ("unknown", "", "none", user_id):
-                # 已經驗證過的家具名稱，直接從 scene_sync 取座標
+            if vlm_furn and vlm_furn not in (
+                    "unknown", "", "none", user_id):
                 furn_doc = self.scene_sync.get(vlm_furn)
                 if furn_doc:
                     return furn_doc["label"], furn_doc.get("pos")
             return bound_label, bound_pos
 
         def _upsert(label: str, is_interacting: bool):
-            label = LABEL_NORMALIZE_MAP.get(label.lower().strip(), label.lower().strip())
+            label = LABEL_NORMALIZE_MAP.get(
+                label.lower().strip(), label.lower().strip())
             if not label or label in STRUCTURAL_BLACKLIST:
                 return
             if self.scene_sync.get(label):
-                return  # 靜態家具不存入 dynamic_objects
-
-            relation                     = item_rel_map.get(label, "near")
-            resolved_label, resolved_pos = _resolve_furniture(label, relation)
-
-            is_held = relation in ("in_hand_of", "held_by", "carrying", "in_hand")
+                return
+            relation                     = item_rel_map.get(
+                label, "near")
+            resolved_label, resolved_pos = _resolve_furniture(
+                label, relation)
+            is_held  = relation in (
+                "in_hand_of", "held_by", "carrying", "in_hand")
             base_set = {
-                "last_seen_on": resolved_label,   # user_id 或 家具 label
+                "last_seen_on": resolved_label,
                 "spatial_rel":  "held_by" if is_held else relation,
                 "room":         room_name,
                 "last_seen":    now,
                 "source":       "vlm",
             }
             if is_held and user_pos:
-                # 物件跟著人走，記錄人的當前座標
                 base_set["furniture_pos"] = [
                     user_pos.get("x", 0), user_pos.get("z", 0)
                 ]
             elif resolved_pos:
                 base_set["furniture_pos"] = resolved_pos
-
             inc_ops = {"seen_count": 1}
             if is_interacting:
                 inc_ops["interact_count"] = 1
-
             update_op = {
                 "$inc":         inc_ops,
                 "$set":         base_set,
@@ -961,10 +1105,10 @@ OBSERVATION RULES:
             }
             if is_interacting:
                 update_op["$addToSet"] = {"interacted_by": user_id}
-
             changed = self.bulk_buffer.upsert(label, update_op, now)
             status  = "changed" if changed else "no-change"
-            print(f"   🧩 [Dynamic] '{label}' @ {resolved_label} ({relation}) [{status}]")
+            print(f"    [Dynamic] '{label}' @ {resolved_label} "
+                  f"({relation}) [{status}]")
 
         for item in interacting_items:
             _upsert(item, is_interacting=True)
@@ -973,8 +1117,10 @@ OBSERVATION RULES:
 
     def _write_semantic_memory(self, user, action, bound_doc,
                                 confidence, result, source_nodes):
-        instance = bound_doc.get("label", "Unknown_Area") if bound_doc else "Unknown_Area"
-        room     = (bound_doc.get("room") or bound_doc.get("room_name", "")
+        instance = bound_doc.get("label", "Unknown_Area") \
+                   if bound_doc else "Unknown_Area"
+        room     = (bound_doc.get("room") or
+                    bound_doc.get("room_name", "")
                     if bound_doc else "")
         self.col_memory.insert_one({
             "user":         user,
@@ -992,23 +1138,26 @@ OBSERVATION RULES:
         self.col_activity.update_one(
             {"user": user, "date": today},
             {
-                "$push":        {"sequence": {
+                "$push": {"sequence": {
                     "action":    action,
                     "instance":  instance,
-                    "timestamp": datetime.datetime.utcnow().isoformat()
+                    "timestamp": datetime.datetime.utcnow().isoformat(),
                 }},
                 "$setOnInsert": {"user": user, "date": today},
             },
-            upsert=True
+            upsert=True,
         )
-        print(f"[Sequence] {user} → {action}@{instance} ({today})")
+        print(f"[Sequence] {user} -> {action}@{instance} ({today})")
 
-    def _index_to_faiss(self, user, action, bound_doc, result, mongo_id):
-        instance = bound_doc.get("label", "Unknown") if bound_doc else "Unknown"
+    def _index_to_faiss(self, user, action, bound_doc,
+                         result, mongo_id):
+        instance = bound_doc.get("label", "Unknown") \
+                   if bound_doc else "Unknown"
         pos_raw  = bound_doc.get("pos") if bound_doc else None
-        pos_xy   = pos_raw if isinstance(pos_raw, list) else [
-            bound_doc.get("x", 0), bound_doc.get("z", 0)
-        ] if bound_doc else [0, 0]
+        pos_xy   = pos_raw if isinstance(pos_raw, list) else (
+            [bound_doc.get("x", 0), bound_doc.get("z", 0)]
+            if bound_doc else [0, 0]
+        )
         memory_text = self.faiss_store.build_memory_text(
             user              = user,
             action            = action,
@@ -1028,7 +1177,7 @@ OBSERVATION RULES:
             "mongo_id":          mongo_id,
             "timestamp":         datetime.datetime.utcnow().isoformat(),
         })
-        print(f"[FAISS] memory：{instance} | {action}")
+        print(f"[FAISS] memory: {instance} | {action}")
 
     def shutdown(self):
         self.bulk_buffer.force_flush()

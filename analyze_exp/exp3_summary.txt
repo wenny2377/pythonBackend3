@@ -1,38 +1,40 @@
 =================================================================
 Experiment 3: Behavioral Manifold Learning
-Generated: 2026-04-22 11:13
+Generated: 2026-04-25 08:33
 =================================================================
-Total observations:  63
-Clusters found:      5
-Noise points:        0
-Silhouette Score S:  0.8024
+Total observations:  120
+Clusters found:      6
+Noise points:        4
+Silhouette Score S:  0.7776
 Acceptance criterion: S ≥ 0.50  →  ✓ PASSED (S ≥ 0.50)
 
 Cluster composition:
-  Cluster 0 (n=12): dominant=Watching (12), slot=Noon (6)
-  Cluster 1 (n=10): dominant=Drink (10), slot=Morning (5)
-  Cluster 2 (n=7): dominant=Watching (5), slot=Noon (3)
-  Cluster 3 (n=12): dominant=Standing (8), slot=Noon (8)
-  Cluster 4 (n=22): dominant=Typing (12), slot=Noon (9)
+  Cluster 0 (n=22): dominant=Typing (22), slot=Afternoon (9)
+  Cluster 1 (n=14): dominant=Standing (12), slot=Morning (4)
+  Cluster 2 (n=18): dominant=Drink (18), slot=Morning (9)
+  Cluster 3 (n=22): dominant=Typing (22), slot=Afternoon (8)
+  Cluster 4 (n=14): dominant=Typing (12), slot=Evening (6)
+  Cluster 5 (n=26): dominant=SittingIdle (22), slot=Noon (8)
 
 Behavior distribution:
-  Watching: 30
-  Typing: 12
-  Drink: 10
-  Standing: 8
-  SittingIdle: 2
-  Reading: 1
+  Typing: 62
+  SittingIdle: 23
+  Drink: 18
+  Standing: 12
+  Watching: 4
+  Looking at camera: 1
 
 Time slot distribution:
+  Morning: 30
   Noon: 30
-  Morning: 21
-  Afternoon: 12
+  Afternoon: 30
+  Evening: 30
 
 ── For thesis (copy-paste) ──────────────────────────────────
-The UMAP manifold projection of 63 behavioral observations
-(1,158-dim feature vectors) produces 5 distinct clusters
+The UMAP manifold projection of 120 behavioral observations
+(1,158-dim feature vectors) produces 6 distinct clusters
 identified by HDBSCAN, achieving a mean Silhouette Score of
-S = 0.8024
+S = 0.7776
 (≥ 0.50 acceptance threshold).
 Each cluster corresponds to a coherent behavioral habit
 combining action semantics, temporal context, and spatial

@@ -20,27 +20,23 @@ class HabitLearner:
             except Exception as e:
                 print(f"[HabitLearner] Error: {e}", flush=True)
                 import traceback; traceback.print_exc()
-
         threading.Thread(target=_bg, daemon=True).start()
 
     def handle_rejection(self, user_id: str, intent: str, item: str):
         if not item:
             return
-
         result = self.db.observation_logs.update_many(
             {"user": user_id, "interacting_items": item},
             {"$inc": {"weight": REJECTION_PENALTY}},
         )
         print(f"[HabitLearner] Rejection penalty applied to '{item}' "
               f"for {user_id} ({result.modified_count} entries)", flush=True)
-
         bullet = f"- Do not proactively suggest {item} to this user"
         self._insert_if_new(user_id, "## What NOT to do", bullet)
 
     def handle_acceptance(self, user_id: str, intent: str, item: str):
         if not item:
             return
-
         self.db.observation_logs.update_many(
             {"user": user_id, "interacting_items": item},
             {"$inc": {"weight": 1}},
@@ -59,33 +55,44 @@ class HabitLearner:
 
         updated = False
         for h in habits:
-            action   = h.get("action", "")
-            instance = h.get("instance", "")
-            weight   = int(h.get("weight", 0))
-            items    = h.get("interacting_items", [])
+            action    = h.get("action", "")
+            instance  = h.get("instance", "")
+            weight    = int(h.get("weight", 0))
+            items     = h.get("interacting_items", [])
+            time_slot = h.get("time_slot", "")
 
             if not action or not instance:
                 continue
 
-            item_str  = f" with {', '.join(items)}" if items else ""
-            bp_bullet = f"- {action} near {instance}{item_str} ({weight} times)"
-            changed   = self._insert_if_new(user_id, "## Behavior Patterns", bp_bullet)
+            item_str = f" with {', '.join(items)}" if items else ""
+            slot_str = f" in {time_slot}" if time_slot and time_slot != "Unknown" else ""
+
+            bp_bullet = (
+                f"- {action} near {instance}"
+                f"{item_str}{slot_str} ({weight} times)"
+            )
+            changed = self._insert_if_new(
+                user_id, "## Behavior Patterns", bp_bullet)
             if changed:
                 updated = True
 
             for item in items:
                 pref_bullet = (
-                    f"- User frequently uses {item} during {action} "
+                    f"- User frequently uses {item} during "
+                    f"{action}{slot_str} "
                     f"(inferred from {weight} observations)"
                 )
-                changed = self._insert_if_new(user_id, "## Preferences", pref_bullet)
+                changed = self._insert_if_new(
+                    user_id, "## Preferences", pref_bullet)
                 if changed:
                     updated = True
 
         if updated:
-            print(f"[HabitLearner] SKILL.md auto-updated for {user_id}", flush=True)
+            print(f"[HabitLearner] SKILL.md auto-updated for {user_id}",
+                  flush=True)
 
-    def _insert_if_new(self, user_id: str, section: str, bullet: str) -> bool:
+    def _insert_if_new(self, user_id: str, section: str,
+                        bullet: str) -> bool:
         sm  = self.skill_manager
         doc = self.db.user_skills.find_one({"user_id": user_id})
         if not doc:
@@ -93,22 +100,26 @@ class HabitLearner:
 
         current = doc.get("skill_md", "")
 
-        print(f"\n[SkillEvolution] Candidate: \"{bullet[:60]}\"", flush=True)
+        print(f"\n[SkillEvolution] Candidate: \"{bullet[:60]}\"",
+              flush=True)
         print(f"[SkillEvolution] Section  : {section}", flush=True)
 
         if self._is_duplicate(bullet, current, section):
-            print(f"[SkillEvolution] x Dedup check FAILED: too similar to existing",
-                  flush=True)
+            print(f"[SkillEvolution] x Dedup check FAILED: "
+                  f"too similar to existing", flush=True)
             return False
         print(f"[SkillEvolution] v Dedup check PASSED", flush=True)
 
-        from modules.skill_manager import _insert_bullet, _normalize_bullets, validate_skill
+        from modules.skill_manager import (
+            _insert_bullet, _normalize_bullets, validate_skill
+        )
         updated = _insert_bullet(current, section, bullet)
         updated = _normalize_bullets(updated)
 
         valid, reason = validate_skill(updated)
         if not valid:
-            print(f"[SkillEvolution] x Validate FAILED: {reason}", flush=True)
+            print(f"[SkillEvolution] x Validate FAILED: {reason}",
+                  flush=True)
             return False
         print(f"[SkillEvolution] v Validate PASSED", flush=True)
         print(f"[SkillEvolution] -> WRITTEN to {section}", flush=True)
@@ -117,8 +128,8 @@ class HabitLearner:
         sm._chunk_skill_md(updated, user_id)
         return True
 
-    def _is_duplicate(self, new_bullet: str, skill_md: str, section: str,
-                      threshold: float = 0.78) -> bool:
+    def _is_duplicate(self, new_bullet: str, skill_md: str,
+                       section: str, threshold: float = 0.78) -> bool:
         try:
             import numpy as np
             from sentence_transformers import SentenceTransformer
@@ -145,15 +156,17 @@ class HabitLearner:
                 return False
 
             model    = SentenceTransformer("paraphrase-MiniLM-L6-v2")
-            new_vec  = model.encode([new_bullet], normalize_embeddings=True)[0]
+            new_vec  = model.encode(
+                [new_bullet], normalize_embeddings=True)[0]
             old_vecs = model.encode(bullets, normalize_embeddings=True)
 
-            sims     = np.dot(old_vecs, new_vec)
-            max_sim  = float(sims.max())
+            sims    = np.dot(old_vecs, new_vec)
+            max_sim = float(sims.max())
             print(f"[SkillEvolution]   max similarity: {max_sim:.3f} "
                   f"(threshold: {threshold})", flush=True)
             return max_sim >= threshold
 
         except Exception as e:
-            print(f"[HabitLearner] duplicate check failed: {e}", flush=True)
+            print(f"[HabitLearner] duplicate check failed: {e}",
+                  flush=True)
             return new_bullet.lower() in skill_md.lower()
