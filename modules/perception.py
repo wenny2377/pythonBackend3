@@ -11,6 +11,7 @@ import cv2
 import numpy as np
 import faiss
 
+from collections import defaultdict
 from pymongo import MongoClient, ReturnDocument, UpdateOne
 from sentence_transformers import SentenceTransformer
 
@@ -67,6 +68,10 @@ BEHAVIOR_PROTOTYPES = {
 }
 
 NORMALIZE_THRESHOLD = 0.55
+
+# VLM confidence 過濾門檻
+# 低於這個值的觀察不存入 observation_logs
+VLM_CONFIDENCE_THRESHOLD = 0.0  # 先設 0.0 不過濾，可以調高
 
 
 def _get_time_slot(virtual_hour) -> str:
@@ -206,8 +211,7 @@ class ChangeStreamSync:
                                if new_map[k] != self._map.get(k)}
                     self._map = new_map
                 if changed:
-                    print(f"    [ChangeSync] Polled {len(docs)} docs, "
-                          f"changed={changed}")
+                    print(f"    [ChangeSync] Polled {len(docs)} docs")
                     if self.room_cache.current_room:
                         self.room_cache.switch_room(
                             self.room_cache.current_room,
@@ -700,6 +704,51 @@ OBSERVATION RULES:
             "description":       parsed.get("description", ""),
         }
 
+    def _weighted_vote_action(self, parsed_list: list,
+                               used_scores: list) -> str:
+        """
+        Weighted vote：用相機 node_score 作為投票權重
+        高分相機（好角度）的判斷有更大的影響力
+
+        改前：majority vote（每張圖一票）
+        改後：weighted vote（分數高的圖票數更多）
+        """
+        action_weights = defaultdict(float)
+
+        for parsed, score in zip(parsed_list, used_scores):
+            action = parsed.get("action", "none")
+            # 用 score 作為權重，最低給 0.1 避免完全無影響
+            weight = max(float(score), 0.1)
+            action_weights[action] += weight
+
+        if not action_weights:
+            return "none"
+
+        best_action = max(action_weights, key=action_weights.get)
+
+        # Log 投票結果
+        total = sum(action_weights.values())
+        for action, w in sorted(
+                action_weights.items(),
+                key=lambda x: x[1], reverse=True):
+            print(f"[WeightedVote] {action:<15} "
+                  f"weight={w:.2f} ({w/total:.0%})")
+        print(f"[WeightedVote] Winner: {best_action}")
+
+        return best_action
+
+    def _weighted_vote_object(self, parsed_list: list,
+                               used_scores: list) -> str:
+        """Weighted vote for main_object"""
+        obj_weights = defaultdict(float)
+        for parsed, score in zip(parsed_list, used_scores):
+            obj    = parsed.get("main_object", "unknown")
+            weight = max(float(score), 0.1)
+            obj_weights[obj] += weight
+        if not obj_weights:
+            return "unknown"
+        return max(obj_weights, key=obj_weights.get)
+
     def analyze_action_burst(self, payload: dict) -> dict:
         image_list   = payload.get("image_list", [])
         hint_user_id = payload.get("userID", "Unknown_User")
@@ -733,8 +782,9 @@ OBSERVATION RULES:
         sample_indices = self._select_sample_indices(
             image_list, node_scores)
 
-        user_votes  = []
-        parsed_list = []
+        user_votes   = []
+        parsed_list  = []
+        used_scores  = []  # 記錄每個 parsed 對應的 node_score
 
         for idx in sample_indices:
             try:
@@ -764,7 +814,14 @@ OBSERVATION RULES:
                 node_name = source_nodes[idx] \
                             if idx < len(source_nodes) \
                             else f"node_{idx}"
-                print(f" [Frame {idx}|{node_name}] {raw[:150]}")
+
+                # 取得這張圖的 node_score
+                node_score = node_scores[idx] \
+                             if idx < len(node_scores) else 0.5
+
+                print(f" [Frame {idx}|{node_name}|score={node_score:.2f}] "
+                      f"{raw[:150]}")
+
                 parsed = self._parse_vlm_output(raw)
                 if not parsed:
                     continue
@@ -773,6 +830,8 @@ OBSERVATION RULES:
                            "not visible", "cannot determine", ""}:
                     continue
                 parsed_list.append(parsed)
+                used_scores.append(node_score)
+
             except Exception as e:
                 print(f"[Frame {idx}] error: {e}")
 
@@ -782,16 +841,27 @@ OBSERVATION RULES:
                 if user_votes else hint_user_id
             )
 
-        final_user   = max(set(user_votes), key=user_votes.count) \
-                       if user_votes else hint_user_id
-        action_votes = [p["action"] for p in parsed_list]
-        object_votes = [p["main_object"] for p in parsed_list]
-        raw_action   = max(set(action_votes), key=action_votes.count)
-        final_object = max(set(object_votes), key=object_votes.count)
+        final_user = max(set(user_votes), key=user_votes.count) \
+                     if user_votes else hint_user_id
+
+        # ── Weighted Vote（改動核心）──
+        # 改前：majority vote（所有圖一樣權重）
+        # raw_action = max(set(action_votes), key=action_votes.count)
+        #
+        # 改後：weighted vote（好角度的圖有更高權重）
+        raw_action   = self._weighted_vote_action(
+            parsed_list, used_scores)
+        final_object = self._weighted_vote_object(
+            parsed_list, used_scores)
 
         final_action = self._normalize_action(raw_action)
 
-        best_idx    = action_votes.index(raw_action)
+        # 找到 raw_action 對應的 best_parsed
+        best_idx = next(
+            (i for i, p in enumerate(parsed_list)
+             if p.get("action") == raw_action),
+            0
+        )
         best_parsed = parsed_list[best_idx]
         best_parsed["action"]      = final_action
         best_parsed["main_object"] = final_object
@@ -866,7 +936,8 @@ OBSERVATION RULES:
         print(f"\n [Done] {final_user} -> {final_action} "
               f"@ {bound_label} "
               f"(room={bound_room}, conf={confidence}, "
-              f"day={virtual_day}, slot={_get_time_slot(virtual_hour)}, "
+              f"day={virtual_day}, "
+              f"slot={_get_time_slot(virtual_hour)}, "
               f"pending={self.bulk_buffer.pending_count})\n")
 
         return {
@@ -975,12 +1046,10 @@ OBSERVATION RULES:
         ]
         time_slot = _get_time_slot(virtual_hour)
 
-        # Day key: use virtual_day if provided, else real date
         today = str(virtual_day) \
                 if virtual_day is not None \
                 else datetime.datetime.utcnow().strftime("%Y-%m-%d")
 
-        # Check if already counted today in this time_slot
         existing = self.col_obs.find_one({
             "user":      user,
             "instance":  instance,
@@ -990,7 +1059,6 @@ OBSERVATION RULES:
         })
 
         if existing:
-            # Already counted today → just update last_seen
             self.col_obs.update_one(
                 {"_id": existing["_id"]},
                 {"$set": {
@@ -1002,7 +1070,6 @@ OBSERVATION RULES:
                   f"[{time_slot}] day={today} already counted, skip")
             return
 
-        # First time today in this time_slot → weight +1
         self.col_obs.find_one_and_update(
             {
                 "user":      user,
