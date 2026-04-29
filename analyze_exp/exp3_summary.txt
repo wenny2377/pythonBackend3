@@ -1,40 +1,40 @@
 =================================================================
 Experiment 3: Behavioral Manifold Learning
-Generated: 2026-04-25 08:33
+Generated: 2026-04-29 15:00
 =================================================================
-Total observations:  120
+Total observations:  150
 Clusters found:      6
-Noise points:        4
-Silhouette Score S:  0.7776
+Noise points:        7
+Silhouette Score S:  0.8767
 Acceptance criterion: S ≥ 0.50  →  ✓ PASSED (S ≥ 0.50)
 
 Cluster composition:
-  Cluster 0 (n=22): dominant=Typing (22), slot=Afternoon (9)
-  Cluster 1 (n=14): dominant=Standing (12), slot=Morning (4)
-  Cluster 2 (n=18): dominant=Drink (18), slot=Morning (9)
-  Cluster 3 (n=22): dominant=Typing (22), slot=Afternoon (8)
-  Cluster 4 (n=14): dominant=Typing (12), slot=Evening (6)
-  Cluster 5 (n=26): dominant=SittingIdle (22), slot=Noon (8)
+  Cluster 0 (n=28): dominant=Typing (28), slot=Afternoon (13)
+  Cluster 1 (n=22): dominant=Watching (22), slot=Evening (13)
+  Cluster 2 (n=16): dominant=Watching (16), slot=Noon (7)
+  Cluster 3 (n=27): dominant=Typing (26), slot=Afternoon (10)
+  Cluster 4 (n=20): dominant=Typing (20), slot=Morning (9)
+  Cluster 5 (n=30): dominant=Watching (15), slot=Noon (14)
 
 Behavior distribution:
-  Typing: 62
-  SittingIdle: 23
-  Drink: 18
-  Standing: 12
-  Watching: 4
-  Looking at camera: 1
+  Typing: 74
+  Watching: 60
+  Drink: 11
+  Looking at a phone: 3
+  Reading: 1
+  Looking at a cell phone: 1
 
 Time slot distribution:
-  Morning: 30
-  Noon: 30
-  Afternoon: 30
-  Evening: 30
+  Evening: 39
+  Morning: 37
+  Noon: 37
+  Afternoon: 37
 
 ── For thesis (copy-paste) ──────────────────────────────────
-The UMAP manifold projection of 120 behavioral observations
+The UMAP manifold projection of 150 behavioral observations
 (1,158-dim feature vectors) produces 6 distinct clusters
 identified by HDBSCAN, achieving a mean Silhouette Score of
-S = 0.7776
+S = 0.8767
 (≥ 0.50 acceptance threshold).
 Each cluster corresponds to a coherent behavioral habit
 combining action semantics, temporal context, and spatial

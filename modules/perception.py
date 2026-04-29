@@ -67,11 +67,30 @@ BEHAVIOR_PROTOTYPES = {
     "Eating":      "a person eating food, having a meal",
 }
 
-NORMALIZE_THRESHOLD = 0.55
+NORMALIZE_THRESHOLD      = 0.55
+VLM_CONFIDENCE_THRESHOLD = 0.0
 
-# VLM confidence 過濾門檻
-# 低於這個值的觀察不存入 observation_logs
-VLM_CONFIDENCE_THRESHOLD = 0.0  # 先設 0.0 不過濾，可以調高
+EXPERIMENT_BASE_DATE = None
+
+
+def _virtual_day_to_date(virtual_day) -> str:
+    if virtual_day is None:
+        # 真實部署
+        return datetime.datetime.utcnow().strftime("%Y-%m-%d")
+    
+    # C# 送來的日期字串，直接驗證格式後使用
+    if isinstance(virtual_day, str) and len(virtual_day) == 10:
+        try:
+            # 驗證格式正確（YYYY-MM-DD）
+            datetime.datetime.strptime(virtual_day, "%Y-%m-%d")
+            return virtual_day
+        except ValueError:
+            pass
+    
+    # 格式錯誤，fallback
+    print(f"[DayKey] Invalid format: {virtual_day}, fallback to today")
+    return datetime.datetime.utcnow().strftime("%Y-%m-%d")
+
 
 
 def _get_time_slot(virtual_hour) -> str:
@@ -706,27 +725,14 @@ OBSERVATION RULES:
 
     def _weighted_vote_action(self, parsed_list: list,
                                used_scores: list) -> str:
-        """
-        Weighted vote：用相機 node_score 作為投票權重
-        高分相機（好角度）的判斷有更大的影響力
-
-        改前：majority vote（每張圖一票）
-        改後：weighted vote（分數高的圖票數更多）
-        """
         action_weights = defaultdict(float)
-
         for parsed, score in zip(parsed_list, used_scores):
             action = parsed.get("action", "none")
-            # 用 score 作為權重，最低給 0.1 避免完全無影響
             weight = max(float(score), 0.1)
             action_weights[action] += weight
-
         if not action_weights:
             return "none"
-
         best_action = max(action_weights, key=action_weights.get)
-
-        # Log 投票結果
         total = sum(action_weights.values())
         for action, w in sorted(
                 action_weights.items(),
@@ -734,12 +740,10 @@ OBSERVATION RULES:
             print(f"[WeightedVote] {action:<15} "
                   f"weight={w:.2f} ({w/total:.0%})")
         print(f"[WeightedVote] Winner: {best_action}")
-
         return best_action
 
     def _weighted_vote_object(self, parsed_list: list,
                                used_scores: list) -> str:
-        """Weighted vote for main_object"""
         obj_weights = defaultdict(float)
         for parsed, score in zip(parsed_list, used_scores):
             obj    = parsed.get("main_object", "unknown")
@@ -764,8 +768,6 @@ OBSERVATION RULES:
 
         self.room_cache.switch_room(room_name, self.col_scene)
         if not self.room_cache.all_docs:
-            print(f"    [RoomCache] Empty for room={room_name}, "
-                  f"fallback to full DB")
             self.room_cache._room = None
             self.room_cache.switch_room("", self.col_scene)
 
@@ -782,18 +784,20 @@ OBSERVATION RULES:
         sample_indices = self._select_sample_indices(
             image_list, node_scores)
 
-        user_votes   = []
-        parsed_list  = []
-        used_scores  = []  # 記錄每個 parsed 對應的 node_score
+        user_votes  = []
+        parsed_list = []
+        used_scores = []
 
         for idx in sample_indices:
             try:
-                img_b64   = image_list[idx]
-                uid       = self._get_user_id(img_b64, hint_user_id)
+                img_b64    = image_list[idx]
+                uid        = self._get_user_id(img_b64, hint_user_id)
                 user_votes.append(uid)
-                img_clean = img_b64.split(',')[1] \
-                            if ',' in img_b64 else img_b64
-                api_body  = {
+                img_clean  = img_b64.split(',')[1] \
+                             if ',' in img_b64 else img_b64
+                node_score = node_scores[idx] \
+                             if idx < len(node_scores) else 0.5
+                api_body   = {
                     "model":    self.model,
                     "messages": [{
                         "role":    "user",
@@ -801,10 +805,7 @@ OBSERVATION RULES:
                         "images":  [img_clean],
                     }],
                     "stream":  False,
-                    "options": {
-                        "temperature": 0.05,
-                        "num_predict": 900,
-                    },
+                    "options": {"temperature": 0.05, "num_predict": 900},
                 }
                 resp      = requests.post(
                     f"{self.url}/api/chat",
@@ -814,14 +815,8 @@ OBSERVATION RULES:
                 node_name = source_nodes[idx] \
                             if idx < len(source_nodes) \
                             else f"node_{idx}"
-
-                # 取得這張圖的 node_score
-                node_score = node_scores[idx] \
-                             if idx < len(node_scores) else 0.5
-
-                print(f" [Frame {idx}|{node_name}|score={node_score:.2f}] "
-                      f"{raw[:150]}")
-
+                print(f" [Frame {idx}|{node_name}|score={node_score:.2f}]"
+                      f" {raw[:150]}")
                 parsed = self._parse_vlm_output(raw)
                 if not parsed:
                     continue
@@ -831,47 +826,30 @@ OBSERVATION RULES:
                     continue
                 parsed_list.append(parsed)
                 used_scores.append(node_score)
-
             except Exception as e:
                 print(f"[Frame {idx}] error: {e}")
 
         if not parsed_list:
             return self._empty_result(
                 max(set(user_votes), key=user_votes.count)
-                if user_votes else hint_user_id
-            )
+                if user_votes else hint_user_id)
 
-        final_user = max(set(user_votes), key=user_votes.count) \
-                     if user_votes else hint_user_id
-
-        # ── Weighted Vote（改動核心）──
-        # 改前：majority vote（所有圖一樣權重）
-        # raw_action = max(set(action_votes), key=action_votes.count)
-        #
-        # 改後：weighted vote（好角度的圖有更高權重）
-        raw_action   = self._weighted_vote_action(
-            parsed_list, used_scores)
-        final_object = self._weighted_vote_object(
-            parsed_list, used_scores)
-
+        final_user   = max(set(user_votes), key=user_votes.count) \
+                       if user_votes else hint_user_id
+        raw_action   = self._weighted_vote_action(parsed_list, used_scores)
+        final_object = self._weighted_vote_object(parsed_list, used_scores)
         final_action = self._normalize_action(raw_action)
 
-        # 找到 raw_action 對應的 best_parsed
         best_idx = next(
             (i for i, p in enumerate(parsed_list)
-             if p.get("action") == raw_action),
-            0
-        )
+             if p.get("action") == raw_action), 0)
         best_parsed = parsed_list[best_idx]
         best_parsed["action"]      = final_action
         best_parsed["main_object"] = final_object
 
         validated = self._validate_scene_graph(
-            parsed    = best_parsed,
-            user_pos  = user_pos,
-            room_name = room_name,
-            user_id   = final_user,
-        )
+            parsed=best_parsed, user_pos=user_pos,
+            room_name=room_name, user_id=final_user)
 
         bound_doc   = validated["bound_doc"]
         bound_label = validated["bound_label"]
@@ -890,53 +868,44 @@ OBSERVATION RULES:
             "_vlm_raw_action":   raw_action,
             "_coord_label":      coord_label,
             "_coord_dist":       round(coord_dist, 2)
-                                 if coord_dist != float('inf')
-                                 else None,
+                                 if coord_dist != float('inf') else None,
             "_confidence":       confidence,
         }
 
         self._update_scene_snapshot(
-            bound_doc,
-            validated["interacting_items"],
-            validated["scene_items"],
-            validated["spatial_relations"],
-        )
+            bound_doc, validated["interacting_items"],
+            validated["scene_items"], validated["spatial_relations"])
         self._update_observation_log(
             final_user, final_action, bound_doc,
             validated["interacting_items"],
             validated["spatial_relations"],
             validated["description"],
-            virtual_hour,
-            virtual_day,
-        )
+            virtual_hour, virtual_day)
         self._update_dynamic_objects(
-            user_id           = final_user,
-            interacting_items = validated["interacting_items"],
-            scene_items       = validated["scene_items"],
-            spatial_relations = validated["spatial_relations"],
-            bound_doc         = bound_doc,
-            room_name         = bound_room,
-            user_pos          = user_pos,
-        )
+            user_id=final_user,
+            interacting_items=validated["interacting_items"],
+            scene_items=validated["scene_items"],
+            spatial_relations=validated["spatial_relations"],
+            bound_doc=bound_doc, room_name=bound_room, user_pos=user_pos)
         self._write_semantic_memory(
             final_user, final_action, bound_doc,
-            confidence, result, source_nodes,
-        )
+            confidence, result, source_nodes)
         self._update_activity_sequence(
             final_user, final_action, bound_label)
 
         mem_doc  = self.col_memory.find_one(
             {"user": final_user, "action": final_action},
-            sort=[("timestamp", -1)],
-        )
+            sort=[("timestamp", -1)])
         mongo_id = str(mem_doc["_id"]) if mem_doc else ""
         self._index_to_faiss(
             final_user, final_action, bound_doc, result, mongo_id)
 
+        # 換算 virtual_day → 日期字串
+        day_key = _virtual_day_to_date(virtual_day)
         print(f"\n [Done] {final_user} -> {final_action} "
               f"@ {bound_label} "
               f"(room={bound_room}, conf={confidence}, "
-              f"day={virtual_day}, "
+              f"date={day_key}, "
               f"slot={_get_time_slot(virtual_hour)}, "
               f"pending={self.bulk_buffer.pending_count})\n")
 
@@ -977,8 +946,7 @@ OBSERVATION RULES:
         seen, out = set(), []
         for rel in pool:
             key = (f"{rel['subject']}|"
-                   f"{rel['relation']}|"
-                   f"{rel['object']}")
+                   f"{rel['relation']}|{rel['object']}")
             if key not in seen:
                 seen.add(key)
                 out.append(rel)
@@ -990,11 +958,9 @@ OBSERVATION RULES:
         if n <= max_samples:
             return list(range(n))
         if node_scores and len(node_scores) == n:
-            return sorted(
-                range(n),
-                key=lambda i: node_scores[i],
-                reverse=True,
-            )[:max_samples]
+            return sorted(range(n),
+                          key=lambda i: node_scores[i],
+                          reverse=True)[:max_samples]
         step = n / max_samples
         return [int(i * step) for i in range(max_samples)]
 
@@ -1010,8 +976,8 @@ OBSERVATION RULES:
                                 scene_items, spatial_relations):
         if not bound_doc:
             return
-        doc_id     = bound_doc.get("_id")
-        all_items  = list(set(interacting_items + scene_items))
+        doc_id    = bound_doc.get("_id")
+        all_items = list(set(interacting_items + scene_items))
         counts_inc = {}
         for rel in spatial_relations:
             s = rel.get("subject", "")
@@ -1042,13 +1008,13 @@ OBSERVATION RULES:
         instance  = bound_doc.get("label", "Unknown")
         pos_raw   = bound_doc.get("pos")
         pos_xy    = pos_raw if isinstance(pos_raw, list) else [
-            bound_doc.get("x", 0), bound_doc.get("z", 0)
-        ]
+            bound_doc.get("x", 0), bound_doc.get("z", 0)]
         time_slot = _get_time_slot(virtual_hour)
 
-        today = str(virtual_day) \
-                if virtual_day is not None \
-                else datetime.datetime.utcnow().strftime("%Y-%m-%d")
+        # ── 核心改動：虛擬天數 → 日期字串 ──────────────────────────────
+        # 改前：today = str(virtual_day)  → "3"（容易和 weight 搞混）
+        # 改後：today = _virtual_day_to_date(virtual_day) → "2026-05-01"
+        today = _virtual_day_to_date(virtual_day)
 
         existing = self.col_obs.find_one({
             "user":      user,
@@ -1064,10 +1030,9 @@ OBSERVATION RULES:
                 {"$set": {
                     "last_seen":    datetime.datetime.utcnow(),
                     "raw_vlm_desc": raw_desc,
-                }}
-            )
+                }})
             print(f"[ObsLog] {user} -> {action} @ {instance} "
-                  f"[{time_slot}] day={today} already counted, skip")
+                  f"[{time_slot}] date={today} already counted, skip")
             return
 
         self.col_obs.find_one_and_update(
@@ -1080,8 +1045,7 @@ OBSERVATION RULES:
             {
                 "$inc":      {"weight": 1},
                 "$addToSet": {
-                    "interacting_items": {"$each": interacting_items}
-                },
+                    "interacting_items": {"$each": interacting_items}},
                 "$set": {
                     "observed_relations": spatial_relations,
                     "pos":               pos_xy,
@@ -1100,12 +1064,11 @@ OBSERVATION RULES:
             return_document=ReturnDocument.AFTER,
         )
         print(f"[ObsLog] {user} -> {action} @ {instance} "
-              f"[{time_slot}] day={today} +1 weight")
+              f"[{time_slot}] date={today} +1 weight")
 
     def _update_dynamic_objects(self, user_id, interacting_items,
                                  scene_items, spatial_relations,
-                                 bound_doc, room_name,
-                                 user_pos=None):
+                                 bound_doc, room_name, user_pos=None):
         now         = datetime.datetime.utcnow()
         bound_label = bound_doc.get("label", "Unknown_Area") \
                       if bound_doc else "Unknown_Area"
@@ -1125,12 +1088,10 @@ OBSERVATION RULES:
                 item_furniture_map[subj]      = obj
 
         def _resolve_furniture(label: str, relation: str):
-            if relation in ("in_hand_of", "held_by",
-                            "carrying", "in_hand"):
+            if relation in ("in_hand_of", "held_by", "carrying", "in_hand"):
                 return user_id, None
             vlm_furn = item_furniture_map.get(label)
-            if vlm_furn and vlm_furn not in (
-                    "unknown", "", "none", user_id):
+            if vlm_furn and vlm_furn not in ("unknown", "", "none", user_id):
                 furn_doc = self.scene_sync.get(vlm_furn)
                 if furn_doc:
                     return furn_doc["label"], furn_doc.get("pos")
@@ -1143,10 +1104,8 @@ OBSERVATION RULES:
                 return
             if self.scene_sync.get(label):
                 return
-            relation                     = item_rel_map.get(
-                label, "near")
-            resolved_label, resolved_pos = _resolve_furniture(
-                label, relation)
+            relation                     = item_rel_map.get(label, "near")
+            resolved_label, resolved_pos = _resolve_furniture(label, relation)
             is_held  = relation in (
                 "in_hand_of", "held_by", "carrying", "in_hand")
             base_set = {
@@ -1158,11 +1117,10 @@ OBSERVATION RULES:
             }
             if is_held and user_pos:
                 base_set["furniture_pos"] = [
-                    user_pos.get("x", 0), user_pos.get("z", 0)
-                ]
+                    user_pos.get("x", 0), user_pos.get("z", 0)]
             elif resolved_pos:
                 base_set["furniture_pos"] = resolved_pos
-            inc_ops = {"seen_count": 1}
+            inc_ops   = {"seen_count": 1}
             if is_interacting:
                 inc_ops["interact_count"] = 1
             update_op = {
@@ -1173,9 +1131,8 @@ OBSERVATION RULES:
             if is_interacting:
                 update_op["$addToSet"] = {"interacted_by": user_id}
             changed = self.bulk_buffer.upsert(label, update_op, now)
-            status  = "changed" if changed else "no-change"
             print(f"    [Dynamic] '{label}' @ {resolved_label} "
-                  f"({relation}) [{status}]")
+                  f"({relation}) [{'changed' if changed else 'no-change'}]")
 
         for item in interacting_items:
             _upsert(item, is_interacting=True)
@@ -1223,16 +1180,12 @@ OBSERVATION RULES:
         pos_raw  = bound_doc.get("pos") if bound_doc else None
         pos_xy   = pos_raw if isinstance(pos_raw, list) else (
             [bound_doc.get("x", 0), bound_doc.get("z", 0)]
-            if bound_doc else [0, 0]
-        )
+            if bound_doc else [0, 0])
         memory_text = self.faiss_store.build_memory_text(
-            user              = user,
-            action            = action,
-            instance          = instance,
-            interacting_items = result.get("interacting_items", []),
-            all_items         = result.get("all_items", []),
-            spatial_relations = result.get("spatial_relations", []),
-        )
+            user=user, action=action, instance=instance,
+            interacting_items=result.get("interacting_items", []),
+            all_items=result.get("all_items", []),
+            spatial_relations=result.get("spatial_relations", []))
         self.faiss_store.add(memory_text, {
             "user":              user,
             "action":            action,
