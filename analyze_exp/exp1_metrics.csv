@@ -1,6 +1,4 @@
 Behavior,Precision,Recall,F1-Score,Support
-Drink,1.000,0.375,0.545,24
-Reading,0.000,0.000,0.000,12
-Typing,0.400,1.000,0.571,14
+Drink,1.000,1.000,1.000,5
 
-Macro Avg,0.467,0.458,0.372,
+Macro Avg,1.000,1.000,1.000,
