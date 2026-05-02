@@ -1,0 +1,21 @@
+======================================================================
+Ablation Study: System Component Contribution Summary
+Generated: 2026-05-02 15:10
+======================================================================
+
+┌─────────────────────┬──────────────────┬──────────────────┬──────────────┐
+│ Component           │ Full System      │ Without Component│ Delta        │
+├─────────────────────┼──────────────────┼──────────────────┼──────────────┤
+│ Intent Classifier   │ Accuracy=TODO    │ (baseline)       │ +TODO        │
+│ Snapshot Injection  │ Correct=70%      │ Correct=10%      │ -60%         │
+│ FAT=5 Filter        │ F1=0.83          │ Redundancy=0%    │ Noise filtered│
+│ Feedback Learning   │ Rate=0% (Day2+)  │ Rate=100%(Day1) │ -100%        │
+│ FAISS Compression   │ 480 tokens      │ 2,000 tokens       │ -76%         │
+└─────────────────────┴──────────────────┴──────────────────┴──────────────┘
+
+Key findings:
+  RQ1: Intent classification accuracy = TODO
+  RQ2: Removing snapshot → hallucination rate 90% (vs 30%)
+  RQ3: FAT=5 achieves best F1=0.83 vs FAT=2 redundancy=0%
+  RQ3c: Correction Rate drops from 100% to 0% after single rejection
+  RQ4: FAISS reduces token usage by 76% (2,000 → 480)

@@ -1,43 +1,34 @@
 =================================================================
 Experiment 3: Behavioral Manifold Learning
-Generated: 2026-04-29 15:00
+Generated: 2026-05-02 15:04
 =================================================================
-Total observations:  150
-Clusters found:      6
-Noise points:        7
-Silhouette Score S:  0.8767
-Acceptance criterion: S ≥ 0.50  →  ✓ PASSED (S ≥ 0.50)
+Total observations   : 50
+Clusters found       : 3
+Noise points         : 0
+Silhouette Score S   : 0.8523
+Acceptance criterion : S >= 0.50  ->  PASSED (S >= 0.50)
 
 Cluster composition:
-  Cluster 0 (n=28): dominant=Typing (28), slot=Afternoon (13)
-  Cluster 1 (n=22): dominant=Watching (22), slot=Evening (13)
-  Cluster 2 (n=16): dominant=Watching (16), slot=Noon (7)
-  Cluster 3 (n=27): dominant=Typing (26), slot=Afternoon (10)
-  Cluster 4 (n=20): dominant=Typing (20), slot=Morning (9)
-  Cluster 5 (n=30): dominant=Watching (15), slot=Noon (14)
+  Cluster 0 (n=28): dominant=Typing (28), slot=Morning (11)
+  Cluster 1 (n=10): dominant=Drink (9), slot=Morning (6)
+  Cluster 2 (n=12): dominant=Typing (7), slot=Morning (5)
 
 Behavior distribution:
-  Typing: 74
-  Watching: 60
-  Drink: 11
-  Looking at a phone: 3
-  Reading: 1
-  Looking at a cell phone: 1
+  Typing: 35
+  Drink: 9
+  Laying: 5
+  Eating: 1
 
 Time slot distribution:
-  Evening: 39
-  Morning: 37
-  Noon: 37
-  Afternoon: 37
+  Morning: 22
+  Afternoon: 13
+  Evening: 8
+  Noon: 7
 
-── For thesis (copy-paste) ──────────────────────────────────
-The UMAP manifold projection of 150 behavioral observations
-(1,158-dim feature vectors) produces 6 distinct clusters
-identified by HDBSCAN, achieving a mean Silhouette Score of
-S = 0.8767
-(≥ 0.50 acceptance threshold).
+For thesis:
+The UMAP projection of 50 behavioral observations
+(1,158-dim feature vectors) produces 3 distinct clusters
+identified by HDBSCAN.
+Silhouette Score S = 0.8523 (PASSED (S >= 0.50)).
 Each cluster corresponds to a coherent behavioral habit
-combining action semantics, temporal context, and spatial
-location, confirming that the training-free 1,158-dim
-feature vector captures the latent structure of user
-behavioral habits without any gradient-based training (RQ4).
+combining action semantics, temporal context, and spatial location.

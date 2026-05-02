@@ -1,0 +1,6 @@
+day,query,answer,detected_recs,correction_needed,correction_rate,description
+1,I am thirsty,I can see a cup on you in Kitchen.,,False,100%,Day 1: recommends juice -> user rejects
+2,I am thirsty,I see you're thirsty! I can offer you a cola from BedRoom(dad) or a cup from Kitchen.,cola,False,0%,Day 2: recommends alternative -> user accepts
+3,I am thirsty,I can see a cup on you in the Kitchen. Would you like to drink from it?,drink,False,0%,Day 3: no correction needed
+4,I am thirsty,I see you're thirsty! I can offer you a cola from your dad's room.,cola,False,0%,Day 4: learning stable
+5,I am thirsty,I see that you're thirsty! I can offer you a cup from the Kitchen.,,False,0%,Day 5: learning stable

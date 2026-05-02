@@ -16,22 +16,22 @@ Metrics:
 [User_Mom]
   FAT   n    redund   recall   F1       score
   ------------------------------------------------
-  FAT=2  n=9   redund=0.06  recall=1.00  F1=0.97  score=0.97
-  FAT=3  n=7   redund=0.05  recall=1.00  F1=0.98  score=0.98
-  FAT=5  n=5   redund=0.00  recall=0.71  F1=0.83  score=1.00  <- SELECTED
-  FAT=8  n=5   redund=0.00  recall=0.71  F1=0.83  score=1.00
-  FAT=10 n=4   redund=0.00  recall=0.57  F1=0.73  score=1.00
+  FAT=2  n=4   redund=0.00  recall=1.00  F1=1.00  score=1.00
+  FAT=3  n=4   redund=0.00  recall=1.00  F1=1.00  score=1.00
+  FAT=5  n=2   redund=0.00  recall=0.50  F1=0.67  score=1.00  <- SELECTED
+  FAT=8  n=1   redund=0.00  recall=0.25  F1=0.40  score=1.00
+  FAT=10 n=0   redund=0.00  recall=0.00  F1=0.00  score=0.50
 
-  Best F1 = FAT=3 (F1=0.98)
+  Best F1 = FAT=2 (F1=1.00)
 
 [User_Dad]
   FAT   n    redund   recall   F1       score
   ------------------------------------------------
-  FAT=2  n=3   redund=0.00  recall=1.00  F1=1.00  score=1.00
-  FAT=3  n=2   redund=0.00  recall=1.00  F1=1.00  score=1.00
-  FAT=5  n=2   redund=0.00  recall=1.00  F1=1.00  score=1.00  <- SELECTED
-  FAT=8  n=2   redund=0.00  recall=1.00  F1=1.00  score=1.00
-  FAT=10 n=2   redund=0.00  recall=1.00  F1=1.00  score=1.00
+  FAT=2  n=1   redund=0.00  recall=1.00  F1=1.00  score=1.00
+  FAT=3  n=1   redund=0.00  recall=1.00  F1=1.00  score=1.00
+  FAT=5  n=1   redund=0.00  recall=1.00  F1=1.00  score=1.00  <- SELECTED
+  FAT=8  n=1   redund=0.00  recall=1.00  F1=1.00  score=1.00
+  FAT=10 n=1   redund=0.00  recall=1.00  F1=1.00  score=1.00
 
   Best F1 = FAT=2 (F1=1.00)
 

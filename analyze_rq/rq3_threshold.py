@@ -1,7 +1,7 @@
 """
 analyze_rq/rq3_threshold.py
 
-RQ3: Fast Adaptation Threshold (FAT) Selection
+RQ3a: Fast Adaptation Threshold (FAT) Selection
 
 Metrics:
   redundancy  = fraction of habit pairs with SBERT sim >= 0.78
@@ -13,14 +13,19 @@ Metrics:
 
 Ground truth = behaviors with weight >= GROUND_TRUTH_MIN_WEIGHT
 
+After running, automatically generates fat_curve.png in out_dir.
+
 Usage:
     CUDA_VISIBLE_DEVICES="" python analyze_rq/rq3_threshold.py
-    CUDA_VISIBLE_DEVICES="" python analyze_rq/rq3_threshold.py --gt 3
+    CUDA_VISIBLE_DEVICES="" python analyze_rq/rq3_threshold.py --gt 5 --out results/
 """
 
 import argparse
 import os
 import numpy as np
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
 from pymongo import MongoClient
 from sentence_transformers import SentenceTransformer
 
@@ -31,6 +36,12 @@ USERS                   = ["User_Mom", "User_Dad"]
 DEDUP_SIM               = 0.78
 N_CATEGORIES            = 9
 GROUND_TRUTH_MIN_WEIGHT = 3
+
+COLOR_RECALL    = '#2196F3'
+COLOR_PRECISION = '#FF9800'
+COLOR_F1        = '#4CAF50'
+COLOR_FAT5      = '#E53935'
+COLOR_BG        = '#FAFAFA'
 
 
 def get_all_obs_grouped(db, user_id: str) -> list:
@@ -146,6 +157,130 @@ def calc_laplace_avg(habits: list, total_obs: int) -> float:
     return float(np.mean(scores))
 
 
+
+def plot_fat_curves(all_results: dict, out_dir: str):
+    """
+    FAT Sensitivity Analysis curve.
+    X: FAT value {2, 3, 5, 8, 10}
+    Y: Precision / Recall / F1
+    One subplot per user.
+    """
+    users = list(all_results.keys())
+    n     = len(users)
+
+    fig, axes = plt.subplots(
+        1, n,
+        figsize=(6 * n, 5.5),
+        sharey=True,
+        facecolor=COLOR_BG,
+    )
+    if n == 1:
+        axes = [axes]
+
+    fig.suptitle(
+        'RQ3: FAT Sensitivity Analysis\n'
+        'Precision · Recall · F1 vs Fast Adaptation Threshold (FAT)',
+        fontsize=13, fontweight='bold', y=1.02,
+        color='#212121',
+    )
+
+    for ax, user_id in zip(axes, users):
+        user_results = all_results[user_id]
+
+        fats       = [r['threshold']  for r in user_results]
+        precisions = [r['precision']  for r in user_results]
+        recalls    = [r['recall']     for r in user_results]
+        f1s        = [r['f1']         for r in user_results]
+
+        ax.set_facecolor(COLOR_BG)
+        ax.grid(axis='y', color='#E0E0E0', linewidth=0.8, zorder=0)
+
+        x = list(range(len(fats)))
+
+        fat5_idx = fats.index(5) if 5 in fats else None
+        if fat5_idx is not None:
+            ax.axvline(
+                x=fat5_idx,
+                color=COLOR_FAT5,
+                linewidth=1.8,
+                linestyle='--',
+                alpha=0.7,
+                zorder=1,
+                label='FAT=5 (selected)',
+            )
+            ax.axvspan(
+                fat5_idx - 0.35, fat5_idx + 0.35,
+                alpha=0.07, color=COLOR_FAT5, zorder=0,
+            )
+
+        ax.plot(x, recalls,    'o-',
+                color=COLOR_RECALL,
+                linewidth=2.2, markersize=8,
+                markerfacecolor='white', markeredgewidth=2,
+                label='Recall', zorder=3)
+
+        ax.plot(x, precisions, 's-',
+                color=COLOR_PRECISION,
+                linewidth=2.2, markersize=8,
+                markerfacecolor='white', markeredgewidth=2,
+                label='Precision', zorder=3)
+
+        ax.plot(x, f1s,        '^-',
+                color=COLOR_F1,
+                linewidth=2.5, markersize=9,
+                markerfacecolor='white', markeredgewidth=2.5,
+                label='F1', zorder=4)
+
+        f1_max     = max(f1s)
+        f1_max_idx = f1s.index(f1_max)
+        offset_x   = 0.3 if f1_max_idx < len(fats) - 1 else -0.3
+        ax.annotate(
+            f'F1 peak\n{f1_max:.2f}',
+            xy=(f1_max_idx, f1_max),
+            xytext=(f1_max_idx + offset_x, f1_max - 0.10),
+            fontsize=9, color=COLOR_F1, fontweight='bold',
+            arrowprops=dict(
+                arrowstyle='->', color=COLOR_F1, lw=1.5),
+        )
+
+        for i, (r, p, f) in enumerate(zip(recalls, precisions, f1s)):
+            ax.text(i, r + 0.025, f'{r:.2f}',
+                    ha='center', va='bottom',
+                    fontsize=8, color=COLOR_RECALL, alpha=0.9)
+            ax.text(i, p - 0.055, f'{p:.2f}',
+                    ha='center', va='top',
+                    fontsize=8, color=COLOR_PRECISION, alpha=0.9)
+            ax.text(i, f + 0.025, f'{f:.2f}',
+                    ha='center', va='bottom',
+                    fontsize=8, color=COLOR_F1, alpha=0.9)
+
+        ax.set_xticks(x)
+        ax.set_xticklabels([f'FAT={v}' for v in fats], fontsize=10)
+        ax.set_ylim(0.0, 1.20)
+        ax.set_xlabel('Fast Adaptation Threshold (FAT)', fontsize=11)
+        if ax == axes[0]:
+            ax.set_ylabel('Score', fontsize=11)
+
+        ax.set_title(
+            user_id.replace('_', ' '),
+            fontsize=12, fontweight='bold',
+            pad=10, color='#212121',
+        )
+
+        ax.legend(loc='lower left', fontsize=9,
+                  framealpha=0.9, edgecolor='#BDBDBD')
+
+        for spine in ax.spines.values():
+            spine.set_edgecolor('#BDBDBD')
+
+    plt.tight_layout()
+    out_path = os.path.join(out_dir, 'fat_curve.png')
+    plt.savefig(out_path, dpi=150, bbox_inches='tight',
+                facecolor=COLOR_BG)
+    plt.close()
+    print(f"FAT curve saved: {out_path}")
+
+
 def run_experiment(db, model: SentenceTransformer, out_dir: str):
     os.makedirs(out_dir, exist_ok=True)
 
@@ -235,6 +370,10 @@ def run_experiment(db, model: SentenceTransformer, out_dir: str):
 
     save_summary(all_results, out_dir)
     save_csv(all_results, out_dir)
+
+    print("\nGenerating FAT curve plot...")
+    plot_fat_curves(all_results, out_dir)
+
     return all_results
 
 

@@ -1,0 +1,44 @@
+=================================================================
+Experiment 2: Behavioral Scene Graph Construction
+Generated: 2026-05-02 15:03
+=================================================================
+
+Graph Statistics:
+  Total nodes : 26
+  Users       : 2
+  Behaviors   : 4
+  Furniture   : 14
+  Objects     : 6
+  Total edges : 22
+  performs    : 5
+  near        : 6
+  has_item    : 9
+  in_hand_of  : 2
+
+Query Validation (dynamic from actual DB data):
+  Total queries       : 12
+  Overall Top-3 Recall: 83%
+  performs    : 100%
+  near        : 100%
+  has_item    : 50%
+
+Per-query results:
+  v  User_Mom laying                          -> sofa            [rank=1, sim=0.683]
+  v  User_Dad typing                          -> desk            [rank=1, sim=0.700]
+  v  User_Mom drink                           -> table           [rank=1, sim=0.745]
+  v  User_Mom typing                          -> table2          [rank=1, sim=0.706]
+  v  laying near sofa                         -> sofa            [rank=1, sim=0.715]
+  v  typing near desk                         -> desk            [rank=1, sim=0.649]
+  v  drink near table                         -> table           [rank=1, sim=0.674]
+  v  typing near table2                       -> table2          [rank=1, sim=0.719]
+  v  cup on table                             -> cup             [rank=1, sim=0.579]
+  x  juicebottle on table                     -> juicebottle     [rank=-, sim=0.000]
+  v  computer set on desk                     -> computer set    [rank=1, sim=0.666]
+  x  book on sofa                             -> book            [rank=-, sim=0.000]
+
+For thesis:
+The system constructed a Behavioral Scene Graph comprising 26 nodes
+(2 users, 4 behaviors, 14 furniture, 6 objects)
+and 22 typed relational edges.
+FAISS semantic retrieval evaluated on 12 queries
+achieved an overall Top-3 Recall of 83%.

@@ -1,44 +1,44 @@
 =================================================================
 RQ2: Object Localization and Hallucination Prevention
-Generated: 2026-04-09 15:19
+Generated: 2026-05-02 15:06
 =================================================================
 
 WITH snapshot (dynamic_objects in MongoDB):
-  Correct: 7/10 (70%)
+  Correct: 8/10 (80%)
   Hallucinations: 0
 
 WITHOUT snapshot (dynamic_objects cleared):
-  Correct: 9/10 (90%)
-  Hallucinations: 1 (robot invented non-existent objects)
+  Correct: 3/10 (30%)
+  Hallucinations: 3 (robot invented non-existent objects)
 
 Per-query results (WITH snapshot):
-  v  is there any juice                   I found: juicebottle (on chair in BedRoom(dad)).
-  v  I want an apple                      There is an apple on the table in LivingRoom.
-  x  where is the cola                    I found: juicebottle (on chair in BedRoom(dad)).
-  v  is there a banana                    I found: banana (on table2 in LivingRoom), apple (
-  v  do we have any fruit                 I found: banana (on table2 in LivingRoom), apple (
-  v  I want cheese                        Sorry, I don't see any cheese in the house.
-  x  is there any pineapple               I found: banana (on table2 in LivingRoom), apple (
-  v  get me some coffee                   Sorry, I couldn't find any coffee in the snapshot.
+  v  is there any juice                   I found: juicebottle (on table in Kitchen).
+  v  I want an apple                      There is an apple on the table in the Kitchen.
+  v  where is the cola                    I don't see any cola at home right now.
+  v  is there a banana                    I found: banana (on table in Kitchen), apple (on t
+  v  do we have any fruit                 I found: banana (on table in Kitchen), apple (on t
+  v  I want cheese                        Sorry, I don't see any cheese in our home.
+  x  is there any pineapple               I don't see any pineapple at home right now.
+  v  get me some coffee                   I'm afraid there is no coffee in our home right no
   v  I want pizza                         Sorry, there is no pizza available in the house.
-  x  is there any milk                    I found: juicebottle (on chair in BedRoom(dad)), c
+  x  is there any milk                    I don't see any milk at home right now.
 
 Per-query results (WITHOUT snapshot):
-  v                is there any juice                   No drink items currently detected in the home.
-  hallucination!   I want an apple                      I'm sorry, but there are no apples available in th
-  v                where is the cola                    No drink items currently detected in the home.
+  hallucination!   is there any juice                   I don't see any juice at home right now.
+  hallucination!   I want an apple                      I'm sorry, but there is no apple available in the 
+  hallucination!   where is the cola                    I don't see any cola at home right now.
   v                is there a banana                    No food items currently detected in the home.
   v                do we have any fruit                 No food items currently detected in the home.
-  v                I want cheese                        Sorry, I couldn't find any cheese in the house.
-  v                is there any pineapple               No food items currently detected in the home.
-  v                get me some coffee                   I'm sorry, but I don't see any coffee in the house
-  v                I want pizza                         Sorry, User_Mom, but pizza is not available in you
-  v                is there any milk                    No items currently detected in the home.
+  x                I want cheese                        I'm afraid we don't have any cheese available at h
+  x                is there any pineapple               I don't see any pineapple at home right now.
+  x                get me some coffee                   I'm happy to get you some coffee, but I don't see 
+  v                I want pizza                         I'm sorry, but there is no pizza available in the 
+  x                is there any milk                    I don't see any milk at home right now.
 
 For thesis:
 To evaluate the snapshot injection mechanism, the system was tested
 with and without access to the dynamic object database.
-With snapshot: 7/10 correct responses (70%).
-Without snapshot: 1 hallucination(s) detected where the robot
+With snapshot: 8/10 correct responses (80%).
+Without snapshot: 3 hallucination(s) detected where the robot
 invented the location of objects not present in the environment,
 confirming that snapshot injection is essential for grounded responses.
