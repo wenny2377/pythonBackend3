@@ -1,18 +1,21 @@
 ============================================================
 Experiment 1: VLM Action Recognition Accuracy
-Generated: 2026-05-02 16:36
+Generated: 2026-05-03 09:17
 ============================================================
-Total episodes   : 5
-Overall accuracy : 100.0%
-Macro F1-score   : 1.000
+Total episodes   : 30
+Overall accuracy : 66.7%
+Macro F1-score   : 0.617
 
 Per-class results:
-  Drink           P=1.000  R=1.000  F1=1.000  (n=5)
+  Drink           P=1.000  R=0.500  F1=0.667  (n=10)
+  Laying          P=0.667  R=1.000  F1=0.800  (n=10)
+  Reading         P=0.000  R=0.000  F1=0.000  (n=5)
+  Typing          P=1.000  R=1.000  F1=1.000  (n=5)
 
-Best behavior  : Drink (F1=1.000)
-Worst behavior : Drink (F1=1.000)
+Best behavior  : Typing (F1=1.000)
+Worst behavior : Reading (F1=0.000)
 
 For thesis:
 The VLM-based perception pipeline achieves an overall accuracy of
-100.0% and a macro F1-score of 1.000 across
-1 behavioral categories in the Unity 3D simulation.
+66.7% and a macro F1-score of 0.617 across
+4 behavioral categories in the Unity 3D simulation.
