@@ -12,111 +12,78 @@ try:
 except ImportError:
     _MANIFOLD_OK = False
     print("⚠️  [Manifold] umap-learn / hdbscan 未安裝，Manifold 功能停用")
-    print("   pip install umap-learn hdbscan scikit-learn")
-
 
 TRIGGER_THRESHOLD = 2.0
 MIN_CONFIDENCE    = 0.60
 MIN_POINTS_REFIT  = 30
-REFIT_EVERY       = 50
+REFIT_EVERY       = 20
 TRAJECTORY_WINDOW = 5
 
 
 class ManifoldEngine:
 
     def __init__(self, db, sbert_model):
-        self.db          = db
-        self.sbert       = sbert_model
-        self._lock       = threading.Lock()
+        self.db             = db
+        self.sbert          = sbert_model
+        self._lock          = threading.Lock()
         self._umap_model    = None
         self._hdbscan_model = None
         self._scaler        = None
         self._fitted        = False
         self._point_count   = 0
+        print("✅ [ManifoldEngine] 初始化完成（1158-dim）")
 
-        print("✅ [ManifoldEngine] 初始化完成（1158-dim 含時間編碼 + 序列上下文）")
-        if not _MANIFOLD_OK:
-            print("   ⚠️  Manifold 功能停用（缺少套件）")
-
-    # ──────────────────────────────────────────────────
-    # 公開 API 1：build_feature_vector
-    # ──────────────────────────────────────────────────
-    def build_feature_vector(self, user_id: str, action: str,
-                              user_pos: dict, room_name: str,
-                              detected_items: list, confidence: str,
-                              virtual_hour: float = None,
-                              prev_action: str = None) -> np.ndarray:
-        """
-        回傳 1158-dim numpy 向量：
-          384  當前行為語意 (SBERT)
-          2    時間編碼 sin/cos(2πh/24)
-          384  上一個行為語意 (SBERT)
-          2    用戶座標 (x, z 正規化)
-          384  物件語意 (SBERT)
-          2    信心度 + padding
-        """
+    def build_feature_vector(self, user_id, action, user_pos,
+                              room_name, detected_items, confidence,
+                              virtual_hour=None, prev_action=None):
         try:
-            # 1. 當前行為語意
             action_vec = self.sbert.encode(
-                action or "unknown", normalize_embeddings=True
-            ).astype(np.float32)
+                action or "unknown",
+                normalize_embeddings=True).astype(np.float32)
 
-            # 2. 時間編碼（循環連續，讓 23:00 和 01:00 在向量空間裡接近）
-            if virtual_hour is not None:
-                h = float(virtual_hour)
-            else:
-                h = float(datetime.datetime.now().hour)
+            h = float(virtual_hour) if virtual_hour is not None \
+                else float(datetime.datetime.now().hour)
             time_vec = np.array([
                 math.sin(2 * math.pi * h / 24),
                 math.cos(2 * math.pi * h / 24),
             ], dtype=np.float32)
 
-            # 3. 上一個行為語意（序列上下文）
             prev_text = prev_action if prev_action else "unknown"
-            prev_vec = self.sbert.encode(
-                prev_text, normalize_embeddings=True
-            ).astype(np.float32)
+            prev_vec  = self.sbert.encode(
+                prev_text,
+                normalize_embeddings=True).astype(np.float32)
 
-            # 4. 用戶座標
             x = float(user_pos.get("x", 0)) / 10.0 if user_pos else 0.0
             z = float(user_pos.get("z", 0)) / 10.0 if user_pos else 0.0
             pos_vec = np.array([x, z], dtype=np.float32)
 
-            # 5. 物件語意
-            if detected_items:
-                items_text = " ".join(detected_items[:5])
-            else:
-                items_text = "nothing"
+            items_text = " ".join(detected_items[:5]) \
+                         if detected_items else "nothing"
             items_vec = self.sbert.encode(
-                items_text, normalize_embeddings=True
-            ).astype(np.float32)
+                items_text,
+                normalize_embeddings=True).astype(np.float32)
 
-            # 6. 信心度（+ 1 dim padding 讓總維度整齊）
-            conf_map = {"high": 1.0, "medium": 0.6, "low": 0.3, "unknown": 0.1}
+            conf_map = {
+                "high": 1.0, "medium": 0.6,
+                "low":  0.3, "unknown": 0.1,
+            }
             conf_val = conf_map.get(str(confidence).lower(), 0.1)
             conf_vec = np.array([conf_val, 0.0], dtype=np.float32)
 
             feature = np.concatenate([
-                action_vec,   # 384
-                time_vec,     # 2
-                prev_vec,     # 384
-                pos_vec,      # 2
-                items_vec,    # 384
-                conf_vec,     # 2
+                action_vec, time_vec, prev_vec,
+                pos_vec, items_vec, conf_vec,
             ])
-            return feature  # shape: (1158,)
+            return feature
 
         except Exception as e:
             print(f"[Manifold] build_feature_vector error: {e}")
             return np.zeros(1158, dtype=np.float32)
 
-    # ──────────────────────────────────────────────────
-    # 公開 API 2：record_point
-    # ──────────────────────────────────────────────────
-    def record_point(self, user_id: str, feature_vec: np.ndarray,
-                     action: str, bound_label: str,
-                     virtual_hour=None,
-                     prev_action=None) -> str:
+    def record_point(self, user_id, feature_vec, action,
+                     bound_label, virtual_hour=None,
+                     prev_action=None, confidence="unknown",
+                     is_shadow=False):
         try:
             doc = {
                 "user_id":        user_id,
@@ -125,6 +92,8 @@ class ManifoldEngine:
                 "bound_label":    bound_label,
                 "feature_vec":    feature_vec.tolist(),
                 "virtual_hour":   virtual_hour,
+                "confidence":     confidence,
+                "is_shadow":      is_shadow,
                 "manifold_xy":    None,
                 "cluster_id":     -1,
                 "service_result": "pending",
@@ -133,27 +102,25 @@ class ManifoldEngine:
             }
             result = self.db.manifold_points.insert_one(doc)
             self._point_count += 1
-            print(f"   📍 [Manifold] point recorded #{self._point_count} | "
-                  f"{user_id} {action} (prev={prev_action}) h={virtual_hour}")
+            tag = "shadow" if is_shadow else "vlm"
+            print(f"   📍 [Manifold] {tag} point #{self._point_count} | "
+                  f"{user_id} {action} h={virtual_hour}")
             return str(result.inserted_id)
 
         except Exception as e:
             print(f"[Manifold] record_point error: {e}")
             return ""
 
-    # ──────────────────────────────────────────────────
-    # 公開 API 3：maybe_refit
-    # ──────────────────────────────────────────────────
-    def maybe_refit(self, user_id: str):
-        if self._point_count % REFIT_EVERY == 0 and self._point_count > 0:
-            t = threading.Thread(target=self._refit_manifold_all, daemon=True)
+    def maybe_refit(self, user_id):
+        if self._point_count % REFIT_EVERY == 0 \
+                and self._point_count > 0:
+            t = threading.Thread(
+                target=self._refit_manifold_all, daemon=True)
             t.start()
-            print(f"   🔄 [Manifold] async refit triggered (total={self._point_count})")
+            print(f"   🔄 [Manifold] async refit triggered "
+                  f"(total={self._point_count})")
 
-    # ──────────────────────────────────────────────────
-    # 公開 API 4：predict_intent
-    # ──────────────────────────────────────────────────
-    def predict_intent(self, user_id: str, current_feature: np.ndarray) -> dict:
+    def predict_intent(self, user_id, current_feature):
         empty = {
             "trigger": False, "intent": "unknown",
             "cluster_id": -1, "confidence": 0.0,
@@ -170,26 +137,31 @@ class ManifoldEngine:
 
             current_xy = xy.tolist()
 
-            recent = list(
-                self.db.manifold_points.find(
-                    {"user_id": user_id, "manifold_xy": {"$ne": None}},
-                    {"manifold_xy": 1}
-                ).sort("timestamp", -1).limit(TRAJECTORY_WINDOW)
-            )
+            recent = list(self.db.manifold_points.find(
+                {
+                    "user_id":    user_id,
+                    "manifold_xy": {"$ne": None},
+                },
+                {"manifold_xy": 1}
+            ).sort("timestamp", -1).limit(TRAJECTORY_WINDOW))
 
             if len(recent) >= 2:
-                pts          = np.array([r["manifold_xy"] for r in reversed(recent)])
+                pts          = np.array(
+                    [r["manifold_xy"] for r in reversed(recent)])
                 velocity     = pts[-1] - pts[0]
                 predicted_xy = (xy + velocity).tolist()
             else:
                 predicted_xy = current_xy
 
             clusters = list(self.db.behavior_clusters.find(
-                {"success_rate": {"$gte": 0.3}}
-            ))
+                {"success_rate": {"$gte": 0.3}}))
 
             if not clusters:
-                return {**empty, "current_xy": current_xy, "predicted_xy": predicted_xy}
+                return {
+                    **empty,
+                    "current_xy":   current_xy,
+                    "predicted_xy": predicted_xy,
+                }
 
             pred_arr     = np.array(predicted_xy)
             best_cluster = None
@@ -202,17 +174,18 @@ class ManifoldEngine:
                     best_dist    = dist
                     best_cluster = c
 
-            confidence = max(0.0, 1.0 - best_dist / TRIGGER_THRESHOLD)
-            trigger    = confidence >= MIN_CONFIDENCE
+            confidence_score = max(
+                0.0, 1.0 - best_dist / TRIGGER_THRESHOLD)
+            trigger = confidence_score >= MIN_CONFIDENCE
 
             print(f"   🧭 [Manifold] intent={best_cluster['dominant_action']} "
-                  f"conf={confidence:.2f} trigger={trigger}")
+                  f"conf={confidence_score:.2f} trigger={trigger}")
 
             return {
                 "trigger":      trigger,
                 "intent":       best_cluster["dominant_action"],
                 "cluster_id":   best_cluster.get("cluster_id", -1),
-                "confidence":   round(confidence, 3),
+                "confidence":   round(confidence_score, 3),
                 "current_xy":   current_xy,
                 "predicted_xy": predicted_xy,
             }
@@ -221,46 +194,46 @@ class ManifoldEngine:
             print(f"[Manifold] predict_intent error: {e}")
             return empty
 
-    # ──────────────────────────────────────────────────
-    # 公開 API 5：update_service_result
-    # ──────────────────────────────────────────────────
-    def update_service_result(self, point_id: str, result: str):
+    def update_service_result(self, point_id, result):
         try:
             self.db.manifold_points.update_one(
                 {"_id": ObjectId(point_id)},
                 {"$set": {"service_result": result}}
             )
-            point = self.db.manifold_points.find_one({"_id": ObjectId(point_id)})
+            point = self.db.manifold_points.find_one(
+                {"_id": ObjectId(point_id)})
             if point:
                 intent = point.get("action", "unknown")
                 user   = point.get("user_id", "unknown")
                 self.db.intent_stats.update_one(
                     {"user_id": user, "intent": intent},
                     {"$inc": {result: 1}},
-                    upsert=True
+                    upsert=True,
                 )
             print(f"   ✅ [Manifold] point {point_id} → {result}")
         except Exception as e:
             print(f"[Manifold] update_service_result error: {e}")
 
-    # ──────────────────────────────────────────────────
-    # 內部：refit
-    # ──────────────────────────────────────────────────
     def _refit_manifold_all(self):
         if not _MANIFOLD_OK:
             return
         try:
             docs = list(self.db.manifold_points.find(
-                {}, {"_id": 1, "feature_vec": 1, "action": 1, "user_id": 1}
+                {},
+                {"_id": 1, "feature_vec": 1,
+                 "action": 1, "user_id": 1,
+                 "confidence": 1, "is_shadow": 1},
             ))
             if len(docs) < MIN_POINTS_REFIT:
-                print(f"   ⚠️  [Manifold] refit skipped: only {len(docs)} pts < {MIN_POINTS_REFIT}")
+                print(f"   ⚠️  [Manifold] refit skipped: "
+                      f"only {len(docs)} pts < {MIN_POINTS_REFIT}")
                 return
 
             print(f"   🔄 [Manifold] refitting {len(docs)} points...")
             t0 = datetime.datetime.now()
 
-            X        = np.array([d["feature_vec"] for d in docs], dtype=np.float32)
+            X        = np.array(
+                [d["feature_vec"] for d in docs], dtype=np.float32)
             ids      = [d["_id"] for d in docs]
             scaler   = StandardScaler()
             X_scaled = scaler.fit_transform(X)
@@ -280,8 +253,8 @@ class ManifoldEngine:
             )
             labels = clusterer.fit_predict(xy_all)
 
-            bulk = []
             from pymongo import UpdateOne
+            bulk = []
             for i, doc_id in enumerate(ids):
                 bulk.append(UpdateOne(
                     {"_id": doc_id},
@@ -299,17 +272,29 @@ class ManifoldEngine:
             for cid in unique_labels:
                 mask     = labels == cid
                 pts      = xy_all[mask]
-                actions  = [docs[i]["action"] for i in range(len(docs)) if labels[i] == cid]
+                actions  = [
+                    docs[i]["action"]
+                    for i in range(len(docs)) if labels[i] == cid
+                ]
                 dominant = max(set(actions), key=actions.count)
 
-                point_ids = [ids[i] for i in range(len(docs)) if labels[i] == cid]
-                results   = list(self.db.manifold_points.find(
+                point_ids = [
+                    ids[i] for i in range(len(docs))
+                    if labels[i] == cid
+                ]
+                results = list(self.db.manifold_points.find(
                     {"_id": {"$in": point_ids}},
-                    {"service_result": 1}
+                    {"service_result": 1},
                 ))
-                total    = len([r for r in results if r["service_result"] != "pending"])
-                accepted = len([r for r in results if r["service_result"] == "accepted"])
-                rate     = accepted / total if total > 0 else 0.5
+                total    = len([
+                    r for r in results
+                    if r["service_result"] != "pending"
+                ])
+                accepted = len([
+                    r for r in results
+                    if r["service_result"] == "accepted"
+                ])
+                rate = accepted / total if total > 0 else 0.5
 
                 self.db.behavior_clusters.insert_one({
                     "cluster_id":      int(cid),
@@ -327,8 +312,10 @@ class ManifoldEngine:
                 self._fitted        = True
 
             elapsed = (datetime.datetime.now() - t0).total_seconds()
-            print(f"   ✅ [Manifold] refit done: {len(unique_labels)} clusters | {elapsed:.1f}s")
+            print(f"   ✅ [Manifold] refit done: "
+                  f"{len(unique_labels)} clusters | {elapsed:.1f}s")
 
         except Exception as e:
             import traceback
-            print(f"[Manifold] refit error: {e}\n{traceback.format_exc()}")
+            print(f"[Manifold] refit error: {e}\n"
+                  f"{traceback.format_exc()}")

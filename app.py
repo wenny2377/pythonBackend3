@@ -1152,6 +1152,89 @@ def habit_check():
         return jsonify({"error": str(e)}), 500
 
 
+# ── 加到 app.py 的 /track_position endpoint ──────────────────────────
+# 放在 /habit_check route 的後面
+
+@app.route('/track_position', methods=['POST'])
+def track_position():
+    """
+    Shadow tracking endpoint — called every 0.5s during WalkTo.
+    No VLM, no image. Only records a manifold point with low confidence.
+    """
+    try:
+        data         = request.get_json()
+        if not data:
+            return jsonify({"error": "No data"}), 400
+
+        user_id      = data.get("userID", "Unknown")
+        x            = float(data.get("x", 0))
+        z            = float(data.get("z", 0))
+        intent       = data.get("intent_action", "Walking")
+        room_name    = data.get("room_name", "")
+
+        # Use virtual_hour from app config (set by /set_virtual_hour)
+        virtual_hour = app.config.get("VIRTUAL_HOUR", None)
+        if virtual_hour is not None and float(virtual_hour) < 0:
+            virtual_hour = None
+
+        est_pos = {"x": x, "z": z}
+
+        # Update user position in DB
+        db.user_positions.update_one(
+            {"user_id": user_id},
+            {"$set": {
+                "user_id":    user_id,
+                "x":          x,
+                "z":          z,
+                "room":       room_name,
+                "updated_at": datetime.datetime.utcnow(),
+            }},
+            upsert=True,
+        )
+
+        # Get previous action for sequential context
+        prev_doc = db.manifold_points.find_one(
+            {"user_id": user_id},
+            sort=[("timestamp", -1)],
+        )
+        prev_action = prev_doc.get("action", "Walking") \
+                      if prev_doc else "Walking"
+
+        # Build 1158-dim feature vector
+        feature_vec = manifold_engine.build_feature_vector(
+            user_id        = user_id,
+            action         = intent,
+            user_pos       = est_pos,
+            room_name      = room_name,
+            detected_items = [],
+            confidence     = "low",
+            virtual_hour   = virtual_hour,
+            prev_action    = prev_action,
+        )
+
+        # Record shadow point
+        manifold_engine.record_point(
+            user_id      = user_id,
+            feature_vec  = feature_vec,
+            action       = intent,
+            bound_label  = "in_transit",
+            virtual_hour = virtual_hour,
+            prev_action  = prev_action,
+            confidence   = "low",
+            is_shadow    = True,
+        )
+
+        # Trigger refit check
+        manifold_engine.maybe_refit(user_id)
+
+        return jsonify({"status": "ok"}), 200
+
+    except Exception as e:
+        import traceback
+        print(f"[TrackPosition Error] {e}\n{traceback.format_exc()}")
+        return jsonify({"error": str(e)}), 500
+
+
 if __name__ == "__main__":
     host = getattr(CONFIG, 'FLASK_HOST', '0.0.0.0')
     port = int(getattr(CONFIG, 'FLASK_PORT', 5000))
@@ -1160,3 +1243,4 @@ if __name__ == "__main__":
     print(f"  LLM model : {CONFIG.LLM_MODEL}")
     threading.Timer(86400, nightly_maintenance).start()
     app.run(host=host, port=port, debug=False)
+
