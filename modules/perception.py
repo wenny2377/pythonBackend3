@@ -16,7 +16,6 @@ from pymongo import MongoClient, ReturnDocument, UpdateOne
 from sentence_transformers import SentenceTransformer
 
 
-# ── 結構性黑名單（VLM 幻覺常見輸出，過濾掉）─────────────────────────────
 STRUCTURAL_BLACKLIST = {
     "wall", "floor", "ceiling", "wooden floor", "white wall",
     "white ceiling", "window", "door", "ground", "white box",
@@ -24,109 +23,77 @@ STRUCTURAL_BLACKLIST = {
     "room", "background", "surface", "area",
 }
 
-# ── 物件標籤體系 ──────────────────────────────────────────────────────────
-# 基礎：COCO 80 類（居家相關子集）
-# 擴充：juice / cola（同事影像辨識系統 fine-tune）
 YOUR_OBJECTS = {
-    # 自定義擴充（同事系統 fine-tune）
     "juice", "cola",
-
-    # COCO 飲食類
     "bottle", "cup", "wine glass",
     "bowl", "fork", "knife", "spoon",
     "banana", "apple", "orange", "sandwich",
     "pizza", "donut", "cake", "hot dog",
-
-    # COCO 電器/3C
     "tv", "laptop", "mouse", "remote",
     "keyboard", "cell phone",
     "microwave", "oven", "toaster",
     "sink", "refrigerator",
-
-    # COCO 家具
     "chair", "couch", "bed", "dining table", "toilet",
-
-    # COCO 日常物品
     "book", "clock", "vase", "scissors",
     "teddy bear", "toothbrush",
     "backpack", "handbag",
     "potted plant",
-
-    # COCO 人
+    "pan", "frying pan", "pot",
+    "broom", "mop", "dustpan",
+    "food", "plate", "dish",
     "person",
 }
 
-# ── VLM 輸出 → 你的標籤體系 ──────────────────────────────────────────────
 LABEL_NORMALIZE_MAP = {
-    # 自定義擴充：juice
     "juicebottle":        "juice",
     "juice bottle":       "juice",
     "orange juice":       "juice",
     "juice box":          "juice",
     "fruit juice":        "juice",
-
-    # 自定義擴充：cola
     "cola can":           "cola",
     "coca cola":          "cola",
     "coke":               "cola",
     "soda can":           "cola",
     "cola bottle":        "cola",
-
-    # COCO：cell phone
     "phone":              "cell phone",
     "mobile phone":       "cell phone",
     "smartphone":         "cell phone",
     "iphone":             "cell phone",
     "android":            "cell phone",
-
-    # COCO：tv
     "television":         "tv",
     "monitor":            "tv",
     "screen":             "tv",
-
-    # COCO：laptop
     "notebook":           "laptop",
     "computer":           "laptop",
     "tablet":             "laptop",
     "ipad":               "laptop",
     "macbook":            "laptop",
-
-    # COCO：remote
     "remote control":     "remote",
     "tv remote":          "remote",
-
-    # COCO：cup
     "mug":                "cup",
     "coffee cup":         "cup",
     "tea cup":            "cup",
     "drinking glass":     "cup",
     "water glass":        "cup",
-
-    # COCO：bottle
     "water bottle":       "bottle",
     "milk":               "bottle",
     "beer":               "bottle",
     "soda bottle":        "bottle",
-
-    # COCO：couch
     "sofa":               "couch",
     "settee":             "couch",
-
-    # COCO：dining table
     "table":              "dining table",
     "kitchen table":      "dining table",
     "coffee table":       "dining table",
     "desk":               "dining table",
-
-    # COCO：bed
     "mother's bed":       "bed",
     "father's bed":       "bed",
     "parents bed":        "bed",
-
-    # COCO：book
-    "magazine":           "book",
-    "newspaper":          "book",
-    "textbook":           "book",
+    "frying pan":         "pan",
+    "cooking pan":        "pan",
+    "skillet":            "pan",
+    "sweep":              "broom",
+    "sweeping brush":     "broom",
+    "mop stick":          "mop",
 }
 
 BULK_WRITE_THRESHOLD = 20
@@ -135,30 +102,80 @@ SEMANTIC_THRESHOLD   = 0.35
 COORD_VERIFY_DIST    = 2.0
 COORD_MATCH_DIST     = 1.5
 
-# ── 行為原型（Atomic Observation Pipeline）───────────────────────────────
-# 設計原則：
-#   每個 prototype 描述「姿勢特徵組合」
-#   不依賴特定物件名稱
-#   讓 SBERT 能處理 VLM 各種說法
+# Actions that are captured by camera (Choice B: all actions)
+# but should NOT accumulate weight in observation_logs.
+# These are transitional/utility actions — not habitual behaviors.
+NO_WEIGHT_ACTIONS = {
+    "Opening", "PickingUp", "PuttingDown",
+    "Walking", "Standing",
+}
+
 BEHAVIOR_PROTOTYPES = {
-    # NTU A001
-    "Drink":    "upright raising cup bottle glass to mouth drinking sipping",
-    # NTU A002
-    "Eating":   "bent forward raising food to mouth chewing eating holding utensil bowl",
-    # NTU A011
-    "Reading":  "bent forward downward gaze holding book paper sitting looking at pages",
-    # NTU A014
-    "Typing":   "upright hands on keyboard laptop desk fingers moving looking at screen",
-    # NTU A076
-    "Watching": "upright sitting forward gaze at TV screen hands idle relaxed",
-    # NTU A068/A069
-    "PhoneUse": "standing bent forward downward gaze holding cell phone scrolling typing",
-    # NTU A100
-    "Laying":   "reclined leaning back sofa body tilted horizontal resting relaxing",
-    # NTU A073
-    "Standing": "upright vertical standing idle not moving no object in hands",
-    # NTU A049
-    "Walking":  "moving stepping legs walking through space in motion",
+    # Core habitual behaviors — accumulate weight, trigger FAT
+    # Each prototype emphasizes visually DISTINCT features
+    # to maximize SBERT vector distance between similar activities
+
+    "Drink":
+        "standing upright one hand raising cup bottle glass to mouth "
+        "lips touching rim drinking sipping swallowing liquid wrist raised",
+
+    "SittingDrink":
+        "seated at dining table chair both hands holding mug cup "
+        "raising to mouth drinking seated upright table surface visible",
+
+    "Eating":
+        "seated at table both hands holding fork spoon bowl plate "
+        "food raised toward open mouth chewing jaw moving utensil",
+
+    "Cooking":
+        "standing at kitchen stove counter both hands holding frying pan "
+        "spatula stirring mixing heat flame pot cooking food preparation",
+
+    "Reading":
+        "both hands holding open book paper magazine pages text visible "
+        "head tilted downward eyes focused on printed words in hands",
+
+    "Typing":
+        "seated at desk both hands flat on keyboard fingers pressing keys "
+        "wrists low computer monitor screen in front face forward",
+
+    "Watching":
+        "seated upright on sofa couch facing large television wall screen "
+        "head level forward gaze hands empty resting on lap armrest",
+
+    "PhoneUse":
+        "one hand holding small thin rectangular smartphone screen glowing "
+        "face tilted downward eyes at phone finger scrolling tapping swiping",
+
+    "Laying":
+        "body fully horizontal reclined lying on sofa bed legs extended "
+        "head on cushion pillow eyes closed or looking at ceiling resting",
+
+    "Cleaning":
+        "standing both hands gripping broom mop handle arms sweeping "
+        "pushing pulling across floor surface wide arm motion cleaning",
+
+    # Transitional behaviors — captured but weight NOT accumulated
+    "Opening":
+        "standing one arm fully extended forward hand gripping door handle "
+        "fridge refrigerator cabinet pulling outward door swinging open",
+
+    "PickingUp":
+        "bending forward at waist hand reaching downward toward floor "
+        "grasping small object lifting upward from ground surface",
+
+    "PuttingDown":
+        "bending forward hand lowering object downward placing releasing "
+        "item onto table floor surface setting down gently",
+
+    # Background states
+    "Standing":
+        "standing upright both arms at sides no object in hands "
+        "not moving idle waiting neutral posture",
+
+    "Walking":
+        "legs stepping alternating feet moving forward through room "
+        "arms swinging body in motion walking",
 }
 
 NORMALIZE_THRESHOLD = 0.42
@@ -184,36 +201,25 @@ def _get_time_slot(virtual_hour) -> str:
         if h < 10:  return "Morning"
         if h < 13:  return "Noon"
         if h < 18:  return "Afternoon"
-        return "Evening"
+        if h < 22:  return "Evening"
+        return "Night"
     except Exception:
         return "Unknown"
 
 
 def normalize_label(raw: str) -> str:
-    """
-    VLM 輸出的物件名稱 → 你的標籤體系（COCO + 自定義擴充）
-    優先對應自定義擴充（juice / cola）
-    其次對應 COCO 標準
-    """
     if not raw:
         return raw
     raw_lower = raw.lower().strip()
-
-    # 直接查 map
     if raw_lower in LABEL_NORMALIZE_MAP:
         return LABEL_NORMALIZE_MAP[raw_lower]
-
-    # 已在標籤體系裡
     if raw_lower in YOUR_OBJECTS:
         return raw_lower
-
-    # 嘗試從詞語中找對應
     for word in raw_lower.split():
         if word in YOUR_OBJECTS:
             return word
         if word in LABEL_NORMALIZE_MAP:
             return LABEL_NORMALIZE_MAP[word]
-
     return raw_lower
 
 
@@ -439,8 +445,6 @@ class PerceptionEngine:
         self._proto_labels = list(BEHAVIOR_PROTOTYPES.keys())
         print(f"[PerceptionEngine] Ready | model={model_name}")
 
-    # ── SBERT ─────────────────────────────────────────────────────────────
-
     def _get_proto_vecs(self):
         if self._proto_vecs is None:
             self._proto_vecs = self.sbert.encode(
@@ -450,41 +454,59 @@ class PerceptionEngine:
         return self._proto_vecs
 
     def _build_sbert_input(self, parsed: dict) -> str:
-        """
-        Atomic Observation Pipeline：
-        合併 body_posture + gaze_target + hand_state + summary
-        summary 重複一次增加語意權重
-        """
         parts = [
             parsed.get("body_posture", ""),
             parsed.get("gaze_target",  ""),
             parsed.get("hand_state",   ""),
             parsed.get("summary",      ""),
-            parsed.get("summary",      ""),  # 重複增加權重
+            parsed.get("summary",      ""),
         ]
         return " ".join(p for p in parts if p).strip()
 
     def _normalize_action(self, sbert_input: str) -> str:
         if not sbert_input or sbert_input.strip() in ("", "none", "unknown"):
-            return sbert_input
+            return "Unknown"
         try:
-            vecs    = self._get_proto_vecs()
-            vec     = self.sbert.encode(
+            vecs   = self._get_proto_vecs()
+            vec    = self.sbert.encode(
                 [sbert_input], normalize_embeddings=True)[0].astype("float32")
-            sims    = vecs @ vec
-            best_i  = int(np.argmax(sims))
-            best_s  = float(sims[best_i])
-            best_l  = self._proto_labels[best_i]
+            sims   = vecs @ vec
+            best_i = int(np.argmax(sims))
+            best_s = float(sims[best_i])
+            best_l = self._proto_labels[best_i]
+
             if best_s >= NORMALIZE_THRESHOLD:
-                print(f"[Normalize] '{sbert_input[:60]}' -> '{best_l}' (sim={best_s:.2f})")
+                print(f"[Normalize] '{sbert_input[:60]}' -> '{best_l}' "
+                      f"(sim={best_s:.2f})")
                 return best_l
-            print(f"[Normalize] kept raw (best={best_l} sim={best_s:.2f} < {NORMALIZE_THRESHOLD})")
-            return sbert_input
+
+            # Below threshold: return Unknown instead of raw string
+            # This keeps eval_logs clean for analysis
+            print(f"[Normalize] low sim (best={best_l} sim={best_s:.2f} "
+                  f"< {NORMALIZE_THRESHOLD}) -> Unknown")
+            return "Unknown"
+
         except Exception as e:
             print(f"[Normalize] failed: {e}")
-            return sbert_input
+            return "Unknown"
 
-    # ── Face ReID ─────────────────────────────────────────────────────────
+    def _normalize_action_with_score(self, sbert_input: str):
+        if not sbert_input or sbert_input.strip() in ("", "none", "unknown"):
+            return "Unknown", 0.0
+        try:
+            vecs   = self._get_proto_vecs()
+            vec    = self.sbert.encode(
+                [sbert_input], normalize_embeddings=True)[0].astype("float32")
+            sims   = vecs @ vec
+            best_i = int(np.argmax(sims))
+            best_s = float(sims[best_i])
+            best_l = self._proto_labels[best_i]
+            if best_s >= NORMALIZE_THRESHOLD:
+                return best_l, best_s
+            return "Unknown", best_s
+        except Exception as e:
+            print(f"[Normalize] failed: {e}")
+            return "Unknown", 0.0
 
     def _get_user_id(self, img_b64, hint="Unknown_User"):
         if not self.face_app or not self.face_bank:
@@ -508,8 +530,6 @@ class PerceptionEngine:
             print(f"Face ReID: {e}")
             return hint
 
-    # ── 座標比對 ──────────────────────────────────────────────────────────
-
     def _nearest_by_coord(self, user_pos, room_name, max_dist=3.0):
         if not user_pos: return None, float('inf')
         ux, uz = user_pos.get("x", 0), user_pos.get("z", 0)
@@ -529,8 +549,6 @@ class PerceptionEngine:
             if dist < best_dist: best_dist, best_doc = dist, doc
         return (best_doc, best_dist) if best_doc and best_dist <= max_dist \
                else (None, best_dist)
-
-    # ── 語意比對家具 ──────────────────────────────────────────────────────
 
     def _sem_match_furniture(self, label, k=3):
         norm  = normalize_label(label)
@@ -569,8 +587,6 @@ class PerceptionEngine:
         if topk: return topk[0][0], "sbert_low"
         return None, "unknown"
 
-    # ── Prompt ────────────────────────────────────────────────────────────
-
     def _build_prompt(self, room_name, room_furniture, coord_label, coord_dist):
         furn_hint = (f"\nKNOWN FURNITURE: {', '.join(room_furniture)}.\n"
                      if room_furniture else "")
@@ -584,7 +600,7 @@ Output ONLY valid JSON:
 {{
   "body_posture": "describe spine and leg position. Use terms like: upright, bent forward, horizontal, walking, or similar.",
   "gaze_target": "where are the eyes looking. Use terms like: downward at hands, at screen, forward, closed eyes, or similar.",
-  "hand_state": "what are the hands doing. Use terms like: holding small object, empty, on surface, raising to face, holding device, or similar.",
+  "hand_state": "what are the hands doing. Use terms like: holding small object, empty, on surface, raising to face, holding device, reaching downward, or similar.",
   "summary": "one short sentence of what you actually see",
   "person_near": "name of the closest furniture or surface",
   "objects_on_furniture": [
@@ -596,12 +612,10 @@ RULES:
 - body_posture: is the person flat, upright, bent, or moving?
 - gaze_target: follow head and eye direction carefully.
 - hand_state: look carefully at hands — what do they hold or touch?
-- objects_on_furniture: use standard object names (cup, bottle, juice, cola, book, laptop, remote, cell phone, banana, apple, bowl, etc).
+- objects_on_furniture: use standard object names (cup, bottle, juice, cola, book, laptop, remote, cell phone, pan, broom, food, bowl, etc).
 - NEVER include wall, floor, ceiling, window, door in objects_on_furniture.
 - Do NOT guess the activity name.
 """
-
-    # ── 解析 VLM 輸出 ──────────────────────────────────────────────────────
 
     def _parse_vlm_output(self, raw: str) -> dict:
         try:
@@ -620,7 +634,6 @@ RULES:
         scene_items       = []
         interacting_items = []
 
-        # 解析場景物件
         for entry in objs:
             if not isinstance(entry, dict): continue
             obj = entry.get("object", "").lower().strip()
@@ -632,16 +645,17 @@ RULES:
             scene_items.append(norm)
             spatial_relations.append({"subject": norm, "relation": rel, "object": on})
 
-        # 從 hand_state 解析手持物件
         hand_lower = hand_state.lower()
-        if any(kw in hand_lower for kw in ["holding", "raising", "carrying", "gripping"]):
+        if any(kw in hand_lower for kw in
+               ["holding", "raising", "carrying", "gripping", "reaching"]):
             words = re.findall(r'\b\w+(?:\s+\w+)?\b', hand_lower)
             for w in words:
                 w = w.strip()
                 if len(w) < 3: continue
-                if w in {"the","and","with","its","his","her",
-                         "holding","raising","carrying","small","large",
-                         "object","something","device"}: continue
+                if w in {"the", "and", "with", "its", "his", "her",
+                         "holding", "raising", "carrying", "small", "large",
+                         "object", "something", "device", "reaching",
+                         "downward", "forward"}: continue
                 norm = normalize_label(w)
                 if norm not in STRUCTURAL_BLACKLIST and norm not in YOUR_OBJECTS:
                     continue
@@ -661,15 +675,12 @@ RULES:
             "spatial_relations": spatial_relations,
         }
 
-    # ── Scene Graph 驗證 ───────────────────────────────────────────────────
-
     def _validate_scene_graph(self, parsed, user_pos, room_name, user_id):
         vlm_furn              = parsed.get("main_object", "unknown")
         bound_doc, confidence = self._bind_furniture(vlm_furn, user_pos, room_name)
         bound_label = bound_doc.get("label", "Unknown_Area") if bound_doc else "Unknown_Area"
         bound_room  = (bound_doc.get("room") or bound_doc.get("room_name", room_name)
                        if bound_doc else room_name)
-        print(f"    [Validate] Starting scene graph validation...")
         print(f"    [Validate] person_near: '{vlm_furn}' -> '{bound_label}' (conf={confidence})")
 
         validated_spatial = []
@@ -703,8 +714,6 @@ RULES:
             "spatial_relations": validated_spatial,
         }
 
-    # ── 多幀聚合（Atomic Observation Pipeline）────────────────────────────
-
     def _aggregate_frames(self, parsed_list, used_scores):
         parts = []
         for parsed, score in zip(parsed_list, used_scores):
@@ -721,8 +730,6 @@ RULES:
         for parsed, score in zip(parsed_list, used_scores):
             weights[parsed.get("main_object", "unknown")] += max(float(score), 0.1)
         return max(weights, key=weights.get) if weights else "unknown"
-
-    # ── 主要入口 ──────────────────────────────────────────────────────────
 
     def analyze_action_burst(self, payload: dict) -> dict:
         image_list   = payload.get("image_list", [])
@@ -783,10 +790,10 @@ RULES:
             return self._empty_result(
                 max(set(user_votes), key=user_votes.count) if user_votes else hint_user_id)
 
-        final_user   = max(set(user_votes), key=user_votes.count) if user_votes else hint_user_id
-        combined_str = self._aggregate_frames(parsed_list, used_scores_list)
-        final_action = self._normalize_action(combined_str)
-        final_object = self._vote_main_object(parsed_list, used_scores_list)
+        final_user              = max(set(user_votes), key=user_votes.count) if user_votes else hint_user_id
+        combined_str            = self._aggregate_frames(parsed_list, used_scores_list)
+        final_action, sbert_sim = self._normalize_action_with_score(combined_str)
+        final_object            = self._vote_main_object(parsed_list, used_scores_list)
 
         best_parsed = dict(parsed_list[0])
         best_parsed["main_object"] = final_object
@@ -819,18 +826,29 @@ RULES:
         self._update_scene_snapshot(
             bound_doc, validated["interacting_items"],
             validated["scene_items"], validated["spatial_relations"])
+
+        # Pass ground-truth activity label from Unity if available.
+        # Used only for eval_logs — perception still runs blind.
+        ground_truth_activity = payload.get("activity", None)
+
         self._update_observation_log(
             final_user, final_action, bound_doc,
             validated["interacting_items"], validated["spatial_relations"],
-            validated.get("summary", ""), virtual_hour, virtual_day)
+            validated.get("summary", ""), virtual_hour, virtual_day,
+            ground_truth_activity=ground_truth_activity,
+            sbert_sim=sbert_sim,
+            combined_str=combined_str)
+
         self._update_dynamic_objects(
             user_id=final_user,
             interacting_items=validated["interacting_items"],
             scene_items=validated["scene_items"],
             spatial_relations=validated["spatial_relations"],
             bound_doc=bound_doc, room_name=bound_room, user_pos=user_pos)
+
         self._write_semantic_memory(
             final_user, final_action, bound_doc, confidence, result, source_nodes)
+
         self._update_activity_sequence(final_user, final_action, bound_label)
 
         mem_doc  = self.col_memory.find_one(
@@ -856,8 +874,6 @@ RULES:
             "bound_room":     bound_room,
             "confidence":     confidence,
         }
-
-    # ── 工具函式 ──────────────────────────────────────────────────────────
 
     def _extract_json(self, raw):
         cleaned = re.sub(r'```(?:json)?\s*', '', raw).strip()
@@ -914,14 +930,40 @@ RULES:
 
     def _update_observation_log(self, user, action, bound_doc,
                                  interacting_items, spatial_relations,
-                                 raw_desc, virtual_hour=None, virtual_day=None):
+                                 raw_desc, virtual_hour=None, virtual_day=None,
+                                 ground_truth_activity=None,
+                                 sbert_sim=0.0,
+                                 combined_str=""):
         if not bound_doc: return
+
         instance  = bound_doc.get("label", "Unknown")
         pos_raw   = bound_doc.get("pos")
         pos_xy    = pos_raw if isinstance(pos_raw, list) else \
                     [bound_doc.get("x", 0), bound_doc.get("z", 0)]
         time_slot = _get_time_slot(virtual_hour)
         today     = _virtual_day_to_date(virtual_day)
+
+        # Write to eval_logs for BG1 accuracy evaluation.
+        # ground_truth_activity comes from Unity's lastAssignedActivity.
+        # action is the VLM+SBERT prediction — kept separate from GT.
+        if ground_truth_activity:
+            self.db["eval_logs"].insert_one({
+                "user_id":        user,
+                "ground_truth":   ground_truth_activity,
+                "vlm_output":     action,
+                "sbert_sim":      sbert_sim,
+                "sbert_input":    combined_str[:300] if combined_str else "",
+                "room":           instance,
+                "timestamp":      datetime.datetime.utcnow(),
+            })
+
+        # NO_WEIGHT_ACTIONS: record to semantic_memories and dynamic_objects
+        # but do NOT accumulate weight in observation_logs.
+        # These transitional actions should not trigger FAT.
+        if action in NO_WEIGHT_ACTIONS:
+            print(f"[ObsLog] {user} -> {action} @ {instance} "
+                  f"[{time_slot}] no-weight action, skip weight update")
+            return
 
         existing = self.col_obs.find_one({
             "user": user, "instance": instance,

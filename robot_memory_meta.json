@@ -2,7 +2,7 @@
   {
     "faiss_idx": 0,
     "user": "User_Mom",
-    "action": "Watching",
+    "action": "PickingUp",
     "instance": "sofa",
     "interacting_items": [],
     "all_items": [
@@ -16,22 +16,46 @@
       }
     ],
     "furniture_pos": [
-      0.4,
-      5.75
+      2.47,
+      -1.45
     ],
-    "mongo_id": "69f980cd30d2e0727626517a",
-    "description": "A woman sitting on a couch with her hands in front of her. remote next to sofa",
-    "memory_text": "User_Mom Watching near sofa with nothing. A woman sitting on a couch with her hands in front of her. remote next to sofa remote next to sofa.",
-    "timestamp": "2026-05-05T13:32:17.158289"
+    "mongo_id": "6a03e0e348fc33e927d68cac",
+    "description": "A person is standing in front of a couch and holding an object. remote next to sofa",
+    "memory_text": "User_Mom PickingUp near sofa with nothing. A person is standing in front of a couch and holding an object. remote next to sofa remote next to sofa.",
+    "timestamp": "2026-05-13T10:24:42.398234"
   },
   {
     "faiss_idx": 1,
-    "user": "User_Dad",
+    "user": "User_Mom",
+    "action": "Cooking",
+    "instance": "stove",
+    "interacting_items": [],
+    "all_items": [
+      "remote"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "remote",
+        "relation": "holding",
+        "object": "stove"
+      }
+    ],
+    "furniture_pos": [
+      6.42,
+      3.65
+    ],
+    "mongo_id": "6a03e0e348fc33e927d68caa",
+    "description": "A woman is using a remote control on a stove. remote holding stove",
+    "memory_text": "User_Mom Cooking near stove with nothing. A woman is using a remote control on a stove. remote holding stove remote holding stove.",
+    "timestamp": "2026-05-13T10:25:13.775592"
+  },
+  {
+    "faiss_idx": 2,
+    "user": "User_Mom",
     "action": "Watching",
     "instance": "table",
     "interacting_items": [],
     "all_items": [
-      "keyboard",
       "laptop"
     ],
     "spatial_relations": [
@@ -39,46 +63,16 @@
         "subject": "laptop",
         "relation": "next to",
         "object": "table"
-      },
-      {
-        "subject": "keyboard",
-        "relation": "next to",
-        "object": "table"
       }
     ],
     "furniture_pos": [
-      2.96,
-      -0.59
+      3.636,
+      -0.938
     ],
-    "mongo_id": "69f980cd30d2e07276265170",
-    "description": "A man standing in front of a desk with a computer monitor. laptop next to table keyboard next to table",
-    "memory_text": "User_Dad Watching near table with nothing. A man standing in front of a desk with a computer monitor. laptop next to table keyboard next to table laptop next to table. keyboard next to table.",
-    "timestamp": "2026-05-05T13:32:26.384372"
-  },
-  {
-    "faiss_idx": 2,
-    "user": "User_Mom",
-    "action": "Sleeping",
-    "instance": "sofa",
-    "interacting_items": [],
-    "all_items": [
-      "remote"
-    ],
-    "spatial_relations": [
-      {
-        "subject": "remote",
-        "relation": "next to",
-        "object": "sofa"
-      }
-    ],
-    "furniture_pos": [
-      0.4,
-      5.75
-    ],
-    "mongo_id": "69f980cd30d2e0727626517a",
-    "description": "A person sitting on a couch holding an object in their hands. remote next to sofa",
-    "memory_text": "User_Mom Sleeping near sofa with nothing. A person sitting on a couch holding an object in their hands. remote next to sofa remote next to sofa.",
-    "timestamp": "2026-05-05T13:32:37.044952"
+    "mongo_id": "6a03e0e348fc33e927d68ca2",
+    "description": "A person is sitting in a chair with their hands on the table. laptop next to table",
+    "memory_text": "User_Mom Watching near table with nothing. A person is sitting in a chair with their hands on the table. laptop next to table laptop next to table.",
+    "timestamp": "2026-05-13T10:25:27.861779"
   },
   {
     "faiss_idx": 3,
@@ -97,224 +91,18 @@
       }
     ],
     "furniture_pos": [
-      0.4,
-      5.75
+      2.47,
+      -1.45
     ],
-    "mongo_id": "69f980cd30d2e0727626517a",
-    "description": "A woman sitting on a couch with her hands in front of her. remote next to sofa",
-    "memory_text": "User_Mom Watching near sofa with nothing. A woman sitting on a couch with her hands in front of her. remote next to sofa remote next to sofa.",
-    "timestamp": "2026-05-05T13:32:47.620758"
+    "mongo_id": "6a03e0e348fc33e927d68cac",
+    "description": "A person is sitting on a couch and holding a remote control. remote next to sofa",
+    "memory_text": "User_Mom Watching near sofa with nothing. A person is sitting on a couch and holding a remote control. remote next to sofa remote next to sofa.",
+    "timestamp": "2026-05-13T10:25:43.540398"
   },
   {
     "faiss_idx": 4,
-    "user": "User_Dad",
-    "action": "Sleeping",
-    "instance": "mom's bed",
-    "interacting_items": [],
-    "all_items": [
-      "book"
-    ],
-    "spatial_relations": [
-      {
-        "subject": "book",
-        "relation": "next to",
-        "object": "table2"
-      }
-    ],
-    "furniture_pos": [
-      -5.92,
-      6.39
-    ],
-    "mongo_id": "69f980cd30d2e0727626516e",
-    "description": "A man lying on a bed with his head down. book next to table2",
-    "memory_text": "User_Dad Sleeping near mom's bed with nothing. A man lying on a bed with his head down. book next to table2 book next to table2.",
-    "timestamp": "2026-05-05T13:33:00.101237"
-  },
-  {
-    "faiss_idx": 5,
     "user": "User_Mom",
-    "action": "Watching",
-    "instance": "sofa",
-    "interacting_items": [],
-    "all_items": [
-      "book"
-    ],
-    "spatial_relations": [
-      {
-        "subject": "book",
-        "relation": "next to",
-        "object": "sofa"
-      }
-    ],
-    "furniture_pos": [
-      0.4,
-      5.75
-    ],
-    "mongo_id": "69f980cd30d2e0727626517a",
-    "description": "A person sitting on a sofa holding an object in their hands. book next to sofa",
-    "memory_text": "User_Mom Watching near sofa with nothing. A person sitting on a sofa holding an object in their hands. book next to sofa book next to sofa.",
-    "timestamp": "2026-05-05T13:33:24.203858"
-  },
-  {
-    "faiss_idx": 6,
-    "user": "User_Dad",
-    "action": "Typing",
-    "instance": "table",
-    "interacting_items": [],
-    "all_items": [
-      "laptop",
-      "mouse"
-    ],
-    "spatial_relations": [
-      {
-        "subject": "laptop",
-        "relation": "next to",
-        "object": "table"
-      },
-      {
-        "subject": "mouse",
-        "relation": "next to",
-        "object": "table"
-      }
-    ],
-    "furniture_pos": [
-      2.96,
-      -0.59
-    ],
-    "mongo_id": "69f980cd30d2e07276265170",
-    "description": "A man sitting at a desk using his laptop. laptop next to table mouse next to table",
-    "memory_text": "User_Dad Typing near table with nothing. A man sitting at a desk using his laptop. laptop next to table mouse next to table laptop next to table. mouse next to table.",
-    "timestamp": "2026-05-05T13:33:35.969771"
-  },
-  {
-    "faiss_idx": 7,
-    "user": "User_Mom",
-    "action": "Sleeping",
-    "instance": "sofa",
-    "interacting_items": [],
-    "all_items": [
-      "laptop"
-    ],
-    "spatial_relations": [
-      {
-        "subject": "laptop",
-        "relation": "next to",
-        "object": "sofa"
-      }
-    ],
-    "furniture_pos": [
-      0.4,
-      5.75
-    ],
-    "mongo_id": "69f980cd30d2e0727626517a",
-    "description": "A woman sitting on a couch with her hands in front of her. laptop next to sofa",
-    "memory_text": "User_Mom Sleeping near sofa with nothing. A woman sitting on a couch with her hands in front of her. laptop next to sofa laptop next to sofa.",
-    "timestamp": "2026-05-05T13:33:46.408516"
-  },
-  {
-    "faiss_idx": 8,
-    "user": "User_Mom",
-    "action": "bent forward downward at hands holding small object A woman is holding a small object in her hand. A woman is holding a small object in her hand. bent forward downward at hands holding small object A woman is holding a small object in her hand. A woman is holding a small object in her hand. bent forward downward at hands holding small object A woman is holding a banana and looking down at it. A woman is holding a banana and looking down at it.",
-    "instance": "table",
-    "interacting_items": [],
-    "all_items": [
-      "small object"
-    ],
-    "spatial_relations": [
-      {
-        "subject": "small object",
-        "relation": "holding",
-        "object": "table"
-      }
-    ],
-    "furniture_pos": [
-      2.96,
-      -0.59
-    ],
-    "mongo_id": "69f980cd30d2e07276265170",
-    "description": "A woman is holding a small object in her hand. small object holding table",
-    "memory_text": "User_Mom bent forward downward at hands holding small object A woman is holding a small object in her hand. A woman is holding a small object in her hand. bent forward downward at hands holding small object A woman is holding a small object in her hand. A woman is holding a small object in her hand. bent forward downward at hands holding small object A woman is holding a banana and looking down at it. A woman is holding a banana and looking down at it. near table with nothing. A woman is holding a small object in her hand. small object holding table small object holding table.",
-    "timestamp": "2026-05-05T13:35:46.181251"
-  },
-  {
-    "faiss_idx": 9,
-    "user": "User_Mom",
-    "action": "bent forward downward at hands holding small object A woman holding a yellow object in her hand. A woman holding a yellow object in her hand. bent forward downward at hands holding small object A woman holding a yellow object in her hand. A woman holding a yellow object in her hand. bent forward downward at hands holding small object A person is holding a small object on the table. A person is holding a small object on the table.",
-    "instance": "table",
-    "interacting_items": [],
-    "all_items": [
-      "banana"
-    ],
-    "spatial_relations": [
-      {
-        "subject": "banana",
-        "relation": "next to",
-        "object": "table"
-      }
-    ],
-    "furniture_pos": [
-      2.96,
-      -0.59
-    ],
-    "mongo_id": "69f980cd30d2e07276265170",
-    "description": "A woman holding a yellow object in her hand. banana next to table",
-    "memory_text": "User_Mom bent forward downward at hands holding small object A woman holding a yellow object in her hand. A woman holding a yellow object in her hand. bent forward downward at hands holding small object A woman holding a yellow object in her hand. A woman holding a yellow object in her hand. bent forward downward at hands holding small object A person is holding a small object on the table. A person is holding a small object on the table. near table with nothing. A woman holding a yellow object in her hand. banana next to table banana next to table.",
-    "timestamp": "2026-05-05T13:36:25.985823"
-  },
-  {
-    "faiss_idx": 10,
-    "user": "User_Mom",
-    "action": "Sleeping",
-    "instance": "sofa",
-    "interacting_items": [],
-    "all_items": [
-      "laptop"
-    ],
-    "spatial_relations": [
-      {
-        "subject": "laptop",
-        "relation": "next to",
-        "object": "sofa"
-      }
-    ],
-    "furniture_pos": [
-      0.4,
-      5.75
-    ],
-    "mongo_id": "69f980cd30d2e0727626517a",
-    "description": "A woman sitting on a couch with her hands in front of her. laptop next to sofa",
-    "memory_text": "User_Mom Sleeping near sofa with nothing. A woman sitting on a couch with her hands in front of her. laptop next to sofa laptop next to sofa.",
-    "timestamp": "2026-05-05T13:39:34.453663"
-  },
-  {
-    "faiss_idx": 11,
-    "user": "User_Mom",
-    "action": "Drink",
-    "instance": "table",
-    "interacting_items": [],
-    "all_items": [
-      "cup"
-    ],
-    "spatial_relations": [
-      {
-        "subject": "cup",
-        "relation": "holding",
-        "object": "table"
-      }
-    ],
-    "furniture_pos": [
-      2.96,
-      -0.59
-    ],
-    "mongo_id": "69f980cd30d2e07276265170",
-    "description": "A woman holding a cup in her hand. cup holding table",
-    "memory_text": "User_Mom Drink near table with nothing. A woman holding a cup in her hand. cup holding table cup holding table.",
-    "timestamp": "2026-05-05T13:40:09.469526"
-  },
-  {
-    "faiss_idx": 12,
-    "user": "User_Mom",
-    "action": "Sleeping",
+    "action": "PuttingDown",
     "instance": "sofa",
     "interacting_items": [],
     "all_items": [
@@ -328,411 +116,303 @@
       }
     ],
     "furniture_pos": [
-      0.4,
-      5.75
+      2.47,
+      -1.45
     ],
-    "mongo_id": "69f980cd30d2e0727626517a",
-    "description": "A woman sitting on a couch with her legs crossed. remote next to sofa",
-    "memory_text": "User_Mom Sleeping near sofa with nothing. A woman sitting on a couch with her legs crossed. remote next to sofa remote next to sofa.",
-    "timestamp": "2026-05-05T13:40:19.973983"
+    "mongo_id": "6a03e0e348fc33e927d68cac",
+    "description": "A person sitting on a couch holding an object in their hand. remote next to sofa",
+    "memory_text": "User_Mom PuttingDown near sofa with nothing. A person sitting on a couch holding an object in their hand. remote next to sofa remote next to sofa.",
+    "timestamp": "2026-05-13T10:25:56.942114"
   },
   {
-    "faiss_idx": 13,
+    "faiss_idx": 5,
+    "user": "User_Mom",
+    "action": "Unknown",
+    "instance": "table2",
+    "interacting_items": [],
+    "all_items": [
+      "apple"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "apple",
+        "relation": "next to",
+        "object": "table2"
+      }
+    ],
+    "furniture_pos": [
+      2.014,
+      5.499
+    ],
+    "mongo_id": "6a03e0e348fc33e927d68cb2",
+    "description": "A woman is standing in a living room holding an apple. apple next to table2",
+    "memory_text": "User_Mom Unknown near table2 with nothing. A woman is standing in a living room holding an apple. apple next to table2 apple next to table2.",
+    "timestamp": "2026-05-13T10:26:18.024366"
+  },
+  {
+    "faiss_idx": 6,
+    "user": "User_Mom",
+    "action": "PuttingDown",
+    "instance": "table2",
+    "interacting_items": [],
+    "all_items": [
+      "cup",
+      "banana",
+      "apple"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "cup",
+        "relation": "next to",
+        "object": "table2"
+      },
+      {
+        "subject": "banana",
+        "relation": "next to",
+        "object": "table2"
+      },
+      {
+        "subject": "apple",
+        "relation": "next to",
+        "object": "table2"
+      }
+    ],
+    "furniture_pos": [
+      2.014,
+      5.499
+    ],
+    "mongo_id": "6a03e0e348fc33e927d68cb2",
+    "description": "A person with red hair bent over in front of a table. cup next to table2 banana next to table2 apple next to table2",
+    "memory_text": "User_Mom PuttingDown near table2 with nothing. A person with red hair bent over in front of a table. cup next to table2 banana next to table2 apple next to table2 cup next to table2. banana next to table2. apple next to table2.",
+    "timestamp": "2026-05-13T10:26:24.653357"
+  },
+  {
+    "faiss_idx": 7,
+    "user": "User_Mom",
+    "action": "PickingUp",
+    "instance": "chair1",
+    "interacting_items": [],
+    "all_items": [
+      "apple"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "apple",
+        "relation": "next to",
+        "object": "table2"
+      }
+    ],
+    "furniture_pos": [
+      0.877,
+      5.289
+    ],
+    "mongo_id": "6a03e0e348fc33e927d68cb4",
+    "description": "A person is sitting in a chair and holding an apple. apple next to table2",
+    "memory_text": "User_Mom PickingUp near chair1 with nothing. A person is sitting in a chair and holding an apple. apple next to table2 apple next to table2.",
+    "timestamp": "2026-05-13T10:26:41.130751"
+  },
+  {
+    "faiss_idx": 8,
+    "user": "User_Dad",
+    "action": "Watching",
+    "instance": "table2",
+    "interacting_items": [],
+    "all_items": [
+      "remote"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "remote",
+        "relation": "next to",
+        "object": "table2"
+      }
+    ],
+    "furniture_pos": [
+      2.014,
+      5.499
+    ],
+    "mongo_id": "6a03e0e348fc33e927d68cb2",
+    "description": "A man standing in a living room holding a remote control. remote next to table2",
+    "memory_text": "User_Dad Watching near table2 with nothing. A man standing in a living room holding a remote control. remote next to table2 remote next to table2.",
+    "timestamp": "2026-05-13T10:26:50.713996"
+  },
+  {
+    "faiss_idx": 9,
+    "user": "User_Dad",
+    "action": "Cooking",
+    "instance": "stove",
+    "interacting_items": [],
+    "all_items": [
+      "remote"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "remote",
+        "relation": "holding",
+        "object": "stove"
+      }
+    ],
+    "furniture_pos": [
+      6.42,
+      3.65
+    ],
+    "mongo_id": "6a03e0e348fc33e927d68caa",
+    "description": "A man is using a remote control on a stove. remote holding stove",
+    "memory_text": "User_Dad Cooking near stove with nothing. A man is using a remote control on a stove. remote holding stove remote holding stove.",
+    "timestamp": "2026-05-13T10:27:16.382364"
+  },
+  {
+    "faiss_idx": 10,
     "user": "User_Dad",
     "action": "Typing",
     "instance": "table",
     "interacting_items": [],
     "all_items": [
+      "remote",
       "laptop"
     ],
     "spatial_relations": [
       {
         "subject": "laptop",
-        "relation": "on",
+        "relation": "next to",
+        "object": "table"
+      },
+      {
+        "subject": "remote",
+        "relation": "next to",
         "object": "table"
       }
     ],
     "furniture_pos": [
-      2.96,
-      -0.59
+      3.636,
+      -0.938
     ],
-    "mongo_id": "69f980cd30d2e07276265170",
-    "description": "A man standing in front of a desk with a laptop on it. laptop on table",
-    "memory_text": "User_Dad Typing near table with nothing. A man standing in front of a desk with a laptop on it. laptop on table laptop on table.",
-    "timestamp": "2026-05-05T13:40:29.923645"
+    "mongo_id": "6a03e0e348fc33e927d68ca2",
+    "description": "A man sitting on a chair using his laptop. laptop next to table remote next to table",
+    "memory_text": "User_Dad Typing near table with nothing. A man sitting on a chair using his laptop. laptop next to table remote next to table laptop next to table. remote next to table.",
+    "timestamp": "2026-05-13T10:27:29.419380"
+  },
+  {
+    "faiss_idx": 11,
+    "user": "User_Dad",
+    "action": "PickingUp",
+    "instance": "table2",
+    "interacting_items": [],
+    "all_items": [
+      "small object"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "small object",
+        "relation": "holding",
+        "object": "table2"
+      }
+    ],
+    "furniture_pos": [
+      2.014,
+      5.499
+    ],
+    "mongo_id": "6a03e0e348fc33e927d68cb2",
+    "description": "A man standing in a living room holding a small object. small object holding table2",
+    "memory_text": "User_Dad PickingUp near table2 with nothing. A man standing in a living room holding a small object. small object holding table2 small object holding table2.",
+    "timestamp": "2026-05-13T10:27:39.752273"
+  },
+  {
+    "faiss_idx": 12,
+    "user": "User_Dad",
+    "action": "Sleeping",
+    "instance": "dad's bed",
+    "interacting_items": [],
+    "all_items": [
+      "book",
+      "remote"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "book",
+        "relation": "next to chair1",
+        "object": "table"
+      },
+      {
+        "subject": "remote",
+        "relation": "beside the book",
+        "object": "table2"
+      }
+    ],
+    "furniture_pos": [
+      0.399999976,
+      -1.56
+    ],
+    "mongo_id": "6a03e0e348fc33e927d68ca0",
+    "description": "A man laying on a bed with his eyes closed and arms stretched out. book next to chair1 table remote beside the book table2",
+    "memory_text": "User_Dad Sleeping near dad's bed with nothing. A man laying on a bed with his eyes closed and arms stretched out. book next to chair1 table remote beside the book table2 book next to chair1 table. remote beside the book table2.",
+    "timestamp": "2026-05-13T10:27:51.290296"
+  },
+  {
+    "faiss_idx": 13,
+    "user": "User_Dad",
+    "action": "PickingUp",
+    "instance": "dad's bed",
+    "interacting_items": [],
+    "all_items": [
+      "small object"
+    ],
+    "spatial_relations": [
+      {
+        "subject": "small object",
+        "relation": "next to",
+        "object": "dad's bed"
+      }
+    ],
+    "furniture_pos": [
+      0.399999976,
+      -1.56
+    ],
+    "mongo_id": "6a03e0e348fc33e927d68ca0",
+    "description": "A man sitting on a bed holding something in his hand. small object next to dad's bed",
+    "memory_text": "User_Dad PickingUp near dad's bed with nothing. A man sitting on a bed holding something in his hand. small object next to dad's bed small object next to dad's bed.",
+    "timestamp": "2026-05-13T10:28:15.815848"
   },
   {
     "faiss_idx": 14,
     "user": "User_Dad",
     "action": "Watching",
-    "instance": "mom's bed",
+    "instance": "table2",
     "interacting_items": [],
-    "all_items": [
-      "laptop",
-      "remote"
-    ],
-    "spatial_relations": [
-      {
-        "subject": "laptop",
-        "relation": "next to",
-        "object": "table2"
-      },
-      {
-        "subject": "remote",
-        "relation": "next to",
-        "object": "sofa"
-      }
-    ],
+    "all_items": [],
+    "spatial_relations": [],
     "furniture_pos": [
-      -5.92,
-      6.39
+      2.014,
+      5.499
     ],
-    "mongo_id": "69f980cd30d2e0727626516e",
-    "description": "A man lying on a bed with his head down and hands in front of him. laptop next to table2 remote next to sofa",
-    "memory_text": "User_Dad Watching near mom's bed with nothing. A man lying on a bed with his head down and hands in front of him. laptop next to table2 remote next to sofa laptop next to table2. remote next to sofa.",
-    "timestamp": "2026-05-05T13:40:42.791554"
+    "mongo_id": "6a03e0e348fc33e927d68cb2",
+    "description": "A person is bent over in a living room with no visible objects in their hands.",
+    "memory_text": "User_Dad Watching near table2 with nothing. A person is bent over in a living room with no visible objects in their hands.",
+    "timestamp": "2026-05-13T10:28:24.417442"
   },
   {
     "faiss_idx": 15,
-    "user": "User_Mom",
-    "action": "Sleeping",
+    "user": "User_Dad",
+    "action": "Watching",
     "instance": "sofa",
     "interacting_items": [],
     "all_items": [
-      "remote"
+      "book"
     ],
     "spatial_relations": [
       {
-        "subject": "remote",
-        "relation": "next to",
-        "object": "sofa"
-      }
-    ],
-    "furniture_pos": [
-      0.4,
-      5.75
-    ],
-    "mongo_id": "69f980cd30d2e0727626517a",
-    "description": "A person is laying on a couch with their head down and holding an object. remote next to sofa",
-    "memory_text": "User_Mom Sleeping near sofa with nothing. A person is laying on a couch with their head down and holding an object. remote next to sofa remote next to sofa.",
-    "timestamp": "2026-05-05T13:40:54.835538"
-  },
-  {
-    "faiss_idx": 16,
-    "user": "User_Mom",
-    "action": "Watching",
-    "instance": "table",
-    "interacting_items": [],
-    "all_items": [
-      "remote"
-    ],
-    "spatial_relations": [
-      {
-        "subject": "remote",
-        "relation": "next to",
-        "object": "table"
-      }
-    ],
-    "furniture_pos": [
-      2.96,
-      -0.59
-    ],
-    "mongo_id": "69f980cd30d2e07276265170",
-    "description": "A person is holding a remote control and looking at the screen of a television. remote next to table",
-    "memory_text": "User_Mom Watching near table with nothing. A person is holding a remote control and looking at the screen of a television. remote next to table remote next to table.",
-    "timestamp": "2026-05-05T13:44:35.940630"
-  },
-  {
-    "faiss_idx": 17,
-    "user": "User_Dad",
-    "action": "upright at screen holding device A man standing in front of a desk with a laptop on it. A man standing in front of a desk with a laptop on it. upright at screen holding device A man standing in front of a desk with a laptop on it. A man standing in front of a desk with a laptop on it. upright at screen holding device A man standing in front of a desk with a laptop on it. A man standing in front of a desk with a laptop on it. upright at screen holding device A man standing in front of a white desk with a laptop on it. A man standing in front of a white desk with a laptop on it. upright at screen holding device A man standing in front of a white desk with a laptop on it. A man standing in front of a white desk with a laptop on it.",
-    "instance": "table",
-    "interacting_items": [],
-    "all_items": [
-      "laptop"
-    ],
-    "spatial_relations": [
-      {
-        "subject": "laptop",
+        "subject": "book",
         "relation": "on",
-        "object": "table"
-      }
-    ],
-    "furniture_pos": [
-      2.96,
-      -0.59
-    ],
-    "mongo_id": "69f980cd30d2e07276265170",
-    "description": "A man standing in front of a desk with a laptop on it. laptop on table",
-    "memory_text": "User_Dad upright at screen holding device A man standing in front of a desk with a laptop on it. A man standing in front of a desk with a laptop on it. upright at screen holding device A man standing in front of a desk with a laptop on it. A man standing in front of a desk with a laptop on it. upright at screen holding device A man standing in front of a desk with a laptop on it. A man standing in front of a desk with a laptop on it. upright at screen holding device A man standing in front of a white desk with a laptop on it. A man standing in front of a white desk with a laptop on it. upright at screen holding device A man standing in front of a white desk with a laptop on it. A man standing in front of a white desk with a laptop on it. near table with nothing. A man standing in front of a desk with a laptop on it. laptop on table laptop on table.",
-    "timestamp": "2026-05-05T13:44:44.261122"
-  },
-  {
-    "faiss_idx": 18,
-    "user": "User_Mom",
-    "action": "Watching",
-    "instance": "sofa",
-    "interacting_items": [],
-    "all_items": [
-      "remote"
-    ],
-    "spatial_relations": [
-      {
-        "subject": "remote",
-        "relation": "next to",
         "object": "sofa"
       }
     ],
     "furniture_pos": [
-      0.4,
-      5.75
+      2.47,
+      -1.45
     ],
-    "mongo_id": "69f980cd30d2e0727626517a",
-    "description": "A woman sitting on a couch with her hands in front of her. remote next to sofa",
-    "memory_text": "User_Mom Watching near sofa with nothing. A woman sitting on a couch with her hands in front of her. remote next to sofa remote next to sofa.",
-    "timestamp": "2026-05-05T13:44:54.935830"
-  },
-  {
-    "faiss_idx": 19,
-    "user": "User_Mom",
-    "action": "Watching",
-    "instance": "sofa",
-    "interacting_items": [],
-    "all_items": [
-      "remote"
-    ],
-    "spatial_relations": [
-      {
-        "subject": "remote",
-        "relation": "next to",
-        "object": "sofa"
-      }
-    ],
-    "furniture_pos": [
-      0.4,
-      5.75
-    ],
-    "mongo_id": "69f980cd30d2e0727626517a",
-    "description": "A person is sitting on a couch holding an object in their hand. remote next to sofa",
-    "memory_text": "User_Mom Watching near sofa with nothing. A person is sitting on a couch holding an object in their hand. remote next to sofa remote next to sofa.",
-    "timestamp": "2026-05-05T13:45:06.966109"
-  },
-  {
-    "faiss_idx": 20,
-    "user": "User_Dad",
-    "action": "Watching",
-    "instance": "mom's bed",
-    "interacting_items": [],
-    "all_items": [
-      "laptop",
-      "remote"
-    ],
-    "spatial_relations": [
-      {
-        "subject": "laptop",
-        "relation": "next to",
-        "object": "table2"
-      },
-      {
-        "subject": "remote",
-        "relation": "next to",
-        "object": "sofa"
-      }
-    ],
-    "furniture_pos": [
-      -5.92,
-      6.39
-    ],
-    "mongo_id": "69f980cd30d2e0727626516e",
-    "description": "A man lying on a bed with his head down and hands in front of him. laptop next to table2 remote next to sofa",
-    "memory_text": "User_Dad Watching near mom's bed with nothing. A man lying on a bed with his head down and hands in front of him. laptop next to table2 remote next to sofa laptop next to table2. remote next to sofa.",
-    "timestamp": "2026-05-05T13:45:32.099514"
-  },
-  {
-    "faiss_idx": 21,
-    "user": "User_Mom",
-    "action": "Watching",
-    "instance": "sofa",
-    "interacting_items": [],
-    "all_items": [
-      "small object"
-    ],
-    "spatial_relations": [
-      {
-        "subject": "small object",
-        "relation": "in",
-        "object": "sofa"
-      }
-    ],
-    "furniture_pos": [
-      0.4,
-      5.75
-    ],
-    "mongo_id": "69f980cd30d2e0727626517a",
-    "description": "A person sitting on a sofa holding an object in their lap. small object in sofa",
-    "memory_text": "User_Mom Watching near sofa with nothing. A person sitting on a sofa holding an object in their lap. small object in sofa small object in sofa.",
-    "timestamp": "2026-05-05T13:45:45.012804"
-  },
-  {
-    "faiss_idx": 22,
-    "user": "User_Mom",
-    "action": "PhoneUse",
-    "instance": "table",
-    "interacting_items": [],
-    "all_items": [
-      "remote",
-      "cell phone"
-    ],
-    "spatial_relations": [
-      {
-        "subject": "remote",
-        "relation": "next to",
-        "object": "table"
-      },
-      {
-        "subject": "cell phone",
-        "relation": "next to",
-        "object": "table"
-      }
-    ],
-    "furniture_pos": [
-      2.96,
-      -0.59
-    ],
-    "mongo_id": "69f980cd30d2e07276265170",
-    "description": "A woman is holding a remote control and looking at her phone. remote next to table cell phone next to table",
-    "memory_text": "User_Mom PhoneUse near table with nothing. A woman is holding a remote control and looking at her phone. remote next to table cell phone next to table remote next to table. cell phone next to table.",
-    "timestamp": "2026-05-05T13:49:43.680909"
-  },
-  {
-    "faiss_idx": 23,
-    "user": "User_Mom",
-    "action": "Watching",
-    "instance": "sofa",
-    "interacting_items": [],
-    "all_items": [
-      "remote"
-    ],
-    "spatial_relations": [
-      {
-        "subject": "remote",
-        "relation": "next to",
-        "object": "sofa"
-      }
-    ],
-    "furniture_pos": [
-      0.4,
-      5.75
-    ],
-    "mongo_id": "69f980cd30d2e0727626517a",
-    "description": "A woman sitting on a couch with her hands in front of her. remote next to sofa",
-    "memory_text": "User_Mom Watching near sofa with nothing. A woman sitting on a couch with her hands in front of her. remote next to sofa remote next to sofa.",
-    "timestamp": "2026-05-05T13:49:56.406597"
-  },
-  {
-    "faiss_idx": 24,
-    "user": "User_Dad",
-    "action": "upright at screen holding device A man standing in front of a desk with a laptop on it. A man standing in front of a desk with a laptop on it. upright at screen holding device A man standing in front of a desk with a laptop on it. A man standing in front of a desk with a laptop on it. upright at screen holding device A man standing in front of a desk with a laptop on it. A man standing in front of a desk with a laptop on it. upright at screen holding device A man standing in front of a desk with a laptop on it. A man standing in front of a desk with a laptop on it. upright at screen holding device A man standing in front of a desk with a laptop on it. A man standing in front of a desk with a laptop on it.",
-    "instance": "table",
-    "interacting_items": [],
-    "all_items": [
-      "laptop"
-    ],
-    "spatial_relations": [
-      {
-        "subject": "laptop",
-        "relation": "on",
-        "object": "table"
-      }
-    ],
-    "furniture_pos": [
-      2.96,
-      -0.59
-    ],
-    "mongo_id": "69f980cd30d2e07276265170",
-    "description": "A man standing in front of a desk with a laptop on it. laptop on table",
-    "memory_text": "User_Dad upright at screen holding device A man standing in front of a desk with a laptop on it. A man standing in front of a desk with a laptop on it. upright at screen holding device A man standing in front of a desk with a laptop on it. A man standing in front of a desk with a laptop on it. upright at screen holding device A man standing in front of a desk with a laptop on it. A man standing in front of a desk with a laptop on it. upright at screen holding device A man standing in front of a desk with a laptop on it. A man standing in front of a desk with a laptop on it. upright at screen holding device A man standing in front of a desk with a laptop on it. A man standing in front of a desk with a laptop on it. near table with nothing. A man standing in front of a desk with a laptop on it. laptop on table laptop on table.",
-    "timestamp": "2026-05-05T13:50:04.522915"
-  },
-  {
-    "faiss_idx": 25,
-    "user": "User_Mom",
-    "action": "Watching",
-    "instance": "sofa",
-    "interacting_items": [],
-    "all_items": [
-      "remote"
-    ],
-    "spatial_relations": [
-      {
-        "subject": "remote",
-        "relation": "next to",
-        "object": "sofa"
-      }
-    ],
-    "furniture_pos": [
-      0.4,
-      5.75
-    ],
-    "mongo_id": "69f980cd30d2e0727626517a",
-    "description": "A person sitting on a couch holding an object in their hands. remote next to sofa",
-    "memory_text": "User_Mom Watching near sofa with nothing. A person sitting on a couch holding an object in their hands. remote next to sofa remote next to sofa.",
-    "timestamp": "2026-05-05T13:50:17.000008"
-  },
-  {
-    "faiss_idx": 26,
-    "user": "User_Dad",
-    "action": "upright forward empty A man standing in a kitchen looking down at his hands. A man standing in a kitchen looking down at his hands. upright forward empty A man standing in a kitchen looking down at his hands. A man standing in a kitchen looking down at his hands. upright forward empty A man standing in a kitchen looking down at his hands. A man standing in a kitchen looking down at his hands. upright looking downward at hands holding small object A man standing in a kitchen holding an apple and banana. A man standing in a kitchen holding an apple and banana.",
-    "instance": "table",
-    "interacting_items": [],
-    "all_items": [
-      "bowl"
-    ],
-    "spatial_relations": [
-      {
-        "subject": "bowl",
-        "relation": "next to",
-        "object": "table"
-      }
-    ],
-    "furniture_pos": [
-      2.96,
-      -0.59
-    ],
-    "mongo_id": "69f980cd30d2e07276265170",
-    "description": "A man standing in a kitchen looking down at his hands. bowl next to table",
-    "memory_text": "User_Dad upright forward empty A man standing in a kitchen looking down at his hands. A man standing in a kitchen looking down at his hands. upright forward empty A man standing in a kitchen looking down at his hands. A man standing in a kitchen looking down at his hands. upright forward empty A man standing in a kitchen looking down at his hands. A man standing in a kitchen looking down at his hands. upright looking downward at hands holding small object A man standing in a kitchen holding an apple and banana. A man standing in a kitchen holding an apple and banana. near table with nothing. A man standing in a kitchen looking down at his hands. bowl next to table bowl next to table.",
-    "timestamp": "2026-05-05T13:50:28.329467"
-  },
-  {
-    "faiss_idx": 27,
-    "user": "User_Dad",
-    "action": "Watching",
-    "instance": "mom's bed",
-    "interacting_items": [],
-    "all_items": [
-      "laptop",
-      "remote"
-    ],
-    "spatial_relations": [
-      {
-        "subject": "laptop",
-        "relation": "next to",
-        "object": "table2"
-      },
-      {
-        "subject": "remote",
-        "relation": "next to",
-        "object": "sofa"
-      }
-    ],
-    "furniture_pos": [
-      -5.92,
-      6.39
-    ],
-    "mongo_id": "69f980cd30d2e0727626516e",
-    "description": "A man lying on a bed with his head down and hands in front of him. laptop next to table2 remote next to sofa",
-    "memory_text": "User_Dad Watching near mom's bed with nothing. A man lying on a bed with his head down and hands in front of him. laptop next to table2 remote next to sofa laptop next to table2. remote next to sofa.",
-    "timestamp": "2026-05-05T13:50:41.859854"
+    "mongo_id": "6a03e0e348fc33e927d68cac",
+    "description": "A man sitting on a couch with his hand up to his face. book on sofa",
+    "memory_text": "User_Dad Watching near sofa with nothing. A man sitting on a couch with his hand up to his face. book on sofa book on sofa.",
+    "timestamp": "2026-05-13T10:28:43.251537"
   }
 ]
