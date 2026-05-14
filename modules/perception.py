@@ -737,6 +737,7 @@ RULES:
         source_nodes = payload.get("source_nodes", [])
         node_scores  = payload.get("node_scores", [])
         user_pos     = payload.get("user_pos", None)
+        user_forward = payload.get("user_forward", None)
         room_name    = payload.get("room_name", "")
         virtual_hour = payload.get("virtual_hour", None)
         virtual_day  = payload.get("virtual_day", None)
@@ -837,7 +838,10 @@ RULES:
             validated.get("summary", ""), virtual_hour, virtual_day,
             ground_truth_activity=ground_truth_activity,
             sbert_sim=sbert_sim,
-            combined_str=combined_str)
+            combined_str=combined_str,
+            user_pos=user_pos,
+            user_forward=user_forward,
+            room_name=room_name)
 
         self._update_dynamic_objects(
             user_id=final_user,
@@ -933,7 +937,10 @@ RULES:
                                  raw_desc, virtual_hour=None, virtual_day=None,
                                  ground_truth_activity=None,
                                  sbert_sim=0.0,
-                                 combined_str=""):
+                                 combined_str="",
+                                 user_pos=None,
+                                 user_forward=None,
+                                 room_name=""):
         if not bound_doc: return
 
         instance  = bound_doc.get("label", "Unknown")
@@ -948,13 +955,17 @@ RULES:
         # action is the VLM+SBERT prediction — kept separate from GT.
         if ground_truth_activity:
             self.db["eval_logs"].insert_one({
-                "user_id":        user,
-                "ground_truth":   ground_truth_activity,
-                "vlm_output":     action,
-                "sbert_sim":      sbert_sim,
-                "sbert_input":    combined_str[:300] if combined_str else "",
-                "room":           instance,
-                "timestamp":      datetime.datetime.utcnow(),
+                "user_id":          user,
+                "ground_truth":     ground_truth_activity,
+                "vlm_output":       action,
+                "sbert_sim":        sbert_sim,
+                "sbert_input":      combined_str[:300] if combined_str else "",
+                "room":             instance,
+                "room_name":        room_name,
+                "user_pos":         user_pos,
+                "user_forward":     user_forward,
+                "interacting_items": interacting_items,
+                "timestamp":        datetime.datetime.utcnow(),
             })
 
         # NO_WEIGHT_ACTIONS: record to semantic_memories and dynamic_objects

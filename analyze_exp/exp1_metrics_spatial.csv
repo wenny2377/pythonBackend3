@@ -1,0 +1,14 @@
+Behavior,Precision,Recall,F1-Score,Support
+Drinking,0.000,0.000,0.000,2
+SittingDrink,1.000,0.500,0.667,2
+Eating,0.000,0.000,0.000,2
+Cooking,0.000,0.000,0.000,2
+Opening,0.000,0.000,0.000,2
+Laying,0.000,0.000,0.000,2
+Watching,0.071,1.000,0.133,1
+Reading,1.000,0.500,0.667,2
+Cleaning,0.000,0.000,0.000,2
+PhoneUse,0.000,0.000,0.000,2
+Typing,0.333,1.000,0.500,1
+
+Macro Avg,0.219,0.273,0.179,

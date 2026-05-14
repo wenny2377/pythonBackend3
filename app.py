@@ -107,50 +107,6 @@ def submit_llm_task(fn, *args, **kwargs):
         return _llm_task_results.pop(task_id, None)
 
 
-BEHAVIOR_PROTOTYPES = {
-    "Drink":       "a person drinking, holding a bottle or cup, sipping a beverage",
-    "SittingIdle": "a person sitting still, resting, idle on a sofa or chair",
-    "Reading":     "a person reading a book, holding a book, looking at pages",
-    "Typing":      "a person typing on a keyboard, working at a computer or laptop",
-    "Watching":    "a person watching television, looking at a screen or monitor",
-    "Standing":    "a person standing still, not doing anything specific",
-    "Walking":     "a person walking, moving across the room",
-    "Sleeping":    "a person sleeping, lying down, resting on a bed",
-    "Eating":      "a person eating food, having a meal",
-}
-
-_proto_vecs   = None
-_proto_labels = list(BEHAVIOR_PROTOTYPES.keys())
-
-
-def _get_proto_vecs():
-    global _proto_vecs
-    if _proto_vecs is None:
-        import torch
-        _proto_vecs = sbert_model.encode(
-            list(BEHAVIOR_PROTOTYPES.values()),
-            normalize_embeddings=True,
-            convert_to_tensor=True,
-        )
-        print(f"[SBERT] prototype vectors built ({len(_proto_labels)} classes)")
-    return _proto_vecs
-
-
-def normalize_action_sbert(raw: str, threshold: float = 0.35) -> str:
-    if not raw or raw.strip() in ("", "none"):
-        return "unknown"
-    import torch
-    q_vec    = sbert_model.encode([raw], normalize_embeddings=True, convert_to_tensor=True)
-    sims     = torch.nn.functional.cosine_similarity(q_vec, _get_proto_vecs())
-    best_idx = int(sims.argmax())
-    best_sim = float(sims[best_idx])
-    best_lbl = _proto_labels[best_idx]
-    if best_sim >= threshold:
-        print(f"[SBERT] '{raw[:60]}' -> '{best_lbl}' (sim={best_sim:.3f})")
-        return best_lbl
-    return raw
-
-
 def preview_images(image_list, source_nodes, hint_user_id, activity):
     save_dir = "debug_images"
     os.makedirs(save_dir, exist_ok=True)
@@ -207,24 +163,6 @@ def _get_category_for_label(label: str) -> str:
         if label_l in keywords or any(kw in label_l for kw in keywords):
             return cat
     return "other"
-
-
-def log_eval(experiment, ground_truth, vlm_output, bound_label,
-             user_id, room, vlm_ms, binding_results=None):
-    doc = {
-        "experiment":       experiment,
-        "ground_truth":     ground_truth,
-        "vlm_output":       vlm_output,
-        "is_correct":       ground_truth.lower() == vlm_output.lower() if ground_truth else None,
-        "bound_label":      bound_label,
-        "user_id":          user_id,
-        "room":             room,
-        "vlm_inference_ms": vlm_ms,
-        "timestamp":        datetime.datetime.now(),
-    }
-    if binding_results:
-        doc["binding_results"] = binding_results
-    db["eval_logs"].insert_one(doc)
 
 
 def nightly_maintenance():
@@ -466,8 +404,8 @@ def predict():
         hint_user_id = data.get('userID', 'Unknown_User')
         activity     = data.get('activity', '')
         user_pos_raw = data.get('user_pos')
+        user_fwd_raw = data.get('user_forward')
         source_nodes = data.get('source_nodes', [])
-        image_count  = data.get('image_count', len(image_list))
         room_name    = data.get('room_name', '')
         virtual_hour = data.get('virtual_hour')
 
@@ -487,6 +425,14 @@ def predict():
                 "z": float(user_pos_raw.get("z", 0))
             }
 
+        est_forward = None
+        if user_fwd_raw:
+            est_forward = {
+                "x": float(user_fwd_raw.get("x", 0)),
+                "y": float(user_fwd_raw.get("y", 0)),
+                "z": float(user_fwd_raw.get("z", 0))
+            }
+
         if est_pos and hint_user_id:
             db.user_positions.update_one(
                 {"user_id": hint_user_id},
@@ -495,12 +441,14 @@ def predict():
                     "x":          est_pos["x"],
                     "z":          est_pos["z"],
                     "room":       room_name,
+                    "forward":    est_forward,
                     "updated_at": datetime.datetime.utcnow(),
                 }},
                 upsert=True
             )
 
-        data['room_name'] = room_name
+        data['room_name']    = room_name
+        data['user_forward'] = est_forward
         _wait_for_scene(max_wait=12.0)
 
         acquired = _vlm_lock.acquire(timeout=180)
@@ -519,9 +467,11 @@ def predict():
         spatial_rels   = perception_res["spatial"]
         vlm_desc       = perception_res["result"].get("context", "Observed behavior.")
         vlm_object     = perception_res["bound_instance"]
+        spatial_upgrade = perception_res.get("spatial_upgrade", False)
+        upgrade_reason  = perception_res.get("upgrade_reason", "")
 
-        action_label = normalize_action_sbert(action)
-        print(f"[VLM] action='{action}' -> label='{action_label}' | object={vlm_object} | {vlm_ms}ms")
+        print(f"[VLM] action='{action}' spatial_upgrade={spatial_upgrade} "
+              f"reason='{upgrade_reason}' | {vlm_ms}ms")
 
         if action == "none":
             return jsonify({
@@ -534,7 +484,7 @@ def predict():
 
         final_bound_label = memory.bind_and_update(
             user_id           = user_id,
-            action            = action_label,
+            action            = action,
             est_pos           = est_pos,
             vlm_description   = vlm_desc,
             detected_items    = detected_items,
@@ -544,16 +494,6 @@ def predict():
             room_name         = room_name,
         )
         print(f"[Bind] '{vlm_object}' -> '{final_bound_label}'")
-
-        log_eval(
-            experiment   = "exp1_exp2",
-            ground_truth = activity,
-            vlm_output   = action,
-            bound_label  = final_bound_label,
-            user_id      = user_id,
-            room         = room_name,
-            vlm_ms       = vlm_ms,
-        )
 
         furniture_pos = None
         mongo_id      = None
@@ -570,7 +510,7 @@ def predict():
 
             vector_memory.add_memory(
                 user_id           = user_id,
-                action            = action_label,
+                action            = action,
                 furniture_label   = final_bound_label,
                 vlm_description   = f"{vlm_desc} {spatial_text}".strip(),
                 detected_items    = detected_items,
@@ -611,7 +551,7 @@ def predict():
 
             feature_vec = manifold_engine.build_feature_vector(
                 user_id        = user_id,
-                action         = action_label,
+                action         = action,
                 user_pos       = est_pos,
                 room_name      = room_name,
                 detected_items = detected_items,
@@ -623,7 +563,7 @@ def predict():
             manifold_point_id = manifold_engine.record_point(
                 user_id      = user_id,
                 feature_vec  = feature_vec,
-                action       = action_label,
+                action       = action,
                 bound_label  = final_bound_label,
                 virtual_hour = virtual_hour,
                 prev_action  = prev_action_label,
@@ -637,7 +577,7 @@ def predict():
 
             if intent_prediction.get("trigger"):
                 dynamic_results = vector_memory.search_dynamic(
-                    action_label, top_k=5, user_filter=user_id
+                    action, top_k=5, user_filter=user_id
                 )
                 proposal_result = proposal_engine.evaluate(
                     user_id           = user_id,
@@ -648,7 +588,6 @@ def predict():
                 )
                 has_proposal = proposal_result.get("has_proposal", False)
 
-            # Check if any habits have reached threshold → auto-update SKILL.md
             habit_learner.check_and_update(user_id)
 
         except Exception as manifold_err:
@@ -658,7 +597,8 @@ def predict():
             "status":            "Success",
             "user":              user_id,
             "action":            action,
-            "action_label":      action_label,
+            "spatial_upgrade":   spatial_upgrade,
+            "upgrade_reason":    upgrade_reason,
             "bound_to":          final_bound_label,
             "interacting_items": detected_items,
             "all_items":         all_items,
@@ -713,15 +653,15 @@ def handle_scene():
                 )
 
             docs.append({
-                "label":      label,
-                "x":          obj.get('x', 0),
-                "y":          obj.get('y', 0),
-                "z":          obj.get('z', 0),
-                "room":       obj.get('room', ''),
-                "image":      obj.get('image', ''),
-                "source":     obj.get('source', 'sensor'),
-                "held_by":    obj.get('held_by', ''),
-                "processed":  False,
+                "label":       label,
+                "x":           obj.get('x', 0),
+                "y":           obj.get('y', 0),
+                "z":           obj.get('z', 0),
+                "room":        obj.get('room', ''),
+                "image":       obj.get('image', ''),
+                "source":      obj.get('source', 'sensor'),
+                "held_by":     obj.get('held_by', ''),
+                "processed":   False,
                 "received_at": now,
             })
 
@@ -755,12 +695,15 @@ def dynamic_sync():
 
             if source == "unity_user":
                 position = obj.get('position', [0, 0])
+                forward  = obj.get('forward', [0, 0, 0])
                 db.user_positions.update_one(
                     {"user_id": label},
                     {"$set": {
                         "user_id":    label,
                         "x":          float(position[0]),
                         "z":          float(position[1]),
+                        "forward":    forward,
+                        "activity":   obj.get('activity', ''),
                         "room":       obj.get('room', ''),
                         "updated_at": now,
                     }},
@@ -811,7 +754,6 @@ def dynamic_sync():
                 )
             count += 1
 
-        # Remove stale unity objects not in this sync batch
         unity_labels = [
             obj.get('label', '').lower().strip()
             for obj in objects
@@ -1104,7 +1046,6 @@ interaction_engine = InteractionEngine(
 )
 training_exporter = TrainingExporter(mongo_client)
 
-# Initialize HabitLearner after interaction_engine so skill_manager is ready
 habit_learner = HabitLearner(
     db_client     = mongo_client,
     skill_manager = interaction_engine.skill_manager,
@@ -1113,10 +1054,6 @@ habit_learner = HabitLearner(
 
 @app.route('/habit_feedback', methods=['POST'])
 def habit_feedback():
-    """
-    Called when user accepts or rejects a service proposal.
-    Body: {"user_id": "...", "result": "accepted|rejected", "intent": "...", "item": "..."}
-    """
     try:
         data    = request.get_json()
         user_id = data.get("user_id", "")
@@ -1136,11 +1073,6 @@ def habit_feedback():
 
 @app.route('/habit_check', methods=['POST'])
 def habit_check():
-    """
-    Manually trigger HabitLearner.check_and_update() for a user.
-    Used by analyze3.py for RQ3 evaluation.
-    Body: {"user_id": "..."}
-    """
     try:
         data    = request.get_json()
         user_id = data.get("user_id", "")
@@ -1152,34 +1084,25 @@ def habit_check():
         return jsonify({"error": str(e)}), 500
 
 
-# ── 加到 app.py 的 /track_position endpoint ──────────────────────────
-# 放在 /habit_check route 的後面
-
 @app.route('/track_position', methods=['POST'])
 def track_position():
-    """
-    Shadow tracking endpoint — called every 0.5s during WalkTo.
-    No VLM, no image. Only records a manifold point with low confidence.
-    """
     try:
-        data         = request.get_json()
+        data = request.get_json()
         if not data:
             return jsonify({"error": "No data"}), 400
 
-        user_id      = data.get("userID", "Unknown")
-        x            = float(data.get("x", 0))
-        z            = float(data.get("z", 0))
-        intent       = data.get("intent_action", "Walking")
-        room_name    = data.get("room_name", "")
+        user_id   = data.get("userID", "Unknown")
+        x         = float(data.get("x", 0))
+        z         = float(data.get("z", 0))
+        intent    = data.get("intent_action", "Walking")
+        room_name = data.get("room_name", "")
 
-        # Use virtual_hour from app config (set by /set_virtual_hour)
         virtual_hour = app.config.get("VIRTUAL_HOUR", None)
         if virtual_hour is not None and float(virtual_hour) < 0:
             virtual_hour = None
 
         est_pos = {"x": x, "z": z}
 
-        # Update user position in DB
         db.user_positions.update_one(
             {"user_id": user_id},
             {"$set": {
@@ -1192,15 +1115,12 @@ def track_position():
             upsert=True,
         )
 
-        # Get previous action for sequential context
         prev_doc = db.manifold_points.find_one(
             {"user_id": user_id},
             sort=[("timestamp", -1)],
         )
-        prev_action = prev_doc.get("action", "Walking") \
-                      if prev_doc else "Walking"
+        prev_action = prev_doc.get("action", "Walking") if prev_doc else "Walking"
 
-        # Build 1158-dim feature vector
         feature_vec = manifold_engine.build_feature_vector(
             user_id        = user_id,
             action         = intent,
@@ -1212,7 +1132,6 @@ def track_position():
             prev_action    = prev_action,
         )
 
-        # Record shadow point
         manifold_engine.record_point(
             user_id      = user_id,
             feature_vec  = feature_vec,
@@ -1224,7 +1143,6 @@ def track_position():
             is_shadow    = True,
         )
 
-        # Trigger refit check
         manifold_engine.maybe_refit(user_id)
 
         return jsonify({"status": "ok"}), 200
@@ -1243,4 +1161,3 @@ if __name__ == "__main__":
     print(f"  LLM model : {CONFIG.LLM_MODEL}")
     threading.Timer(86400, nightly_maintenance).start()
     app.run(host=host, port=port, debug=False)
-
