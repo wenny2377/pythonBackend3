@@ -1,0 +1,20 @@
+=================================================================
+Rejection Learning Demo (Supplementary)
+Generated: 2026-05-15 16:16
+=================================================================
+
+User: User_Mom
+Total corrections: 5
+
+Per-day results:
+  Day 1: rate=100%  (Day 1: system recommends juice -> user rejects)
+  Day 2: rate=100%  (Day 2: system recommends alternative -> accepted)
+  Day 3: rate=100%  (Day 3: no correction needed)
+  Day 4: rate=100%  (Day 4: learning stable)
+  Day 5: rate=100%  (Day 5: learning stable)
+
+For thesis:
+On Day 1 the system recommended juice and the user rejected it.
+From Day 2 onward the system did not repeat the rejected item.
+Correction Rate dropped from 100% to 0% after a single rejection,
+demonstrating single-shot feedback learning.

@@ -12,7 +12,7 @@
     "interact_count": 0,
     "interacted_by": [],
     "memory_text": "apple on table2 in LivingRoom. seen 1 times. interacted 0 times.",
-    "timestamp": "2026-05-15T09:54:41.738121",
+    "timestamp": "2026-05-15T14:57:43.569316",
     "faiss_idx": 0
   },
   {
@@ -28,7 +28,7 @@
     "interact_count": 0,
     "interacted_by": [],
     "memory_text": "banana on table2 in LivingRoom. seen 1 times. interacted 0 times.",
-    "timestamp": "2026-05-15T09:54:41.744084",
+    "timestamp": "2026-05-15T14:57:43.579269",
     "faiss_idx": 1
   },
   {
@@ -44,7 +44,7 @@
     "interact_count": 0,
     "interacted_by": [],
     "memory_text": "computer set on desk in BedRoom(dad). seen 1 times. interacted 0 times.",
-    "timestamp": "2026-05-15T09:54:41.751298",
+    "timestamp": "2026-05-15T14:57:43.585587",
     "faiss_idx": 2
   },
   {
@@ -60,7 +60,7 @@
     "interact_count": 0,
     "interacted_by": [],
     "memory_text": "pan on sink in LivingRoom. seen 1 times. interacted 0 times.",
-    "timestamp": "2026-05-15T09:54:41.757781",
+    "timestamp": "2026-05-15T14:57:43.592443",
     "faiss_idx": 3
   },
   {
@@ -76,7 +76,7 @@
     "interact_count": 0,
     "interacted_by": [],
     "memory_text": "book (1) on table in Kitchen. seen 1 times. interacted 0 times.",
-    "timestamp": "2026-05-15T09:54:41.762897",
+    "timestamp": "2026-05-15T14:57:43.601424",
     "faiss_idx": 4
   },
   {
@@ -92,7 +92,7 @@
     "interact_count": 0,
     "interacted_by": [],
     "memory_text": "broom (1) on floor in . seen 1 times. interacted 0 times.",
-    "timestamp": "2026-05-15T09:54:41.768126",
+    "timestamp": "2026-05-15T14:57:43.608165",
     "faiss_idx": 5
   },
   {
@@ -108,7 +108,7 @@
     "interact_count": 0,
     "interacted_by": [],
     "memory_text": "juice (1) on table2 in LivingRoom. seen 1 times. interacted 0 times.",
-    "timestamp": "2026-05-15T09:54:41.773455",
+    "timestamp": "2026-05-15T14:57:43.615119",
     "faiss_idx": 6
   },
   {
@@ -124,7 +124,7 @@
     "interact_count": 0,
     "interacted_by": [],
     "memory_text": "cola on table2 in LivingRoom. seen 1 times. interacted 0 times.",
-    "timestamp": "2026-05-15T09:54:41.779896",
+    "timestamp": "2026-05-15T14:57:43.621313",
     "faiss_idx": 7
   },
   {
@@ -140,7 +140,7 @@
     "interact_count": 0,
     "interacted_by": [],
     "memory_text": "remote (1) on table in Kitchen. seen 1 times. interacted 0 times.",
-    "timestamp": "2026-05-15T09:54:41.785214",
+    "timestamp": "2026-05-15T14:57:43.630303",
     "faiss_idx": 8
   }
 ]

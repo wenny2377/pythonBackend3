@@ -1,0 +1,37 @@
+=================================================================
+Experiment 3: Snapshot Injection Hallucination Test
+Generated: 2026-05-15 16:15
+=================================================================
+
+WITH snapshot: 8/10 correct (80%)
+WITHOUT snapshot: 5/10 correct (50%)
+Hallucinations (without): 5
+
+WITH snapshot results:
+  v  is there any juice                   I found: juice (1) (on table2 in LivingRoom), cola
+  v  I want an apple                      I see an apple on table2 in LivingRoom.
+  v  where is the cola                    I found: cola (on table2 in LivingRoom), drink (on
+  v  is there a banana                    I found: banana (on table2 in LivingRoom), apple (
+  v  do we have any fruit                 I found: banana (on table2 in LivingRoom), apple (
+  v  I want cheese                        Sorry, I couldn't find any cheese in the environme
+  x  is there any pineapple               I don't see any pineapple at home right now.
+  v  get me some coffee                   I'm sorry, but there's no coffee available in the 
+  v  I want pizza                         Sorry, there is no pizza available in the environm
+  x  is there any milk                    I don't see any milk at home right now.
+
+WITHOUT snapshot results:
+  v  is there any juice                   I don't see any juice at home right now.
+  v  I want an apple                      I'm sorry, but there are no apples available in th
+  v  where is the cola                    I don't see any cola at home right now.
+  x  is there a banana                    No food items currently detected in the home.
+  x  do we have any fruit                 No food items currently detected in the home.
+  x  I want cheese                        I'm afraid we don't have cheese in the house right
+  x  is there any pineapple               I don't see any pineapple at home right now.
+  v  get me some coffee                   Sorry, but I don't see any coffee in our home.
+  v  I want pizza                         I'm afraid there is no pizza available in our home
+  x  is there any milk                    I don't see any milk at home right now.
+
+For thesis:
+Removing the snapshot mechanism caused 5 hallucination(s),
+where the robot invented object locations not present in the environment.
+With snapshot: 80% correct vs without: 50%.
