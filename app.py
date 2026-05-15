@@ -27,7 +27,7 @@ from modules.service_proposal import ServiceProposalEngine
 app    = Flask(__name__)
 CONFIG = Config
 
-sbert_model = SentenceTransformer('paraphrase-MiniLM-L6-v2', device='cuda')
+sbert_model = SentenceTransformer('all-MiniLM-L6-v2', device='cuda')
 print("SBERT loaded on CUDA")
 
 mongo_client = MongoClient(CONFIG.MONGO_URI)
@@ -51,7 +51,7 @@ perception = PerceptionEngine(
     face_bank        = None,
     mongo_uri        = CONFIG.MONGO_URI,
     db_name          = CONFIG.DB_NAME,
-    sbert_model_name = 'paraphrase-MiniLM-L6-v2',
+    sbert_model_name = 'all-MiniLM-L6-v2',
 )
 
 memory        = MemoryManager(mongo_client, embedding_model=sbert_model)

@@ -443,7 +443,242 @@ class PerceptionEngine:
 
         self._proto_vecs   = None
         self._proto_labels = list(BEHAVIOR_PROTOTYPES.keys())
+        self.zone_graph    = []
+        self._discover_zones()
         print(f"[PerceptionEngine] Ready | model={model_name}")
+
+
+    ITEM_TO_ACTION = {
+        "bowl": "Eating", "fork": "Eating", "spoon": "Eating",
+        "plate": "Eating", "food": "Eating",
+        "cell phone": "PhoneUse", "phone": "PhoneUse",
+        "book": "Reading", "magazine": "Reading",
+        "laptop": "Typing", "keyboard": "Typing",
+        "cup": "Drinking", "bottle": "Drinking",
+        "mug": "Drinking", "juice": "Drinking",
+        "broom": "Cleaning", "mop": "Cleaning",
+        "pan": "Cooking", "spatula": "Cooking",
+        "remote": "Watching",
+    }
+
+    FURNITURE_WEIGHT = {
+        "tv": 2.0, "television": 2.0, "monitor": 1.8,
+        "sofa": 1.5, "couch": 1.5, "bed": 1.5,
+        "stove": 1.8, "oven": 1.8, "refrigerator": 1.5,
+        "desk": 1.5, "keyboard": 1.8, "computer": 1.8,
+        "dining table": 1.5, "dining_table": 1.5,
+        "broom": 1.8, "mop": 1.8,
+    }
+
+    def _discover_zones(self):
+        print("[Zones] Discovering functional zones from scene_snapshots...")
+        try:
+            all_docs = list(self.col_scene.find(
+                {}, {"label": 1, "pos": 1, "room": 1}
+            ))
+            if not all_docs:
+                print("[Zones] No furniture found in scene_snapshots")
+                self.zone_graph = []
+                return
+
+            proto_vecs    = self._get_proto_vecs()
+            proto_labels  = self._proto_labels
+
+            by_room = {}
+            for doc in all_docs:
+                room = (doc.get("room") or "Unknown").strip()
+                by_room.setdefault(room, []).append(doc)
+
+            zones = []
+            for room_name, furniture_list in by_room.items():
+                furn_with_label = []
+                for f in furniture_list:
+                    label = f.get("label", "")
+                    pos   = f.get("pos")
+                    if not label or not isinstance(pos, list) or len(pos) < 2:
+                        continue
+                    vec     = self.sbert.encode(
+                        [label], normalize_embeddings=True)[0].astype("float32")
+                    sims    = proto_vecs @ vec
+                    best_i  = int(np.argmax(sims))
+                    best_s  = float(sims[best_i])
+                    act_lbl = proto_labels[best_i] if best_s > 0.25 else "Unknown"
+                    furn_with_label.append({
+                        "label":        label,
+                        "pos":          pos,
+                        "action_label": act_lbl,
+                        "vec":          vec,
+                        "sim":          best_s,
+                    })
+
+                if not furn_with_label:
+                    continue
+
+                grouped = {}
+                for f in furn_with_label:
+                    placed = False
+                    for key, group in grouped.items():
+                        lbl, idx = key
+                        if lbl != f["action_label"]:
+                            continue
+                        rep_pos = group[0]["pos"]
+                        fx, fz  = f["pos"][0], f["pos"][1]
+                        rx, rz  = rep_pos[0], rep_pos[1]
+                        dist    = math.sqrt((fx - rx)**2 + (fz - rz)**2)
+                        if dist <= 2.5:
+                            group.append(f)
+                            placed = True
+                            break
+                    if not placed:
+                        new_key = (f["action_label"], len(grouped))
+                        grouped[new_key] = [f]
+
+                for (act_lbl, zone_idx), group in grouped.items():
+                    labels    = [g["label"] for g in group]
+                    positions = [g["pos"] for g in group]
+                    cx = float(np.mean([p[0] for p in positions]))
+                    cz = float(np.mean([p[1] for p in positions]))
+
+                    weights = np.array([
+                        self.FURNITURE_WEIGHT.get(g["label"].lower(), 1.0)
+                        for g in group
+                    ])
+                    vecs    = np.stack([g["vec"] for g in group])
+                    v_space = (weights[:, None] * vecs).sum(axis=0)
+                    norm    = np.linalg.norm(v_space)
+                    if norm > 1e-8:
+                        v_space /= norm
+
+                    zone_name = f"{act_lbl}_Zone"
+                    if zone_idx > 0:
+                        zone_name = f"{act_lbl}_Zone_{zone_idx + 1}"
+
+                    zones.append({
+                        "room":       room_name,
+                        "zone_name":  zone_name,
+                        "action_label": act_lbl,
+                        "center":     [cx, cz],
+                        "v_space":    v_space.tolist(),
+                        "furniture":  labels,
+                    })
+                    print(f"  [Zone] {room_name} | {zone_name} | "
+                          f"furniture={labels} center=({cx:.1f},{cz:.1f})")
+
+            self.zone_graph = zones
+            print(f"[Zones] Built {len(zones)} zones across "
+                  f"{len(by_room)} rooms")
+
+        except Exception as e:
+            import traceback
+            print(f"[Zones] Error: {e}\n{traceback.format_exc()}")
+            self.zone_graph = []
+
+    def _find_nearest_zone(self, user_pos, room_name=""):
+        if not self.zone_graph or not user_pos:
+            return None
+        ux = float(user_pos.get("x", 0))
+        uz = float(user_pos.get("z", 0))
+
+        candidates = [
+            z for z in self.zone_graph
+            if not room_name or
+            room_name.lower() in z["room"].lower() or
+            z["room"].lower() in room_name.lower()
+        ]
+        if not candidates:
+            candidates = self.zone_graph
+
+        best_zone = None
+        best_dist = float("inf")
+        for zone in candidates:
+            cx, cz = zone["center"][0], zone["center"][1]
+            dist   = math.sqrt((ux - cx)**2 + (uz - cz)**2)
+            if dist < best_dist:
+                best_dist = dist
+                best_zone = zone
+        return best_zone
+
+    def _spatial_reasoning(self, vlm_action, sbert_sim,
+                            user_pos, user_forward,
+                            interacting_items, room_name):
+        upgraded_action = vlm_action
+        upgrade_reason  = ""
+        zone_label      = ""
+
+        nearest_zone = self._find_nearest_zone(user_pos, room_name)
+        if nearest_zone:
+            zone_label = nearest_zone["zone_name"]
+
+        items = interacting_items or []
+        if isinstance(items, str):
+            items = [items] if items else []
+
+        for item in items:
+            item_lower = item.lower().strip()
+            for obj_key, action in self.ITEM_TO_ACTION.items():
+                if obj_key in item_lower:
+                    if upgraded_action != action:
+                        upgraded_action = action
+                        upgrade_reason  = f"L2A_held:{item}->{action}"
+                    return upgraded_action, upgrade_reason, zone_label
+
+        should_upgrade = (vlm_action == "Unknown") or (sbert_sim < 0.50)
+        high_confidence = sbert_sim >= 0.80
+
+        if high_confidence:
+            return upgraded_action, "", zone_label
+
+        if should_upgrade and user_forward and user_pos and nearest_zone:
+            proto_vecs   = self._get_proto_vecs()
+            proto_labels = self._proto_labels
+
+            best_score  = 0.55
+            best_action = vlm_action
+
+            zone_v = np.array(nearest_zone["v_space"], dtype="float32")
+
+            for i, label in enumerate(proto_labels):
+                if label in ("Standing", "Walking", "Opening"):
+                    continue
+                sim = float(proto_vecs[i] @ zone_v)
+                if sim > best_score:
+                    best_score  = sim
+                    best_action = label
+
+            if user_forward and user_pos:
+                ux = float(user_pos.get("x", 0))
+                uz = float(user_pos.get("z", 0))
+                cx, cz = nearest_zone["center"][0], nearest_zone["center"][1]
+                dx, dz = cx - ux, cz - uz
+                dist = math.sqrt(dx*dx + dz*dz)
+                if dist > 0.01:
+                    dx /= dist
+                    dz /= dist
+                    fwd_x = float(user_forward.get("x", 0))
+                    fwd_z = float(user_forward.get("z", 0))
+                    fwd_len = math.sqrt(fwd_x*fwd_x + fwd_z*fwd_z)
+                    if fwd_len > 0.01:
+                        fwd_x /= fwd_len
+                        fwd_z /= fwd_len
+                        heading = max(0.0, fwd_x*dx + fwd_z*dz)
+                        combined = best_score * 0.6 + heading * 0.4
+                        if combined > 0.55 and best_action != vlm_action:
+                            upgraded_action = best_action
+                            upgrade_reason  = (
+                                f"L2B_heading+zone:{nearest_zone['zone_name']}"
+                                f"->{ best_action}"
+                                f" vsim={best_score:.2f} heading={heading:.2f}"
+                            )
+                            return upgraded_action, upgrade_reason, zone_label
+
+            if best_action != vlm_action and best_score > 0.55:
+                upgraded_action = best_action
+                upgrade_reason  = (
+                    f"L3_zone:{nearest_zone['zone_name']}"
+                    f"->{best_action} vsim={best_score:.2f}"
+                )
+
+        return upgraded_action, upgrade_reason, zone_label
 
     def _get_proto_vecs(self):
         if self._proto_vecs is None:
@@ -867,9 +1102,38 @@ RULES:
               f"slot={_get_time_slot(virtual_hour)}, "
               f"pending={self.bulk_buffer.pending_count})\n")
 
+        spatial_action, upgrade_reason, zone_label = self._spatial_reasoning(
+            vlm_action       = final_action,
+            sbert_sim        = sbert_sim,
+            user_pos         = user_pos,
+            user_forward     = user_forward,
+            interacting_items = validated["interacting_items"],
+            room_name        = room_name,
+        )
+
+        if upgrade_reason:
+            print(f"[Spatial] {final_action} -> {spatial_action} | {upgrade_reason}")
+
+        if ground_truth_activity:
+            self.db["eval_logs"].update_one(
+                {"user_id": final_user,
+                 "ground_truth": ground_truth_activity,
+                 "timestamp": {"$gte": datetime.datetime.utcnow() -
+                               datetime.timedelta(seconds=10)}},
+                {"$set": {
+                    "spatial_action": spatial_action,
+                    "upgrade_reason": upgrade_reason,
+                    "zone_label":     zone_label,
+                }},
+                sort=[("timestamp", -1)],
+            )
+
         return {
             "user":           final_user,
             "action":         final_action,
+            "spatial_action": spatial_action,
+            "upgrade_reason": upgrade_reason,
+            "zone_label":     zone_label,
             "result":         result,
             "items":          validated["interacting_items"],
             "all_items":      validated["all_items"],
