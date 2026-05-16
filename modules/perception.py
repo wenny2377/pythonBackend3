@@ -61,7 +61,6 @@ LABEL_NORMALIZE_MAP = {
     "iphone":             "cell phone",
     "android":            "cell phone",
     "television":         "tv",
-    "monitor":            "tv",
     "screen":             "tv",
     "notebook":           "laptop",
     "computer":           "laptop",
@@ -445,17 +444,27 @@ class PerceptionEngine:
         self._proto_labels = list(BEHAVIOR_PROTOTYPES.keys())
         self.zone_graph    = []
         self._discover_zones()
+
+        if not self.zone_graph:
+            import threading
+            threading.Thread(
+                target=self._discover_zones_with_retry,
+                daemon=True
+            ).start()
+
         print(f"[PerceptionEngine] Ready | model={model_name}")
 
 
     ITEM_TO_ACTION = {
         "bowl": "Eating", "fork": "Eating", "spoon": "Eating",
         "plate": "Eating", "food": "Eating",
+        "banana": "Eating", "apple": "Eating",
         "cell phone": "PhoneUse", "phone": "PhoneUse",
         "book": "Reading", "magazine": "Reading",
         "laptop": "Typing", "keyboard": "Typing",
         "cup": "Drinking", "bottle": "Drinking",
         "mug": "Drinking", "juice": "Drinking",
+        "cola": "Drinking",
         "broom": "Cleaning", "mop": "Cleaning",
         "pan": "Cooking", "spatula": "Cooking",
         "remote": "Watching",
@@ -572,6 +581,23 @@ class PerceptionEngine:
             import traceback
             print(f"[Zones] Error: {e}\n{traceback.format_exc()}")
             self.zone_graph = []
+
+
+    def _discover_zones_with_retry(self):
+        import time as _time
+        print("[Zones] Starting background retry loop...")
+        for attempt in range(20):
+            _time.sleep(15)
+            count = self.col_scene.count_documents({})
+            if count > 0:
+                print(f"[Zones] Retry {attempt+1}: "
+                      f"scene_snapshots has {count} docs, rebuilding...")
+                self._discover_zones()
+                if self.zone_graph:
+                    print(f"[Zones] Zone Graph ready: "
+                          f"{len(self.zone_graph)} zones")
+                    return
+        print("[Zones] Retry exhausted, Zone Graph still empty")
 
     def _find_nearest_zone(self, user_pos, room_name=""):
         if not self.zone_graph or not user_pos:
@@ -1115,18 +1141,20 @@ RULES:
             print(f"[Spatial] {final_action} -> {spatial_action} | {upgrade_reason}")
 
         if ground_truth_activity:
-            self.db["eval_logs"].update_one(
-                {"user_id": final_user,
-                 "ground_truth": ground_truth_activity,
-                 "timestamp": {"$gte": datetime.datetime.utcnow() -
-                               datetime.timedelta(seconds=10)}},
-                {"$set": {
-                    "spatial_action": spatial_action,
-                    "upgrade_reason": upgrade_reason,
-                    "zone_label":     zone_label,
-                }},
-                sort=[("timestamp", -1)],
-            )
+            self.db["eval_logs"].insert_one({
+                "user_id":           final_user,
+                "ground_truth":      ground_truth_activity,
+                "vlm_output":        final_action,
+                "spatial_action":    spatial_action,
+                "upgrade_reason":    upgrade_reason,
+                "zone_label":        zone_label,
+                "sbert_sim":         sbert_sim,
+                "room_name":         room_name,
+                "user_pos":          user_pos,
+                "user_forward":      user_forward,
+                "interacting_items": validated["interacting_items"],
+                "timestamp":         datetime.datetime.utcnow(),
+            })
 
         return {
             "user":           final_user,
@@ -1213,24 +1241,6 @@ RULES:
                     [bound_doc.get("x", 0), bound_doc.get("z", 0)]
         time_slot = _get_time_slot(virtual_hour)
         today     = _virtual_day_to_date(virtual_day)
-
-        # Write to eval_logs for BG1 accuracy evaluation.
-        # ground_truth_activity comes from Unity's lastAssignedActivity.
-        # action is the VLM+SBERT prediction — kept separate from GT.
-        if ground_truth_activity:
-            self.db["eval_logs"].insert_one({
-                "user_id":          user,
-                "ground_truth":     ground_truth_activity,
-                "vlm_output":       action,
-                "sbert_sim":        sbert_sim,
-                "sbert_input":      combined_str[:300] if combined_str else "",
-                "room":             instance,
-                "room_name":        room_name,
-                "user_pos":         user_pos,
-                "user_forward":     user_forward,
-                "interacting_items": interacting_items,
-                "timestamp":        datetime.datetime.utcnow(),
-            })
 
         # NO_WEIGHT_ACTIONS: record to semantic_memories and dynamic_objects
         # but do NOT accumulate weight in observation_logs.
