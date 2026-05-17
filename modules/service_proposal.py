@@ -21,8 +21,7 @@ class ServiceProposalEngine:
         self._queue      = deque()
         self._lock       = threading.Lock()
         self._last_proposed: dict = {}
-
-        print("✅ [ServiceProposalEngine] 初始化完成")
+        print("[ServiceProposalEngine] Ready")
 
     def evaluate(self, user_id: str, intent_prediction: dict,
                  manifold_point_id: str, user_pos: dict,
@@ -38,23 +37,27 @@ class ServiceProposalEngine:
             return {"has_proposal": False, "proposal_id": None}
 
         if self._recently_proposed(user_id, intent):
-            print(f"   🚫 [Proposal] anti-spam: {user_id} {intent}")
+            print(f"[Proposal] anti-spam: {user_id} {intent}")
             return {"has_proposal": False, "proposal_id": None}
 
         stats = self.db.intent_stats.find_one(
-            {"user_id": user_id, "intent": intent}
-        )
+            {"user_id": user_id, "intent": intent})
         if stats:
-            total    = stats.get("accepted", 0) + stats.get("rejected", 0) + stats.get("ignored", 0)
+            total    = (stats.get("accepted", 0)
+                        + stats.get("rejected", 0)
+                        + stats.get("ignored", 0))
             accepted = stats.get("accepted", 0)
             if total >= MIN_SAMPLES_GATE:
                 rate = accepted / total
                 if rate < MIN_SUCCESS_RATE:
-                    print(f"   🚫 [Proposal] low success rate {rate:.2f} for {intent}")
+                    print(f"[Proposal] low success rate "
+                          f"{rate:.2f} for {intent}")
                     return {"has_proposal": False, "proposal_id": None}
 
-        nav_target, nav_label = self._resolve_service_target(intent, dynamic_results or [])
-        message = self._generate_question(user_id, intent, confidence, nav_label)
+        nav_target, nav_label = self._resolve_service_target(
+            intent, dynamic_results or [])
+        message = self._generate_question(
+            user_id, intent, confidence, nav_label)
 
         doc = {
             "user_id":           user_id,
@@ -68,7 +71,7 @@ class ServiceProposalEngine:
             "status":            "pending",
             "created_at":        datetime.datetime.utcnow(),
         }
-        result    = self.db.service_proposals.insert_one(doc)
+        result      = self.db.service_proposals.insert_one(doc)
         proposal_id = str(result.inserted_id)
 
         with self._lock:
@@ -84,8 +87,8 @@ class ServiceProposalEngine:
             })
 
         self._last_proposed[(user_id, intent)] = datetime.datetime.utcnow()
-
-        print(f"   💡 [Proposal] queued: {user_id} → {intent} (conf={confidence:.2f})")
+        print(f"[Proposal] queued: {user_id} -> {intent} "
+              f"(conf={confidence:.2f})")
         return {"has_proposal": True, "proposal_id": proposal_id}
 
     def get_next_proposal(self) -> dict:
@@ -100,22 +103,30 @@ class ServiceProposalEngine:
             from bson import ObjectId
             self.db.service_proposals.update_one(
                 {"_id": ObjectId(proposal_id)},
-                {"$set": {"status": result, "responded_at": datetime.datetime.utcnow()}}
+                {"$set": {
+                    "status":       result,
+                    "responded_at": datetime.datetime.utcnow(),
+                }}
             )
-            proposal = self.db.service_proposals.find_one({"_id": ObjectId(proposal_id)})
-            if proposal and proposal.get("manifold_point_id"):
+            proposal = self.db.service_proposals.find_one(
+                {"_id": ObjectId(proposal_id)})
+
+            if proposal and manifold_engine is not None:
                 manifold_engine.update_service_result(
-                    proposal["manifold_point_id"], result
+                    user_id = proposal.get("user_id", user_id),
+                    action  = proposal.get("intent", "unknown"),
+                    result  = result,
                 )
-            print(f"   📝 [Proposal] {proposal_id} → {result}")
+
+            print(f"[Proposal] {proposal_id} -> {result}")
             return {"status": "ok", "result": result}
         except Exception as e:
             print(f"[Proposal] handle_response error: {e}")
             return {"status": "error", "message": str(e)}
 
     def _recently_proposed(self, user_id: str, intent: str) -> bool:
-        key      = (user_id, intent)
-        last     = self._last_proposed.get(key)
+        key     = (user_id, intent)
+        last    = self._last_proposed.get(key)
         if last is None:
             return False
         elapsed = (datetime.datetime.utcnow() - last).total_seconds() / 60
@@ -124,11 +135,16 @@ class ServiceProposalEngine:
     def _resolve_service_target(self, intent: str,
                                  dynamic_results: list) -> tuple:
         intent_item_map = {
-            "drinking": ["water", "cup", "bottle", "drink", "beverage", "glass"],
-            "eating":   ["food", "apple", "banana", "snack", "fruit", "plate"],
-            "typing":   ["laptop", "computer", "keyboard", "desk"],
-            "sleeping": ["bed", "pillow", "blanket", "bedroom"],
-            "sitting":  ["sofa", "chair", "couch", "seat"],
+            "drinking":  ["water", "cup", "bottle", "drink", "beverage", "glass"],
+            "eating":    ["food", "apple", "banana", "snack", "fruit", "plate"],
+            "typing":    ["laptop", "computer", "keyboard", "desk"],
+            "laying":    ["bed", "pillow", "blanket"],
+            "watching":  ["remote", "tv", "television"],
+            "reading":   ["book", "magazine"],
+            "phoneuse":  ["phone", "cell phone", "charger"],
+            "cooking":   ["pan", "stove", "spatula"],
+            "opening":   ["refrigerator", "fridge"],
+            "cleaning":  ["broom", "mop"],
         }
         keywords = intent_item_map.get(intent.lower(), [intent])
 
@@ -142,27 +158,34 @@ class ServiceProposalEngine:
     def _generate_question(self, user_id: str, intent: str,
                             confidence: float, nav_label: str) -> str:
         fallback_map = {
-            "drinking": f"你想喝點什麼嗎？",
-            "eating":   f"要我幫你拿點吃的嗎？",
-            "typing":   f"需要我幫你準備工作環境嗎？",
-            "sleeping": f"要休息了嗎？需要我幫你準備嗎？",
-            "sitting":  f"要坐下休息一下嗎？",
+            "drinking":  "Would you like something to drink?",
+            "eating":    "Would you like me to get you something to eat?",
+            "typing":    "Would you like me to prepare your workspace?",
+            "laying":    "Are you ready to rest? Shall I prepare the bed?",
+            "watching":  "Would you like me to turn on the TV?",
+            "reading":   "Would you like me to bring your book?",
+            "phoneuse":  "Would you like me to bring your phone?",
+            "cooking":   "Are you about to cook? Shall I preheat anything?",
+            "opening":   "Would you like me to check what is in the fridge?",
+            "cleaning":  "Would you like me to bring the cleaning supplies?",
         }
-        fallback = fallback_map.get(intent.lower(), f"需要我幫你什麼忙嗎？")
+        fallback = fallback_map.get(
+            intent.lower(),
+            "Is there anything I can help you with?")
 
-        prompt = f"""You are a home service robot assistant.
-The user ({user_id}) appears to need: {intent}
-Confidence: {confidence:.0%}
-Relevant location: {nav_label or 'nearby'}
-
-Generate a SHORT, natural, friendly question in Traditional Chinese (繁體中文).
-Rules:
-- 1 sentence only
-- Sound natural, not robotic
-- Include the relevant item or location if available
-- End with 「嗎？」or 「呢？」
-
-Reply with ONLY the question, no explanation."""
+        prompt = (
+            f"You are a home service robot assistant.\n"
+            f"The user ({user_id}) appears to need: {intent}\n"
+            f"Confidence: {confidence:.0%}\n"
+            f"Relevant location or item: {nav_label or 'nearby'}\n\n"
+            f"Generate a SHORT, natural, friendly question in English.\n"
+            f"Rules:\n"
+            f"- 1 sentence only\n"
+            f"- Sound natural, not robotic\n"
+            f"- Include the relevant item or location if available\n"
+            f"- End with a question mark\n\n"
+            f"Reply with ONLY the question, no explanation."
+        )
 
         try:
             resp = requests.post(
@@ -171,7 +194,10 @@ Reply with ONLY the question, no explanation."""
                     "model":   self.llm_model,
                     "prompt":  prompt,
                     "stream":  False,
-                    "options": {"temperature": 0.4, "num_predict": 60},
+                    "options": {
+                        "temperature": 0.4,
+                        "num_predict": 60,
+                    },
                 },
                 timeout=20,
             )

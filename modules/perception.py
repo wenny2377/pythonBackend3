@@ -117,11 +117,24 @@ BEHAVIOR_LABELS = [
     "Typing", "PickingUp", "PuttingDown", "Standing", "Walking",
 ]
 
+# Zones with exclusive affordance — L3 forces completion even at lower threshold
+HIGH_AFFORDANCE_FURNITURE = {
+    "tv", "television",
+    "monitor", "screen",
+    "stove", "oven",
+    "refrigerator", "fridge",
+    "keyboard",
+}
+HIGH_AFFORDANCE_L3_THRESHOLD = 0.30   # lower gate for exclusive zones
+
 VISION_PROTOTYPES = {
     "Drinking": (
-        "standing upright vertical posture one hand raised wrist elevated close to face. "
-        "gripping beverage container bottle glass cup can metal_can fluid_holder bringing to lips. "
-        "drinking sipping liquid swallowing fluid refreshment hydration cola juice water while standing"
+        "standing upright vertical full body posture weight on both feet. "
+        "single hand gripping cylindrical beverage container bottle glass cup can. "
+        "wrist raised elbow bent arm lifting container upward toward face. "
+        "container rim touching or nearly touching lips mouth. "
+        "swallowing throat movement fluid intake liquid ingestion. "
+        "NOT seated NOT holding paper NOT glowing screen"
     ),
     "SittingDrink": (
         "seated stationary resting posture single hand or both hands holding cup vessel mug glass can box. "
@@ -158,8 +171,11 @@ VISION_PROTOTYPES = {
         "stationary still body minimal facial skeletal movement ongoing attention"
     ),
     "Reading": (
-        "seated or resting posture both hands holding open reading material book magazine paper document text pages. "
-        "head bowed downward chin tucked eyes focused scanning words reading turning sheets"
+        "both hands holding open physical paper book magazine printed document. "
+        "visible white paper pages paper sheets tangible physical pages. "
+        "turning flipping paper page with finger. "
+        "head bowed eyes scanning printed black text words lines on paper. "
+        "NOT holding electronic device NOT glowing screen NOT digital display"
     ),
     "Cleaning": (
         "standing active locomotion lateral weight shift stepping displacement. "
@@ -169,8 +185,11 @@ VISION_PROTOTYPES = {
         "repetitive cyclical whole body coordination house chores maintenance"
     ),
     "PhoneUse": (
-        "unilateral movement single hand holding thin small portable electronic device smartphone phone digital screen. "
-        "face tilted downward eyes focused on glowing display thumb finger scrolling tapping touching swiping single-handed"
+        "single hand only unilateral grip holding thin flat rectangular smartphone device. "
+        "glowing illuminated digital screen display lit up bright. "
+        "thumb actively scrolling swiping tapping touching glass screen surface. "
+        "face angled downward chin dropped eyes locked on luminous phone display. "
+        "NOT holding paper NOT holding cup NOT raising hand to mouth"
     ),
     "Typing": (
         "seated upright forward workstation posture. "
@@ -196,7 +215,8 @@ VISION_PROTOTYPES = {
 }
 
 
-NORMALIZE_THRESHOLD = 0.42
+NORMALIZE_THRESHOLD = 0.38   # lowered absolute floor
+MARGIN_THRESHOLD    = 0.12   # top1 - top2 must exceed this to fire below 0.42
 
 # Imported by manifold recording inside analyze_action_burst
 def build_x_for_record(virtual_hour, user_pos, prev_action):
@@ -484,7 +504,8 @@ class PerceptionEngine:
                  face_analyzer=None, face_bank=None,
                  mongo_uri="mongodb://127.0.0.1:27017/",
                  db_name="robot_rag_db",
-                 sbert_model_name="all-MiniLM-L6-v2"):
+                 sbert_model_name="all-MiniLM-L6-v2",
+                 manifold_engine=None):
 
         self.url       = ollama_url
         self.model     = model_name
@@ -528,6 +549,7 @@ class PerceptionEngine:
 
         self._load_affinity_matrix()
         self._discover_zones()
+        self.manifold_engine = manifold_engine
 
         if not self.zone_graph:
             import threading
@@ -1008,7 +1030,7 @@ class PerceptionEngine:
                         return upgraded_action, upgrade_reason, zone_label
 
         # L3：Zone Affinity 補全
-        if best_action != vlm_action and best_score > 0.55:
+        if best_action != vlm_action and best_score > 0.45:
             zone_affinity = self._compute_zone_affinity(
                 best_action, nearest_zone)
 
@@ -1023,15 +1045,26 @@ class PerceptionEngine:
                     personal_aff = doc.get("affinity", 0.0)
 
             effective_aff = max(zone_affinity, personal_aff)
-            if effective_aff >= 0.40:
+
+            # Determine if this zone has exclusive high affordance
+            zone_furniture = set(
+                f.lower().strip()
+                for f in nearest_zone.get("furniture", []))
+            is_high_affordance = bool(
+                zone_furniture & HIGH_AFFORDANCE_FURNITURE)
+            l3_gate = (HIGH_AFFORDANCE_L3_THRESHOLD
+                       if is_high_affordance else 0.40)
+
+            if effective_aff >= l3_gate:
                 upgraded_action = best_action
-                aff_src        = ("personal" if personal_aff > zone_affinity
-                                  else "static")
+                aff_src         = ("personal" if personal_aff > zone_affinity
+                                   else "static")
+                gate_src        = "high-aff" if is_high_affordance else "std"
                 upgrade_reason  = (
                     f"L3_zone:{nearest_zone['zone_name']}"
                     f"->{best_action}"
                     f" vsim={best_score:.2f}"
-                    f" aff={effective_aff:.2f}({aff_src})"
+                    f" aff={effective_aff:.2f}({aff_src},{gate_src})"
                 )
 
         return upgraded_action, upgrade_reason, zone_label
@@ -1085,15 +1118,31 @@ class PerceptionEngine:
         if not sbert_input or sbert_input.strip() in ("", "none", "unknown"):
             return "Unknown", 0.0
         try:
-            vecs   = self._get_proto_vecs()
-            vec    = self.sbert.encode(
+            vecs       = self._get_proto_vecs()
+            vec        = self.sbert.encode(
                 [sbert_input], normalize_embeddings=True)[0].astype("float32")
-            sims   = vecs @ vec
-            best_i = int(np.argmax(sims))
-            best_s = float(sims[best_i])
-            best_l = self._proto_labels[best_i]
-            if best_s >= NORMALIZE_THRESHOLD:
+            sims       = vecs @ vec
+            sorted_idx = np.argsort(sims)[::-1]
+            best_i     = int(sorted_idx[0])
+            best_s     = float(sims[best_i])
+            best_l     = self._proto_labels[best_i]
+            second_s   = float(sims[sorted_idx[1]]) if len(sorted_idx) > 1 else 0.0
+            margin     = best_s - second_s
+
+            # Hard accept: above absolute threshold
+            if best_s >= 0.42:
+                print(f"[Normalize] '{sbert_input[:50]}' -> '{best_l}' "
+                      f"(sim={best_s:.2f} hard-accept)")
                 return best_l, best_s
+
+            # Margin accept: above lowered floor AND clear winner
+            if best_s >= NORMALIZE_THRESHOLD and margin >= MARGIN_THRESHOLD:
+                print(f"[Normalize] '{sbert_input[:50]}' -> '{best_l}' "
+                      f"(sim={best_s:.2f} margin={margin:.2f} margin-accept)")
+                return best_l, best_s
+
+            print(f"[Normalize] low sim (best={best_l} sim={best_s:.2f} "
+                  f"margin={margin:.2f}) -> Unknown")
             return "Unknown", best_s
         except Exception as e:
             print(f"[Normalize] failed: {e}")
@@ -1423,8 +1472,29 @@ RULES:
         # Used only for eval_logs — perception still runs blind.
         ground_truth_activity = payload.get("activity", None)
 
+        # ── Stage 2: Spatial Reasoning ────────────────────────────────
+        # MUST run before observation_log write so that:
+        #   (a) observation_logs stores spatial_action (not raw VLM output)
+        #   (b) eval_logs Stage 1 vs Stage 2 columns are genuinely different
+        spatial_action, upgrade_reason, zone_label = self._spatial_reasoning(
+            vlm_action        = final_action,
+            sbert_sim         = sbert_sim,
+            user_pos          = user_pos,
+            user_forward      = user_forward,
+            interacting_items = validated["interacting_items"],
+            room_name         = room_name,
+            user_id           = final_user,
+        )
+
+        if upgrade_reason:
+            print(f"[Spatial] {final_action} -> {spatial_action} | {upgrade_reason}")
+
+        # Use spatial_action for downstream storage (habit learning uses
+        # the post-reasoning label, not the raw VLM output)
+        log_action = spatial_action if spatial_action != "Unknown" else final_action
+
         self._update_observation_log(
-            final_user, final_action, bound_doc,
+            final_user, log_action, bound_doc,
             validated["interacting_items"], validated["spatial_relations"],
             validated.get("summary", ""), virtual_hour, virtual_day,
             ground_truth_activity=ground_truth_activity,
@@ -1442,41 +1512,36 @@ RULES:
             bound_doc=bound_doc, room_name=bound_room, user_pos=user_pos)
 
         self._write_semantic_memory(
-            final_user, final_action, bound_doc, confidence, result, source_nodes)
+            final_user, log_action, bound_doc, confidence, result, source_nodes)
 
-        self._update_activity_sequence(final_user, final_action, bound_label)
+        self._update_activity_sequence(final_user, log_action, bound_label)
 
         mem_doc  = self.col_memory.find_one(
-            {"user": final_user, "action": final_action},
+            {"user": final_user, "action": log_action},
             sort=[("timestamp", -1)])
         mongo_id = str(mem_doc["_id"]) if mem_doc else ""
-        self._index_to_faiss(final_user, final_action, bound_doc, result, mongo_id)
+        self._index_to_faiss(final_user, log_action, bound_doc, result, mongo_id)
 
         day_key = _virtual_day_to_date(virtual_day)
-        print(f"\n [Done] {final_user} -> {final_action} @ {bound_label} "
+        print(f"\n [Done] {final_user} -> vlm={final_action} "
+              f"spatial={spatial_action} @ {bound_label} "
               f"(conf={confidence}, date={day_key}, "
               f"slot={_get_time_slot(virtual_hour)}, "
               f"pending={self.bulk_buffer.pending_count})\n")
 
-        spatial_action, upgrade_reason, zone_label = self._spatial_reasoning(
-            vlm_action        = final_action,
-            sbert_sim         = sbert_sim,
-            user_pos          = user_pos,
-            user_forward      = user_forward,
-            interacting_items = validated["interacting_items"],
-            room_name         = room_name,
-            user_id           = final_user,
-        )
-
-        if upgrade_reason:
-            print(f"[Spatial] {final_action} -> {spatial_action} | {upgrade_reason}")
-
         # Record manifold training sample (L4 HabitLearner input)
         # Use spatial_action (post-L3 补全) as the ground-truth label
         # Only record habitual actions — skip transitional ones
-        _record_action = spatial_action if spatial_action != "Unknown" else final_action
-        if (_record_action not in ("Unknown", "Standing", "Walking",
-                                    "PickingUp", "PuttingDown", "none", "")):
+        _record_action   = spatial_action if spatial_action != "Unknown" else final_action
+        _exp_mode        = payload.get("experiment_mode", "habit")
+        _should_record   = (
+            _record_action not in (
+                "Unknown", "Standing", "Walking",
+                "PickingUp", "PuttingDown", "none", "")
+            and self.manifold_engine is not None
+            and _exp_mode != "recognition"
+        )
+        if _should_record:
             try:
                 prev_seq = self.col_activity.find_one(
                     {"user": final_user},
@@ -1486,17 +1551,13 @@ RULES:
                     last_acts = prev_seq["sequence"]
                     if len(last_acts) >= 2:
                         _prev = last_acts[-2].get("action", "")
-                self.col_manifold_data.insert_one({
-                    "user_id":      final_user,
-                    "X":            build_x_for_record(
-                                        virtual_hour, user_pos, _prev),
-                    "y":            BEHAVIOR_LABELS.index(_record_action)
-                                    if _record_action in BEHAVIOR_LABELS else -1,
-                    "action":       _record_action,
-                    "prev_action":  _prev,
-                    "virtual_hour": float(virtual_hour) if virtual_hour else 12.0,
-                    "timestamp":    datetime.datetime.utcnow(),
-                })
+                self.manifold_engine.record_training_sample(
+                    user_id        = final_user,
+                    virtual_hour   = virtual_hour,
+                    user_pos       = user_pos,
+                    prev_action    = _prev,
+                    current_action = _record_action,
+                )
             except Exception as _me:
                 pass   # non-critical
 

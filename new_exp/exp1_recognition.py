@@ -141,10 +141,10 @@ def _classify(gt, pred):
 
 
 def _plot_confusion_matrix(docs, out):
-    labels = [b for b in BEHAVIOR_ORDER
-              if any(norm(d.get("ground_truth",""))==b for d in docs)]
+    # Fixed 11 behaviours — always show all, even if count=0
+    labels     = list(BEHAVIOR_ORDER)
     labels_ext = labels + ["Unknown"]
-    n = len(labels_ext)
+    n          = len(labels_ext)   # 12 columns
 
     def make_matrix(get_pred):
         m = np.zeros((len(labels), n), dtype=int)
@@ -152,8 +152,8 @@ def _plot_confusion_matrix(docs, out):
             gt   = norm(d.get("ground_truth",""))
             pred = norm(get_pred(d))
             if gt not in labels: continue
-            r = labels.index(gt)
-            c = labels_ext.index(pred) if pred in labels_ext else n-1
+            r    = labels.index(gt)
+            c    = labels_ext.index(pred) if pred in labels_ext else n-1
             m[r, c] += 1
         return m
 
@@ -196,10 +196,8 @@ def _plot_confusion_matrix(docs, out):
 
 
 def _plot_perclass_f1(docs, out):
-    behaviors = [b for b in BEHAVIOR_ORDER
-                 if any(norm(d.get("ground_truth",""))==b for d in docs)]
-    if not behaviors:
-        return
+    # Always show all 11 behaviours regardless of whether they appear in data
+    behaviors = list(BEHAVIOR_ORDER)
 
     def f1_per_class(get_pred):
         scores = {}
