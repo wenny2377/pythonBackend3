@@ -7,22 +7,9 @@ Run after Unity RecognitionExp is complete.
 Output:
   results/figA_confusion_matrix.png
   results/figA2_perclass_f1.png
-  results/figB_overall_metrics.png  (formerly figB_sbert_confidence)
+  results/figB_sbert_confidence.png
   results/figC_spatial_contributions.png
   results/exp1_summary.txt
-"""
-
-"""
-thesis_analyze.py
-Main offline analysis script for thesis validation.
-Does NOT require Flask — reads directly from MongoDB.
-
-Usage:
-  python3 thesis_analyze.py --static    # Chapter 4.1: Recognition
-  python3 thesis_analyze.py --dynamic   # Chapter 4.2: Habit Learning
-  python3 thesis_analyze.py --system    # Chapter 4.3: System Integration
-  python3 thesis_analyze.py --all       # All of the above
-  python3 thesis_analyze.py --out results/  # Custom output directory
 """
 
 import argparse
@@ -58,14 +45,8 @@ CONVERGENCE_ACC   = 0.70
 CONVERGENCE_DAYS  = 3
 DEDUP_SIM         = 0.78
 
-SHOWCASE = [
-    {"user": "User_Mom", "action": "Watching",
-     "spot_a": "sofa",        "spot_b": "sofa side",  "label": "Mom · Watching"},
-    {"user": "User_Dad", "action": "Typing",
-     "spot_a": "desk",        "spot_b": "chair",       "label": "Dad · Typing"},
-    {"user": "User_Mom", "action": "Opening",
-     "spot_a": "refrigerator","spot_b": "sink",        "label": "Mom · Opening"},
-]
+# SHOWCASE is not used in Experiment 1 (recognition only).
+# It is defined in thesis_exp2_habit.py for habit learning analysis.
 
 NORMALIZE_MAP = {
     "drinking":"Drinking","drink":"Drinking","sittingdrink":"SittingDrink",
@@ -342,16 +323,18 @@ def _plot_sbert_confidence(docs, out):
     accs   = [bin_data[k]["correct"]/(bin_data[k]["total"] or 1)*100 for k in b_keys]
     counts = [bin_data[k]["total"] for k in b_keys]
 
-    unk_rate = sum(1 for d in docs if norm(d.get("vlm_output",""))=="Unknown") / len(docs) * 100
-    threshold= 0.42
+    unk_rate  = sum(1 for d in docs if norm(d.get("vlm_output",""))=="Unknown") / len(docs) * 100
+    threshold = 0.42   # hard-accept floor (margin-accept floor is 0.38)
 
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(13, 5))
     fig.suptitle("Figure B: SBERT Confidence Analysis", fontsize=13, fontweight="bold")
 
     ax1.bar(b_keys, accs, width=0.04, color=COLORS["Stage2"],
             alpha=0.8, edgecolor="white")
-    ax1.axvline(x=threshold, color="#E53935", linewidth=2,
-                linestyle="--", label=f"Threshold = {threshold}")
+    ax1.axvline(x=0.42, color="#E53935", linewidth=2,
+                linestyle="--", label="Hard-accept = 0.42")
+    ax1.axvline(x=0.38, color="#FF9800", linewidth=1.5,
+                linestyle=":", label="Margin-accept floor = 0.38")
     for k, a, n_ in zip(b_keys, accs, counts):
         if n_ > 0:
             ax1.text(k, a+1.5, f"n={n_}", ha="center", fontsize=7.5)
