@@ -105,79 +105,111 @@ COORD_MATCH_DIST     = 1.5
 # but should NOT accumulate weight in observation_logs.
 # These are transitional/utility actions — not habitual behaviors.
 NO_WEIGHT_ACTIONS = {
-    "Opening", "PickingUp", "PuttingDown",
+    "PickingUp", "PuttingDown",
     "Walking", "Standing",
+    # Opening removed: it is an Intent Pivot action whose weight
+    # accumulation is needed for Manifold Engine prev_action context.
 }
 
-BEHAVIOR_PROTOTYPES = {
-    # Core habitual behaviors — accumulate weight, trigger FAT
-    # Each prototype emphasizes visually DISTINCT features
-    # to maximize SBERT vector distance between similar activities
+BEHAVIOR_LABELS = [
+    "Drinking", "SittingDrink", "Eating", "Cooking", "Opening",
+    "Laying", "Watching", "Reading", "Cleaning", "PhoneUse",
+    "Typing", "PickingUp", "PuttingDown", "Standing", "Walking",
+]
 
-    "Drink":
-        "standing upright one hand raising cup bottle glass to mouth "
-        "lips touching rim drinking sipping swallowing liquid wrist raised",
-
-    "SittingDrink":
-        "seated at dining table chair both hands holding mug cup "
-        "raising to mouth drinking seated upright table surface visible",
-
-    "Eating":
-        "seated at table both hands holding fork spoon bowl plate "
-        "food raised toward open mouth chewing jaw moving utensil",
-
-    "Cooking":
-        "standing at kitchen stove counter both hands holding frying pan "
-        "spatula stirring mixing heat flame pot cooking food preparation",
-
-    "Reading":
-        "both hands holding open book paper magazine pages text visible "
-        "head tilted downward eyes focused on printed words in hands",
-
-    "Typing":
-        "seated at desk both hands flat on keyboard fingers pressing keys "
-        "wrists low computer monitor screen in front face forward",
-
-    "Watching":
-        "seated upright on sofa couch facing large television wall screen "
-        "head level forward gaze hands empty resting on lap armrest",
-
-    "PhoneUse":
-        "one hand holding small thin rectangular smartphone screen glowing "
-        "face tilted downward eyes at phone finger scrolling tapping swiping",
-
-    "Laying":
-        "body fully horizontal reclined lying on sofa bed legs extended "
-        "head on cushion pillow eyes closed or looking at ceiling resting",
-
-    "Cleaning":
-        "standing both hands gripping broom mop handle arms sweeping "
-        "pushing pulling across floor surface wide arm motion cleaning",
-
-    # Transitional behaviors — captured but weight NOT accumulated
-    "Opening":
-        "standing one arm fully extended forward hand gripping door handle "
-        "fridge refrigerator cabinet pulling outward door swinging open",
-
-    "PickingUp":
-        "bending forward at waist hand reaching downward toward floor "
-        "grasping small object lifting upward from ground surface",
-
-    "PuttingDown":
-        "bending forward hand lowering object downward placing releasing "
-        "item onto table floor surface setting down gently",
-
-    # Background states
-    "Standing":
-        "standing upright both arms at sides no object in hands "
-        "not moving idle waiting neutral posture",
-
-    "Walking":
-        "legs stepping alternating feet moving forward through room "
-        "arms swinging body in motion walking",
+VISION_PROTOTYPES = {
+    "Drinking": (
+        "standing upright vertical posture one hand raised wrist elevated close to face. "
+        "gripping beverage container bottle glass cup can metal_can fluid_holder bringing to lips. "
+        "drinking sipping liquid swallowing fluid refreshment hydration cola juice water while standing"
+    ),
+    "SittingDrink": (
+        "seated stationary resting posture single hand or both hands holding cup vessel mug glass can box. "
+        "lifting container toward lips swallowing hot cold beverage tea coffee juice soda cola refreshment. "
+        "sipping drinking liquid intake without chewing jaw stationary relaxed sitting position"
+    ),
+    "Eating": (
+        "seated posture head tilted slightly forward hands holding dining tools chopsticks fork spoon utensils bowl plate. "
+        "solid food substance nourishment meal chunk raised toward open mouth. "
+        "jaw actively moving rhythmic chewing mastication grinding swallowing ingesting foodstuff"
+    ),
+    "Cooking": (
+        "standing stationary fixed position facing forward heat source stove flame. "
+        "both hands gripping cookware pan pot wok spatula ladle utensil. "
+        "active wrist rotation forearm stirring circular mixing motion. "
+        "head slightly bowed gaze directed downward into vessel container. "
+        "thermal culinary processing food preparation repetitive arm cycle"
+    ),
+    "Opening": (
+        "standing upright position facing large vertical surface volumetric structure refrigerator fridge unit. "
+        "one arm fully extended forward hand gripping long door handle knob profile. "
+        "pulling door assembly outward executing swinging motion opening large interior storage appliance cabinet. "
+        "cool cold air release from interior"
+    ),
+    "Laying": (
+        "body horizontal reclined flat spine fully extended parallel to ground floor. "
+        "head supported resting total body weight distributed passive stillness repose. "
+        "eyes closed or ceiling directed gaze non focused facial muscles relaxed sleeping napping"
+    ),
+    "Watching": (
+        "seated upright vertical spine orientation head level. "
+        "eyes directed straight forward sustained visual focus fixed forward gaze alignment. "
+        "hands empty resting relaxed on lap passive reception. "
+        "stationary still body minimal facial skeletal movement ongoing attention"
+    ),
+    "Reading": (
+        "seated or resting posture both hands holding open reading material book magazine paper document text pages. "
+        "head bowed downward chin tucked eyes focused scanning words reading turning sheets"
+    ),
+    "Cleaning": (
+        "standing active locomotion lateral weight shift stepping displacement. "
+        "both hands firmly gripping elongated shaft pole handle broom mop tool. "
+        "wide sweeping arc arm motion bilateral rhythmic push pull stroke. "
+        "tool tip contact floor ground surface low trajectory. "
+        "repetitive cyclical whole body coordination house chores maintenance"
+    ),
+    "PhoneUse": (
+        "unilateral movement single hand holding thin small portable electronic device smartphone phone digital screen. "
+        "face tilted downward eyes focused on glowing display thumb finger scrolling tapping touching swiping single-handed"
+    ),
+    "Typing": (
+        "seated upright forward workstation posture. "
+        "both hands dual hands flat palms down fingers actively pressing tapping discrete keys input interface. "
+        "wrists low forearms level synchronized bilateral hand activity typing working coding"
+    ),
+    "PickingUp": (
+        "bending forward at waist spine flexing hand reaching downward close to ground floor surface. "
+        "grasping small object item entity lifting upward elevation from ground counter"
+    ),
+    "PuttingDown": (
+        "bending forward or lowering arm hand lowering object item asset placing settling. "
+        "releasing grip item contact surface table floor setting down terminating carry"
+    ),
+    "Standing": (
+        "standing upright vertical body alignment both arms hanging loose at sides no object hands empty. "
+        "not moving idle stationary waiting neutral posture baseline status"
+    ),
+    "Walking": (
+        "locomotion legs stepping alternating feet forward displacement moving room path hallway. "
+        "arms swinging naturally body coordination walking gait translation motion velocity"
+    ),
 }
+
 
 NORMALIZE_THRESHOLD = 0.42
+
+# Imported by manifold recording inside analyze_action_burst
+def build_x_for_record(virtual_hour, user_pos, prev_action):
+    import math as _math
+    h = float(virtual_hour) if virtual_hour is not None else 12.0
+    rad = 2 * _math.pi * h / 24.0
+    sin_t, cos_t = _math.sin(rad), _math.cos(rad)
+    x = float(user_pos.get("x", 0)) / 10.0 if user_pos else 0.0
+    z = float(user_pos.get("z", 0)) / 10.0 if user_pos else 0.0
+    prev_vec = [0.0] * len(BEHAVIOR_LABELS)
+    if prev_action in BEHAVIOR_LABELS:
+        prev_vec[BEHAVIOR_LABELS.index(prev_action)] = 1.0
+    return [sin_t, cos_t, x, z] + prev_vec
 
 
 def _virtual_day_to_date(virtual_day) -> str:
@@ -206,19 +238,53 @@ def _get_time_slot(virtual_hour) -> str:
         return "Unknown"
 
 
-def normalize_label(raw: str) -> str:
+# Pre-encoded YOUR_OBJECTS vectors (populated by PerceptionEngine.__init__)
+_YOUR_OBJECTS_LIST: list = []
+_YOUR_OBJECTS_VECS = None
+
+
+def normalize_label(raw: str, sbert_model=None) -> str:
+    """
+    L2a Symbolic Normalization:
+    1. Fast path: exact string match (LABEL_NORMALIZE_MAP / YOUR_OBJECTS)
+    2. Slow path: SBERT semantic clustering (fallback for free-text VLM output)
+    """
+    global _YOUR_OBJECTS_LIST, _YOUR_OBJECTS_VECS
     if not raw:
         return raw
     raw_lower = raw.lower().strip()
+
+    # Fast path 1: direct map
     if raw_lower in LABEL_NORMALIZE_MAP:
         return LABEL_NORMALIZE_MAP[raw_lower]
     if raw_lower in YOUR_OBJECTS:
         return raw_lower
+
+    # Fast path 2: word-level match
     for word in raw_lower.split():
         if word in YOUR_OBJECTS:
             return word
         if word in LABEL_NORMALIZE_MAP:
             return LABEL_NORMALIZE_MAP[word]
+
+    # Slow path: SBERT semantic clustering
+    if sbert_model is not None and _YOUR_OBJECTS_LIST:
+        try:
+            if _YOUR_OBJECTS_VECS is None:
+                return raw_lower
+            raw_vec = sbert_model.encode(
+                raw, normalize_embeddings=True).astype("float32")
+            sims    = _YOUR_OBJECTS_VECS @ raw_vec
+            best_i  = int(np.argmax(sims))
+            best_s  = float(sims[best_i])
+            if best_s >= 0.75:
+                matched = _YOUR_OBJECTS_LIST[best_i]
+                print(f"[L2a] SBERT normalize: '{raw}' -> '{matched}' "
+                      f"(sim={best_s:.2f})")
+                return matched
+        except Exception as e:
+            print(f"[L2a] SBERT normalize failed: {e}")
+
     return raw_lower
 
 
@@ -441,8 +507,26 @@ class PerceptionEngine:
         self.faiss_store = FAISSMemoryStore(self.sbert)
 
         self._proto_vecs   = None
-        self._proto_labels = list(BEHAVIOR_PROTOTYPES.keys())
+        self._proto_labels = BEHAVIOR_LABELS
+        self._your_objects_list = sorted(YOUR_OBJECTS)
+        self._your_objects_vecs = self.sbert.encode(
+            self._your_objects_list,
+            normalize_embeddings=True,
+            show_progress_bar=False,
+        ).astype("float32")
+        # populate module-level cache for normalize_label()
+        global _YOUR_OBJECTS_LIST, _YOUR_OBJECTS_VECS
+        _YOUR_OBJECTS_LIST = self._your_objects_list
+        _YOUR_OBJECTS_VECS = self._your_objects_vecs
         self.zone_graph    = []
+        self._affinity_matrix = {}
+        self.col_affinity      = self.db["affinity_matrix"]
+        self.col_user_aff      = self.db["user_spatial_affinity"]
+        self.col_habit_snap    = self.db["habit_snapshots"]
+        self.col_aff_history   = self.db["affinity_history"]
+        self.col_manifold_data = self.db["manifold_training_data"]
+
+        self._load_affinity_matrix()
         self._discover_zones()
 
         if not self.zone_graph:
@@ -470,14 +554,140 @@ class PerceptionEngine:
         "remote": "Watching",
     }
 
-    FURNITURE_WEIGHT = {
-        "tv": 2.0, "television": 2.0, "monitor": 1.8,
-        "sofa": 1.5, "couch": 1.5, "bed": 1.5,
-        "stove": 1.8, "oven": 1.8, "refrigerator": 1.5,
-        "desk": 1.5, "keyboard": 1.8, "computer": 1.8,
-        "dining table": 1.5, "dining_table": 1.5,
-        "broom": 1.8, "mop": 1.8,
-    }
+
+
+
+    def _load_affinity_matrix(self):
+        docs = list(self.col_affinity.find({}))
+        if docs:
+            for doc in docs:
+                furn    = doc["furniture"]
+                action  = doc["action"]
+                affinity= doc["affinity"]
+                if furn not in self._affinity_matrix:
+                    self._affinity_matrix[furn] = {}
+                self._affinity_matrix[furn][action] = affinity
+            print(f"[Affinity] Loaded {len(docs)} entries from MongoDB")
+        else:
+            print("[Affinity] No affinity_matrix found, will distill after zones ready")
+
+    def _distill_affinity_matrix(self):
+        furnitures = [
+            d["label"] for d in self.col_scene.find(
+                {}, {"label": 1}) if d.get("label")
+        ]
+        if not furnitures:
+            print("[Affinity] No furniture in scene_snapshots, skip distillation")
+            return
+
+        behaviors = [
+            l for l in self._proto_labels
+            if l not in ("Standing", "Walking", "PickingUp", "PuttingDown")
+        ]
+
+        furniture_list = ", ".join(furnitures)
+        behavior_list  = ", ".join(behaviors)
+
+        prompt = (
+            "You are a spatial behavior expert for home robots. "
+            "For each furniture item, rate its affinity (0.00 to 1.00) "
+            "with each behavior. "
+            "High affinity means the behavior commonly happens near that furniture. "
+            "Key rules: "
+            "tv: very high for Watching only (0.90+), near 0 for others. "
+            "monitor: very high for Typing only (0.90+), near 0 for others. "
+            "stove: very high for Cooking only (0.90+), near 0 for others. "
+            "refrigerator: very high for Opening only (0.85+), near 0 for others. "
+            "sofa: distribute across Watching(0.35), Laying(0.35), "
+            "Reading(0.15), SittingDrink(0.1), PhoneUse(0.05). "
+            "bed: Laying(0.6), Reading(0.3), PhoneUse(0.1). "
+            "desk: Typing(0.8), Reading(0.15), PhoneUse(0.05). "
+            "dining table or table: Eating(0.4), SittingDrink(0.4), "
+            "Cooking(0.1), Drinking(0.1). "
+            "sink: Drinking(0.5), Cooking(0.3), Cleaning(0.2). "
+            "chair: Eating(0.35), SittingDrink(0.35), Typing(0.2), Reading(0.1). "
+            f"Behaviors: {behavior_list}. "
+            f"Furniture items: {furniture_list}. "
+            "Output ONLY valid JSON, no markdown, no explanation. "
+            "Format: furniture as key, behavior scores as value dict."
+        )
+
+        print(f"[Affinity] Distilling via gemma3:4b "
+              f"({len(furnitures)} furniture x {len(behaviors)} behaviors)...")
+        try:
+            resp = requests.post(
+                f"{self.url}/api/chat",
+                json={
+                    "model":    "gemma3:4b",
+                    "messages": [{"role": "user", "content": prompt}],
+                    "stream":   False,
+                    "options":  {"temperature": 0.1, "num_predict": 2000},
+                },
+                timeout=120,
+            )
+            raw = resp.json().get("message", {}).get("content", "").strip()
+
+            import re as _re
+            m = _re.search(r'\{.*\}', raw, _re.DOTALL)
+            if not m:
+                print(f"[Affinity] JSON not found in response")
+                return
+
+            matrix = json.loads(m.group(0))
+            bulk   = []
+            for furn, action_scores in matrix.items():
+                for action, score in action_scores.items():
+                    if action in self._proto_labels:
+                        bulk.append({
+                            "furniture": furn.lower().strip(),
+                            "action":    action,
+                            "affinity":  float(score),
+                            "source":    "gemma3:4b",
+                        })
+                        fkey = furn.lower().strip()
+                        if fkey not in self._affinity_matrix:
+                            self._affinity_matrix[fkey] = {}
+                        self._affinity_matrix[fkey][action] = float(score)
+
+            if bulk:
+                self.col_affinity.delete_many({})
+                self.col_affinity.insert_many(bulk)
+                print(f"[Affinity] Distilled {len(bulk)} entries, stored in MongoDB")
+
+        except Exception as e:
+            import traceback
+            print(f"[Affinity] Distillation failed: {e}")
+            print(traceback.format_exc())
+
+    def _get_furniture_affinity(self, furniture_label: str, action: str) -> float:
+        label = furniture_label.lower().strip()
+        return self._affinity_matrix.get(label, {}).get(action, 0.0)
+
+    def _compute_furniture_weight(self, label: str) -> float:
+        lbl = label.lower().strip()
+        if self._affinity_matrix and lbl in self._affinity_matrix:
+            scores = list(self._affinity_matrix[lbl].values())
+            if scores:
+                sorted_s = sorted(scores, reverse=True)
+                top1     = sorted_s[0]
+                top2     = sorted_s[1] if len(sorted_s) > 1 else 0.0
+                uniqueness = top1 - top2
+                weight     = 1.0 + uniqueness * 10.0
+                return max(1.0, round(weight, 2))
+        try:
+            furn_vec    = self.sbert.encode(
+                label, normalize_embeddings=True
+            ).astype("float32")
+            proto_vecs  = self._get_proto_vecs()
+            sims        = proto_vecs @ furn_vec
+            sorted_sims = np.sort(sims)[::-1]
+            top1        = float(sorted_sims[0])
+            top2        = float(sorted_sims[1]) if len(sorted_sims) > 1 else 0.0
+            uniqueness  = top1 - top2
+            weight      = 1.0 + uniqueness * 10.0
+            return max(1.0, round(weight, 2))
+        except Exception:
+            return 1.0
 
     def _discover_zones(self):
         print("[Zones] Discovering functional zones from scene_snapshots...")
@@ -549,7 +759,7 @@ class PerceptionEngine:
                     cz = float(np.mean([p[1] for p in positions]))
 
                     weights = np.array([
-                        self.FURNITURE_WEIGHT.get(g["label"].lower(), 1.0)
+                        self._compute_furniture_weight(g["label"])
                         for g in group
                     ])
                     vecs    = np.stack([g["vec"] for g in group])
@@ -592,12 +802,44 @@ class PerceptionEngine:
             if count > 0:
                 print(f"[Zones] Retry {attempt+1}: "
                       f"scene_snapshots has {count} docs, rebuilding...")
+                if not self._affinity_matrix:
+                    print("[Zones] Affinity matrix empty, distilling now...")
+                    self._distill_affinity_matrix()
                 self._discover_zones()
                 if self.zone_graph:
                     print(f"[Zones] Zone Graph ready: "
                           f"{len(self.zone_graph)} zones")
                     return
         print("[Zones] Retry exhausted, Zone Graph still empty")
+
+    def _compute_zone_affinity(self, behavior, zone):
+        if not zone:
+            return 0.0
+        furnitures = zone.get("furniture", [])
+        if self._affinity_matrix and furnitures:
+            scores = [
+                self._affinity_matrix.get(f.lower().strip(), {}).get(behavior, 0.0)
+                for f in furnitures
+            ]
+            weights = [
+                self._compute_furniture_weight(f) for f in furnitures
+            ]
+            total_w = sum(weights)
+            if total_w > 0:
+                weighted_aff = sum(s * w for s, w in zip(scores, weights)) / total_w
+                return round(weighted_aff, 3)
+        if not zone or "v_space" not in zone:
+            return 0.0
+        if behavior not in self._proto_labels:
+            return 0.0
+        try:
+            idx       = self._proto_labels.index(behavior)
+            proto_vec = self._get_proto_vecs()[idx]
+            zone_vec  = np.array(zone["v_space"], dtype="float32")
+            affinity  = float(proto_vec @ zone_vec)
+            return max(0.0, min(1.0, affinity))
+        except Exception:
+            return 0.0
 
     def _find_nearest_zone(self, user_pos, room_name=""):
         if not self.zone_graph or not user_pos:
@@ -624,9 +866,25 @@ class PerceptionEngine:
                 best_zone = zone
         return best_zone
 
+
+    def _is_ambiguous_zone(self, zone) -> bool:
+        if not zone or not self._affinity_matrix:
+            return False
+        scores = []
+        for behavior in BEHAVIOR_LABELS:
+            s = self._compute_zone_affinity(behavior, zone)
+            scores.append(s)
+        if not scores or max(scores) < 0.05:
+            return True
+        sorted_s = sorted(scores, reverse=True)
+        top1 = sorted_s[0]
+        top2 = sorted_s[1] if len(sorted_s) > 1 else 0.0
+        return (top1 - top2) < 0.25
+
     def _spatial_reasoning(self, vlm_action, sbert_sim,
                             user_pos, user_forward,
-                            interacting_items, room_name):
+                            interacting_items, room_name,
+                            user_id=""):
         upgraded_action = vlm_action
         upgrade_reason  = ""
         zone_label      = ""
@@ -639,6 +897,7 @@ class PerceptionEngine:
         if isinstance(items, str):
             items = [items] if items else []
 
+        # L2A：持握物判斷（最高優先級）
         for item in items:
             item_lower = item.lower().strip()
             for obj_key, action in self.ITEM_TO_ACTION.items():
@@ -648,60 +907,131 @@ class PerceptionEngine:
                         upgrade_reason  = f"L2A_held:{item}->{action}"
                     return upgraded_action, upgrade_reason, zone_label
 
-        should_upgrade = (vlm_action == "Unknown") or (sbert_sim < 0.50)
+        should_upgrade  = (vlm_action == "Unknown") or (sbert_sim < 0.50)
         high_confidence = sbert_sim >= 0.80
 
         if high_confidence:
             return upgraded_action, "", zone_label
 
-        if should_upgrade and user_forward and user_pos and nearest_zone:
-            proto_vecs   = self._get_proto_vecs()
-            proto_labels = self._proto_labels
+        if not should_upgrade or not nearest_zone:
+            return upgraded_action, upgrade_reason, zone_label
 
-            best_score  = 0.55
-            best_action = vlm_action
+        # 判斷是否為多義模糊區
+        is_ambiguous = self._is_ambiguous_zone(nearest_zone)
 
-            zone_v = np.array(nearest_zone["v_space"], dtype="float32")
+        proto_vecs = self._get_proto_vecs()
+        zone_v     = np.array(nearest_zone["v_space"], dtype="float32")
 
-            for i, label in enumerate(proto_labels):
-                if label in ("Standing", "Walking", "Opening"):
-                    continue
-                sim = float(proto_vecs[i] @ zone_v)
-                if sim > best_score:
-                    best_score  = sim
-                    best_action = label
-
+        if is_ambiguous:
+            # 多義模糊區：攔截 L3，只靠 L2B 方位
             if user_forward and user_pos:
-                ux = float(user_pos.get("x", 0))
-                uz = float(user_pos.get("z", 0))
-                cx, cz = nearest_zone["center"][0], nearest_zone["center"][1]
-                dx, dz = cx - ux, cz - uz
-                dist = math.sqrt(dx*dx + dz*dz)
-                if dist > 0.01:
-                    dx /= dist
-                    dz /= dist
-                    fwd_x = float(user_forward.get("x", 0))
-                    fwd_z = float(user_forward.get("z", 0))
-                    fwd_len = math.sqrt(fwd_x*fwd_x + fwd_z*fwd_z)
-                    if fwd_len > 0.01:
-                        fwd_x /= fwd_len
-                        fwd_z /= fwd_len
-                        heading = max(0.0, fwd_x*dx + fwd_z*dz)
-                        combined = best_score * 0.6 + heading * 0.4
-                        if combined > 0.55 and best_action != vlm_action:
-                            upgraded_action = best_action
-                            upgrade_reason  = (
-                                f"L2B_heading+zone:{nearest_zone['zone_name']}"
-                                f"->{ best_action}"
-                                f" vsim={best_score:.2f} heading={heading:.2f}"
-                            )
-                            return upgraded_action, upgrade_reason, zone_label
+                best_score  = 0.65
+                best_action = vlm_action
+                for i, label in enumerate(self._proto_labels):
+                    if label in ("Standing", "Walking",
+                                 "PickingUp", "PuttingDown"):
+                        continue
+                    sim = float(proto_vecs[i] @ zone_v)
+                    if sim > best_score:
+                        best_score  = sim
+                        best_action = label
 
-            if best_action != vlm_action and best_score > 0.55:
+                if best_action != vlm_action:
+                    ux  = float(user_pos.get("x", 0))
+                    uz  = float(user_pos.get("z", 0))
+                    cx  = nearest_zone["center"][0]
+                    cz  = nearest_zone["center"][1]
+                    dx, dz = cx - ux, cz - uz
+                    dist   = math.sqrt(dx*dx + dz*dz)
+                    if dist > 0.01:
+                        dx /= dist
+                        dz /= dist
+                        fwd_x   = float(user_forward.get("x", 0))
+                        fwd_z   = float(user_forward.get("z", 0))
+                        fwd_len = math.sqrt(fwd_x*fwd_x + fwd_z*fwd_z)
+                        if fwd_len > 0.01:
+                            fwd_x   /= fwd_len
+                            fwd_z   /= fwd_len
+                            heading  = max(0.0, fwd_x*dx + fwd_z*dz)
+                            combined = best_score * 0.55 + heading * 0.45
+                            if combined > 0.65:
+                                upgraded_action = best_action
+                                upgrade_reason  = (
+                                    f"L2B_ambiguous_heading:"
+                                    f"{nearest_zone['zone_name']}"
+                                    f"->{best_action}"
+                                    f" vsim={best_score:.2f}"
+                                    f" heading={heading:.2f}"
+                                )
+            return upgraded_action, upgrade_reason, zone_label
+
+        # 明確功能區：L3 強制補全流程
+        best_score  = 0.55
+        best_action = vlm_action
+        for i, label in enumerate(self._proto_labels):
+            if label in ("Standing", "Walking",
+                         "PickingUp", "PuttingDown"):
+                continue
+            sim = float(proto_vecs[i] @ zone_v)
+            if sim > best_score:
+                best_score  = sim
+                best_action = label
+
+        # L2B：方位對齊（明確區）
+        if user_forward and user_pos and best_action != vlm_action:
+            ux  = float(user_pos.get("x", 0))
+            uz  = float(user_pos.get("z", 0))
+            cx  = nearest_zone["center"][0]
+            cz  = nearest_zone["center"][1]
+            dx, dz = cx - ux, cz - uz
+            dist   = math.sqrt(dx*dx + dz*dz)
+            if dist > 0.01:
+                dx /= dist
+                dz /= dist
+                fwd_x   = float(user_forward.get("x", 0))
+                fwd_z   = float(user_forward.get("z", 0))
+                fwd_len = math.sqrt(fwd_x*fwd_x + fwd_z*fwd_z)
+                if fwd_len > 0.01:
+                    fwd_x   /= fwd_len
+                    fwd_z   /= fwd_len
+                    heading  = max(0.0, fwd_x*dx + fwd_z*dz)
+                    combined = best_score * 0.6 + heading * 0.4
+                    if combined > 0.55:
+                        upgraded_action = best_action
+                        upgrade_reason  = (
+                            f"L2B_heading+zone:"
+                            f"{nearest_zone['zone_name']}"
+                            f"->{best_action}"
+                            f" vsim={best_score:.2f}"
+                            f" heading={heading:.2f}"
+                        )
+                        return upgraded_action, upgrade_reason, zone_label
+
+        # L3：Zone Affinity 補全
+        if best_action != vlm_action and best_score > 0.55:
+            zone_affinity = self._compute_zone_affinity(
+                best_action, nearest_zone)
+
+            personal_aff = 0.0
+            if user_id and hasattr(self, "col_user_aff"):
+                doc = self.col_user_aff.find_one({
+                    "user_id": user_id,
+                    "action":  best_action,
+                    "zone":    nearest_zone.get("zone_name", ""),
+                })
+                if doc:
+                    personal_aff = doc.get("affinity", 0.0)
+
+            effective_aff = max(zone_affinity, personal_aff)
+            if effective_aff >= 0.40:
                 upgraded_action = best_action
+                aff_src        = ("personal" if personal_aff > zone_affinity
+                                  else "static")
                 upgrade_reason  = (
                     f"L3_zone:{nearest_zone['zone_name']}"
-                    f"->{best_action} vsim={best_score:.2f}"
+                    f"->{best_action}"
+                    f" vsim={best_score:.2f}"
+                    f" aff={effective_aff:.2f}({aff_src})"
                 )
 
         return upgraded_action, upgrade_reason, zone_label
@@ -709,7 +1039,7 @@ class PerceptionEngine:
     def _get_proto_vecs(self):
         if self._proto_vecs is None:
             self._proto_vecs = self.sbert.encode(
-                list(BEHAVIOR_PROTOTYPES.values()),
+                list(VISION_PROTOTYPES.values()),
                 normalize_embeddings=True).astype("float32")
             print(f"[SBERT] prototype vectors built ({len(self._proto_labels)} classes)")
         return self._proto_vecs
@@ -901,7 +1231,7 @@ RULES:
             on  = entry.get("on",     "").lower().strip()
             rel = entry.get("relation", "on").lower().strip()
             if not obj or not on: continue
-            norm = normalize_label(obj)
+            norm = normalize_label(obj, self.sbert)
             if norm in STRUCTURAL_BLACKLIST: continue
             scene_items.append(norm)
             spatial_relations.append({"subject": norm, "relation": rel, "object": on})
@@ -917,7 +1247,7 @@ RULES:
                          "holding", "raising", "carrying", "small", "large",
                          "object", "something", "device", "reaching",
                          "downward", "forward"}: continue
-                norm = normalize_label(w)
+                norm = normalize_label(w, self.sbert)
                 if norm not in STRUCTURAL_BLACKLIST and norm not in YOUR_OBJECTS:
                     continue
                 interacting_items.append(norm)
@@ -1129,16 +1459,46 @@ RULES:
               f"pending={self.bulk_buffer.pending_count})\n")
 
         spatial_action, upgrade_reason, zone_label = self._spatial_reasoning(
-            vlm_action       = final_action,
-            sbert_sim        = sbert_sim,
-            user_pos         = user_pos,
-            user_forward     = user_forward,
+            vlm_action        = final_action,
+            sbert_sim         = sbert_sim,
+            user_pos          = user_pos,
+            user_forward      = user_forward,
             interacting_items = validated["interacting_items"],
-            room_name        = room_name,
+            room_name         = room_name,
+            user_id           = final_user,
         )
 
         if upgrade_reason:
             print(f"[Spatial] {final_action} -> {spatial_action} | {upgrade_reason}")
+
+        # Record manifold training sample (L4 HabitLearner input)
+        # Use spatial_action (post-L3 补全) as the ground-truth label
+        # Only record habitual actions — skip transitional ones
+        _record_action = spatial_action if spatial_action != "Unknown" else final_action
+        if (_record_action not in ("Unknown", "Standing", "Walking",
+                                    "PickingUp", "PuttingDown", "none", "")):
+            try:
+                prev_seq = self.col_activity.find_one(
+                    {"user": final_user},
+                    sort=[("timestamp", -1)])
+                _prev = ""
+                if prev_seq and prev_seq.get("sequence"):
+                    last_acts = prev_seq["sequence"]
+                    if len(last_acts) >= 2:
+                        _prev = last_acts[-2].get("action", "")
+                self.col_manifold_data.insert_one({
+                    "user_id":      final_user,
+                    "X":            build_x_for_record(
+                                        virtual_hour, user_pos, _prev),
+                    "y":            BEHAVIOR_LABELS.index(_record_action)
+                                    if _record_action in BEHAVIOR_LABELS else -1,
+                    "action":       _record_action,
+                    "prev_action":  _prev,
+                    "virtual_hour": float(virtual_hour) if virtual_hour else 12.0,
+                    "timestamp":    datetime.datetime.utcnow(),
+                })
+            except Exception as _me:
+                pass   # non-critical
 
         if ground_truth_activity:
             self.db["eval_logs"].insert_one({
@@ -1224,6 +1584,69 @@ RULES:
         if counts: update_op["$inc"] = counts
         self.col_scene.update_one({"_id": bound_doc.get("_id")}, update_op)
 
+
+    def _update_user_affinity(self, user: str, action: str,
+                               zone_name: str, instance: str):
+        if not action or not user:
+            return
+        try:
+            pipeline = [
+                {"$match": {"user": user, "action": action}},
+                {"$group": {
+                    "_id":          "$zone_name",
+                    "total_weight": {"$sum": "$weight"},
+                }},
+            ]
+            results = list(self.col_obs.aggregate(pipeline))
+            total   = sum(r["total_weight"] for r in results)
+            if total == 0:
+                return
+
+            for r in results:
+                zone_key = r["_id"] or "Unknown_Zone"
+                personal = r["total_weight"] / total
+                self.col_user_aff.update_one(
+                    {"user_id": user,
+                     "action":  action,
+                     "zone":    zone_key},
+                    {"$set": {
+                        "affinity":    round(personal, 4),
+                        "updated_at":  datetime.datetime.utcnow(),
+                    }},
+                    upsert=True,
+                )
+                # record daily history for convergence curve
+                today = datetime.datetime.utcnow().strftime("%Y-%m-%d")
+                self.col_aff_history.update_one(
+                    {"user_id": user, "action": action,
+                     "zone": zone_key, "date": today},
+                    {"$set": {
+                        "affinity":  round(personal, 4),
+                        "timestamp": datetime.datetime.utcnow(),
+                    }},
+                    upsert=True,
+                )
+        except Exception as e:
+            print(f"[UserAffinity] {e}")
+
+    def _write_habit_snapshot(self, user: str, action: str,
+                               instance: str, zone_name: str,
+                               today: str):
+        try:
+            self.col_habit_snap.update_one(
+                {
+                    "user":     user,
+                    "action":   action,
+                    "instance": instance,
+                    "zone":     zone_name or "Unknown",
+                    "date":     today,
+                },
+                {"$inc": {"daily_count": 1}},
+                upsert=True,
+            )
+        except Exception as e:
+            print(f"[HabitSnap] {e}")
+
     def _update_observation_log(self, user, action, bound_doc,
                                  interacting_items, spatial_relations,
                                  raw_desc, virtual_hour=None, virtual_day=None,
@@ -1263,6 +1686,13 @@ RULES:
                   f"[{time_slot}] date={today} already counted")
             return
 
+        # derive zone_name from nearest zone
+        try:
+            _nz = self._find_nearest_zone(user_pos, room_name)
+            zone_name_for_log = _nz["zone_name"] if _nz else ""
+        except Exception:
+            zone_name_for_log = ""
+
         self.col_obs.find_one_and_update(
             {"user": user, "instance": instance,
              "action": action, "time_slot": time_slot},
@@ -1272,6 +1702,9 @@ RULES:
                 "$set":         {
                     "observed_relations": spatial_relations,
                     "pos":               pos_xy,
+                    "room":              bound_doc.get("room", "").strip()
+                                         if bound_doc else "",
+                    "zone_name":         zone_name_for_log,
                     "last_seen":         datetime.datetime.utcnow(),
                     "last_date":         today,
                     "raw_vlm_desc":      raw_desc,
@@ -1283,6 +1716,10 @@ RULES:
             },
             upsert=True, return_document=ReturnDocument.AFTER,
         )
+        self._write_habit_snapshot(user, action, instance,
+                                   zone_name_for_log, today)
+        self._update_user_affinity(user, action,
+                                   zone_name_for_log, instance)
         print(f"[ObsLog] {user} -> {action} @ {instance} "
               f"[{time_slot}] date={today} +1 weight")
 
