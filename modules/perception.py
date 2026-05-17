@@ -1691,18 +1691,20 @@ RULES:
             print(f"[UserAffinity] {e}")
 
     def _write_habit_snapshot(self, user: str, action: str,
-                               instance: str, zone_name: str,
+                               canonical_key: str, zone_name: str,
                                today: str):
         try:
             self.col_habit_snap.update_one(
                 {
-                    "user":     user,
-                    "action":   action,
-                    "instance": instance,
-                    "zone":     zone_name or "Unknown",
-                    "date":     today,
+                    "user":         user,
+                    "action":       action,
+                    "canonical_key": canonical_key,
+                    "date":         today,
                 },
-                {"$inc": {"daily_count": 1}},
+                {
+                    "$inc": {"daily_count": 1},
+                    "$set": {"zone": zone_name or canonical_key},
+                },
                 upsert=True,
             )
         except Exception as e:
@@ -1754,8 +1756,13 @@ RULES:
         except Exception:
             zone_name_for_log = ""
 
+        # Use zone_name as the canonical primary key for habit learning.
+        # If zone_name is available, it serves as the stable semantic token.
+        # instance (raw Unity label) is kept for debugging only.
+        canonical_key = zone_name_for_log if zone_name_for_log else instance
+
         self.col_obs.find_one_and_update(
-            {"user": user, "instance": instance,
+            {"user": user, "zone_name": canonical_key,
              "action": action, "time_slot": time_slot},
             {
                 "$inc":         {"weight": 1},
@@ -1765,22 +1772,26 @@ RULES:
                     "pos":               pos_xy,
                     "room":              bound_doc.get("room", "").strip()
                                          if bound_doc else "",
-                    "zone_name":         zone_name_for_log,
+                    "instance":          instance,
+                    "zone_name":         canonical_key,
                     "last_seen":         datetime.datetime.utcnow(),
                     "last_date":         today,
                     "raw_vlm_desc":      raw_desc,
                 },
                 "$setOnInsert": {
-                    "user": user, "instance": instance,
-                    "action": action, "time_slot": time_slot,
+                    "user":      user,
+                    "zone_name": canonical_key,
+                    "action":    action,
+                    "time_slot": time_slot,
+                    "instance":  instance,
                 },
             },
             upsert=True, return_document=ReturnDocument.AFTER,
         )
-        self._write_habit_snapshot(user, action, instance,
+        self._write_habit_snapshot(user, action, canonical_key,
                                    zone_name_for_log, today)
         self._update_user_affinity(user, action,
-                                   zone_name_for_log, instance)
+                                   canonical_key, instance)
         print(f"[ObsLog] {user} -> {action} @ {instance} "
               f"[{time_slot}] date={today} +1 weight")
 
