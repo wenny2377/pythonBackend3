@@ -109,7 +109,6 @@ def run_static(db, out):
 
     _plot_confusion_matrix(docs, out)
     _plot_perclass_f1(docs, out)
-    _plot_recognition_ablation(docs, out)
     _plot_sbert_confidence(docs, out)
     _plot_spatial_contributions(docs, out)
     _save_static_summary(docs, out)
@@ -139,8 +138,10 @@ def _plot_confusion_matrix(docs, out):
         return m
 
     m1 = make_matrix(lambda d: d.get("vlm_output",""))
-    m2 = make_matrix(lambda d: d.get("spatial_action","") or
-                               d.get("vlm_output",""))
+    m2 = make_matrix(lambda d:
+        d.get("spatial_action")
+        if d.get("spatial_action") and d.get("spatial_action") != "Unknown"
+        else d.get("vlm_output", "Unknown"))
 
     fig, axes = plt.subplots(1, 2, figsize=(18, 7))
     fig.suptitle("Figure A: Confusion Matrix — Stage 1 vs Stage 2",
