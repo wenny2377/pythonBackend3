@@ -890,6 +890,195 @@ def run_topology(db, out):
     print(f"  Saved: {path}")
 
 
+
+# ═══════════════════════════════════════════════════════════════════════
+# EXPERIMENT D  --saycan   Say × Can 融合閘門分析
+# ═══════════════════════════════════════════════════════════════════════
+
+def run_saycan(db, out):
+    print("\n" + "=" * 60)
+    print("Experiment D — Say × Can Gate Analysis (--saycan)")
+    print("=" * 60)
+
+    logs = list(db.saycan_logs.find(
+        {}, {"query": 1, "best_action": 1, "best_score": 1,
+             "say_scores": 1, "habit_probs": 1,
+             "env_scores": 1, "skill_scores": 1,
+             "final_scores": 1, "user_id": 1}
+    ).sort("timestamp", 1))
+
+    if not logs:
+        print("  No saycan_logs found.")
+        print("  Call POST /saycan with some queries first.")
+        return
+
+    print(f"  saycan_logs: {len(logs)}")
+    _plot_saycan_scores(logs, out)
+    _plot_saycan_component_breakdown(logs, out)
+    _save_saycan_summary(logs, out)
+
+
+def _plot_saycan_scores(logs, out):
+    """
+    Bar chart: final Say × Can scores for each query.
+    Shows top-3 behaviours per query.
+    """
+    n_queries = min(len(logs), 6)
+    fig, axes = plt.subplots(
+        1, n_queries, figsize=(5 * n_queries, 5.5))
+    if n_queries == 1:
+        axes = [axes]
+
+    fig.suptitle(
+        "Experiment D: Say × Can Gate — Final Fused Scores\n"
+        "(Say=LLM semantic × Can_habit=MLP × Can_env=DB × Can_skill=SKILL.md)",
+        fontsize=12, fontweight="bold")
+
+    colors = ["#2196F3", "#FF9800", "#9C27B0",
+              "#E53935", "#4CAF50", "#795548"]
+
+    for ax, log, c in zip(axes, logs[:n_queries], colors):
+        final = log.get("final_scores", {})
+        say   = log.get("say_scores", {})
+        habit = log.get("habit_probs", {})
+
+        if not final:
+            ax.set_title("No scores")
+            continue
+
+        # Top 5 behaviours by final score
+        top5 = sorted(final.items(), key=lambda x: -x[1])[:5]
+        lbls = [b for b, _ in top5]
+        vals = [v for _, v in top5]
+
+        bars = ax.bar(range(len(lbls)), vals,
+                      color=c, alpha=0.80, edgecolor="white")
+        for bar, v in zip(bars, vals):
+            ax.text(bar.get_x() + bar.get_width() / 2,
+                    bar.get_height() + 0.002,
+                    f"{v:.3f}", ha="center", fontsize=8,
+                    fontweight="bold")
+
+        ax.set_xticks(range(len(lbls)))
+        ax.set_xticklabels(lbls, rotation=30, ha="right", fontsize=8)
+        ax.set_ylabel("Say × Can Score")
+        ax.set_ylim(0, max(vals) * 1.35 if vals else 0.5)
+
+        query_short = log.get("query", "")[:30]
+        best = log.get("best_action", "")
+        ax.set_title(
+            f'"{query_short}"\n→ {best}',
+            fontsize=9, fontweight="bold")
+        ax.grid(axis="y", alpha=0.25)
+
+    plt.tight_layout()
+    path = os.path.join(out, "expD_saycan_scores.png")
+    plt.savefig(path, dpi=180, bbox_inches="tight")
+    plt.close()
+    print(f"  Saved: {path}")
+
+
+def _plot_saycan_component_breakdown(logs, out):
+    """
+    Stacked bar: contribution of each component (Say, Habit, Env, Skill)
+    to the final score for the best action.
+    Visualises where each point of the score comes from.
+    """
+    if not logs:
+        return
+
+    queries     = []
+    say_vals    = []
+    habit_vals  = []
+    env_vals    = []
+    skill_vals  = []
+    best_actions = []
+
+    for log in logs[:8]:
+        best   = log.get("best_action", "")
+        say_s  = log.get("say_scores",   {}).get(best, 0.0)
+        hab_s  = log.get("habit_probs",  {}).get(best, 0.0)
+        env_s  = log.get("env_scores",   {}).get(best, 0.0)
+        skl_s  = log.get("skill_scores", {}).get(best, 1.0)
+
+        queries.append(log.get("query", "")[:20])
+        say_vals.append(say_s)
+        habit_vals.append(hab_s)
+        env_vals.append(env_s)
+        skill_vals.append(skl_s)
+        best_actions.append(best)
+
+    x   = np.arange(len(queries))
+    w   = 0.6
+    fig, ax = plt.subplots(figsize=(max(10, len(queries) * 1.6), 5.5))
+
+    ax.bar(x, say_vals,   w, label="Say (LLM semantic)",
+           color="#2196F3", alpha=0.85)
+    ax.bar(x, habit_vals, w, bottom=say_vals,
+           label="Can_habit (MLP prior)",
+           color="#FF9800", alpha=0.85)
+    env_bottom = [s + h for s, h in zip(say_vals, habit_vals)]
+    ax.bar(x, env_vals,   w, bottom=env_bottom,
+           label="Can_env (object feasibility)",
+           color="#4CAF50", alpha=0.85)
+    skl_bottom = [e + b for e, b in zip(env_bottom, env_vals)]
+    ax.bar(x, skill_vals, w, bottom=skl_bottom,
+           label="Can_skill (preference filter)",
+           color="#9C27B0", alpha=0.85)
+
+    for i, (q, b) in enumerate(zip(queries, best_actions)):
+        ax.text(i, -0.08, f"→{b}", ha="center",
+                fontsize=7.5, color="#1A237E", fontweight="bold",
+                transform=ax.get_xaxis_transform())
+
+    ax.set_xticks(x)
+    ax.set_xticklabels(
+        [f'"{q}"' for q in queries],
+        rotation=20, ha="right", fontsize=8)
+    ax.set_ylabel("Component Score (raw, before product)")
+    ax.set_title(
+        "Experiment D: Say × Can Component Breakdown\n"
+        "(each bar = raw component scores for the winning action)",
+        fontsize=12, fontweight="bold")
+    ax.legend(fontsize=9, loc="upper right")
+    ax.grid(axis="y", alpha=0.25)
+
+    plt.tight_layout()
+    path = os.path.join(out, "expD_saycan_breakdown.png")
+    plt.savefig(path, dpi=180, bbox_inches="tight")
+    plt.close()
+    print(f"  Saved: {path}")
+
+
+def _save_saycan_summary(logs, out):
+    action_counts = defaultdict(int)
+    for log in logs:
+        action_counts[log.get("best_action", "Unknown")] += 1
+
+    lines = [
+        "=" * 65,
+        "Experiment D: Say × Can Gate Summary",
+        f"Generated: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}",
+        "=" * 65, "",
+        f"Total queries resolved: {len(logs)}", "",
+        "Action distribution:",
+        *[f"  {a:15}: {c} times"
+          for a, c in sorted(
+              action_counts.items(), key=lambda x: -x[1])], "",
+        "Per-query breakdown:",
+    ]
+    for log in logs:
+        best  = log.get("best_action", "")
+        score = log.get("best_score", 0.0)
+        query = log.get("query", "")
+        lines.append(
+            f'  "{query[:40]:40}" -> {best:15} (score={score:.4f})')
+
+    path = os.path.join(out, "expD_saycan_summary.txt")
+    with open(path, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines))
+    print(f"  Saved: {path}")
+
 # ═══════════════════════════════════════════════════════════════════════
 # MAIN
 # ═══════════════════════════════════════════════════════════════════════
@@ -901,6 +1090,8 @@ if __name__ == "__main__":
     parser.add_argument("--out", default="results")
     parser.add_argument("--skip-entropy", action="store_true",
                         help="Skip expB and expC (require trained MLP)")
+    parser.add_argument("--saycan", action="store_true",
+                        help="Run Experiment D: Say x Can gate analysis")
     args = parser.parse_args()
 
     os.makedirs(args.out, exist_ok=True)
@@ -917,5 +1108,10 @@ if __name__ == "__main__":
     else:
         print("\n[Skipped] expB + expC"
               " — run without --skip-entropy after training MLP")
+
+    if args.saycan:
+        run_saycan(db, args.out)
+    else:
+        print("\n[Skipped] expD — run with --saycan after calling /saycan endpoint")
 
     print("\nDone. Check", args.out)
