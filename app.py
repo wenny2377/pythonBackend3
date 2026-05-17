@@ -21,6 +21,7 @@ from modules.memory_vector import VectorMemory
 from modules.classifier import ObjectClassifier, BASE_FURNITURE_KEYWORDS, OBJECT_CATEGORIES
 from modules.manifold_engine import ManifoldEngine, build_x
 from modules.service_proposal import ServiceProposalEngine
+from modules.saycan_engine import SayCanEngine
 
 from sentence_transformers import SentenceTransformer
 
@@ -70,6 +71,14 @@ proposal_engine = ServiceProposalEngine(
     db         = db,
     ollama_url = CONFIG.OLLAMA_URL,
     llm_model  = CONFIG.LLM_MODEL,
+)
+
+saycan_engine = SayCanEngine(
+    db              = db,
+    manifold_engine = manifold_engine,
+    ollama_url      = CONFIG.OLLAMA_URL,
+    llm_model       = CONFIG.LLM_MODEL,
+    sbert_model     = sbert_model,   # shared SBERT instance
 )
 
 _vlm_lock = threading.Lock()
@@ -1121,6 +1130,92 @@ def track_position():
     except Exception as e:
         import traceback
         print(f"[TrackPosition Error] {e}\n{traceback.format_exc()}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/saycan', methods=['POST'])
+def saycan():
+    """
+    Value-Mapped SayCan endpoint.
+    Say × Can_habit × Can_env × Can_skill → best_action + response.
+
+    Body:
+      query        : str   (user's natural language request)
+      userID       : str
+      virtual_hour : float (optional)
+      user_pos     : dict  {"x": ..., "z": ...} (optional)
+      prev_action  : str   (optional)
+    """
+    try:
+        data         = request.get_json()
+        query        = data.get("query", "")
+        user_id      = data.get("userID", "Unknown")
+        virtual_hour = data.get("virtual_hour", None)
+        user_pos_raw = data.get("user_pos", None)
+        prev_action  = data.get("prev_action", "Standing")
+
+        if not query:
+            return jsonify({"error": "query is required"}), 400
+
+        est_pos = None
+        if user_pos_raw:
+            est_pos = {
+                "x": float(user_pos_raw.get("x", 0)),
+                "z": float(user_pos_raw.get("z", 0)),
+            }
+
+        # Fallback: read latest user position from DB
+        if est_pos is None:
+            pos_doc = db.user_positions.find_one({"user_id": user_id})
+            if pos_doc:
+                est_pos = {
+                    "x": float(pos_doc.get("x", 0)),
+                    "z": float(pos_doc.get("z", 0)),
+                }
+
+        # Fallback: read virtual_hour from app config
+        if virtual_hour is None:
+            virtual_hour = app.config.get("VIRTUAL_HOUR", None)
+            if virtual_hour is not None and float(virtual_hour) < 0:
+                virtual_hour = None
+
+        result = saycan_engine.resolve_with_intent(
+            query        = query,
+            user_id      = user_id,
+            virtual_hour = virtual_hour,
+            user_pos     = est_pos,
+            prev_action  = prev_action,
+        )
+
+        intent = result.get("intent", "NEED")
+
+        # CHAT: delegate to standard LLM stream (caller should use
+        # /interact/stream instead)
+        if intent == "CHAT":
+            return jsonify({
+                "status":      "ok",
+                "intent":      "CHAT",
+                "best_action": None,
+                "explanation": "This is a chat message. "
+                               "Use /interact/stream for conversation.",
+            }), 200
+
+        return jsonify({
+            "status":       "ok",
+            "intent":       intent,
+            "best_action":  result.get("best_action"),
+            "best_score":   result.get("best_score", 0.0),
+            "explanation":  result.get("explanation"),
+            "nav_target":   result.get("nav_target"),
+            "nav_label":    result.get("nav_label"),
+            "final_scores": result.get("final_scores", {}),
+            "say_scores":   result.get("say_scores", {}),
+            "habit_probs":  result.get("habit_probs", {}),
+        }), 200
+
+    except Exception as e:
+        import traceback
+        print(f"[SayCan Error] {e}\n{traceback.format_exc()}")
         return jsonify({"error": str(e)}), 500
 
 
