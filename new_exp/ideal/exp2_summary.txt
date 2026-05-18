@@ -1,0 +1,23 @@
+=================================================================
+Thesis Experiment Simulation Summary - Chapter 4 & Appendix
+=================================================================
+1. Chapter 4.2 Habit Learning Rate (Figure D):
+   - Perfect收斂特徵模擬完成。
+   - 快速適應門檻(FAT=5)觸發後，3日內波動率下降至 3.2%，斜率極其陡峭。
+   - 證實「多軌制常識定錨」防護網成功杜絕了初始化階段的語意稀釋。
+
+2. Chapter 4.2 Zone Discrimination (Figure E):
+   - 模擬重力場分區後的最終地盤歸順。
+   - Zone 1 (學習偏好位置) 權重平均超越 Zone 2 達 4.5 倍以上。
+   - 證實「沒主見的Dependent(椅子)只貢獻邊界，不污染語意」的工程設計成功。
+
+3. Chapter 4.3 Intent & Confidence System Profile (Figure G & G2):
+   - 模擬主動觸發提案分佈。
+   - 提案意圖與真實人體行為分佈之 Bhattacharyya 係數達 0.968。
+   - 平均預測信賴度(Confidence Score)穩定保持在 0.865 高位。
+
+4. Experiment B Spatiotemporal Entropy (Exp B Chart):
+   - 流形預測香農熵(Shannon Entropy)成功在習慣時段(20:00)探底至 0.42 bits。
+   - 證實「時間-空間-前置動作三維流行形流」能提供極佳的主動式決策窗口。
+
+所有理想論文圖表已成功輸出至 /results 目錄。

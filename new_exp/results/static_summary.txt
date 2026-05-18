@@ -1,11 +1,11 @@
 =================================================================
 Chapter 4.1: Behaviour Recognition Summary
-Generated: 2026-05-17 15:21
+Generated: 2026-05-18 15:26
 =================================================================
 
-Total episodes   : 311
-Stage 1 Accuracy : 17.4%
-Stage 2 Accuracy : 17.4%
+Total episodes   : 18
+Stage 1 Accuracy : 0.0%
+Stage 2 Accuracy : 0.0%
 Improvement      : +0.0%
 Total upgraded   : 0
   L2A: 0

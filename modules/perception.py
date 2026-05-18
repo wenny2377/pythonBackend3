@@ -712,6 +712,43 @@ class PerceptionEngine:
             return 1.0
 
     def _discover_zones(self):
+        """
+        Three-stage semantic gravity zone discovery.
+
+        Stage 1 — Anchor classification (triple-channel filter):
+          Ch1: Semantic sharpness  Δ >= 0.30  (data-driven)
+          Ch2: Exclusive behaviour whitelist   (prior knowledge)
+          Ch3: Static fixture whitelist        (physical prior)
+          Mass = Base_Mass + top1_score × (1 + Δ)
+          Base_Mass: Ch1/Ch2 = 1.0, Ch3 = 1.2, weak fallback = 0.5
+
+        Stage 2 — Seed zone creation:
+          Each Anchor declares its own Zone (semantics locked).
+          Rooms with no Anchor → promote highest-scoring furniture
+          as weak Anchor (Base_Mass = 0.5).
+
+        Stage 3 — Semantic gravity field propagation:
+          Each Dependent finds the Anchor with minimum semantic cost.
+          Cost = dist² / Mass × γ
+          γ = 1.0 same room, γ = 10.0 cross-room.
+        """
+
+        # ── Constants ────────────────────────────────────────────────
+        EXCLUSIVE_BEHAVIOURS = {
+            "Laying", "Cooking", "Opening", "Typing", "Cleaning",
+        }
+        STATIC_FIXTURES = {
+            "sofa", "couch", "sectional",
+            "bed", "bathtub", "wardrobe", "closet",
+            "refrigerator", "fridge",
+            "toilet", "shower",
+        }
+        DELTA_THRESHOLD   = 0.30
+        CROSS_ROOM_GAMMA  = 10.0
+        BASE_MASS_CH12    = 1.0
+        BASE_MASS_CH3     = 1.2
+        BASE_MASS_WEAK    = 0.5
+
         print("[Zones] Discovering functional zones from scene_snapshots...")
         try:
             all_docs = list(self.col_scene.find(
@@ -722,92 +759,201 @@ class PerceptionEngine:
                 self.zone_graph = []
                 return
 
-            proto_vecs    = self._get_proto_vecs()
-            proto_labels  = self._proto_labels
+            proto_vecs   = self._get_proto_vecs()
+            proto_labels = self._proto_labels
 
-            by_room = {}
+            # ── Step 0: compute affinity for every furniture ──────────
+            furniture_all = []
             for doc in all_docs:
-                room = (doc.get("room") or "Unknown").strip()
-                by_room.setdefault(room, []).append(doc)
-
-            zones = []
-            for room_name, furniture_list in by_room.items():
-                furn_with_label = []
-                for f in furniture_list:
-                    label = f.get("label", "")
-                    pos   = f.get("pos")
-                    if not label or not isinstance(pos, list) or len(pos) < 2:
-                        continue
-                    vec     = self.sbert.encode(
-                        [label], normalize_embeddings=True)[0].astype("float32")
-                    sims    = proto_vecs @ vec
-                    best_i  = int(np.argmax(sims))
-                    best_s  = float(sims[best_i])
-                    act_lbl = proto_labels[best_i] if best_s > 0.25 else "Unknown"
-                    furn_with_label.append({
-                        "label":        label,
-                        "pos":          pos,
-                        "action_label": act_lbl,
-                        "vec":          vec,
-                        "sim":          best_s,
-                    })
-
-                if not furn_with_label:
+                label = (doc.get("label") or "").strip()
+                pos   = doc.get("pos")
+                room  = (doc.get("room") or "Unknown").strip()
+                if not label or not isinstance(pos, list) or len(pos) < 2:
                     continue
 
-                grouped = {}
-                for f in furn_with_label:
-                    placed = False
-                    for key, group in grouped.items():
-                        lbl, idx = key
-                        if lbl != f["action_label"]:
-                            continue
-                        rep_pos = group[0]["pos"]
-                        fx, fz  = f["pos"][0], f["pos"][1]
-                        rx, rz  = rep_pos[0], rep_pos[1]
-                        dist    = math.sqrt((fx - rx)**2 + (fz - rz)**2)
-                        if dist <= 2.5:
-                            group.append(f)
-                            placed = True
-                            break
-                    if not placed:
-                        new_key = (f["action_label"], len(grouped))
-                        grouped[new_key] = [f]
+                vec  = self.sbert.encode(
+                    [label], normalize_embeddings=True
+                )[0].astype("float32")
+                sims = proto_vecs @ vec
 
-                for (act_lbl, zone_idx), group in grouped.items():
-                    labels    = [g["label"] for g in group]
-                    positions = [g["pos"] for g in group]
-                    cx = float(np.mean([p[0] for p in positions]))
-                    cz = float(np.mean([p[1] for p in positions]))
+                sorted_idx = np.argsort(sims)[::-1]
+                top1_i     = int(sorted_idx[0])
+                top2_i     = int(sorted_idx[1])
+                top1_score = float(sims[top1_i])
+                top2_score = float(sims[top2_i])
+                delta      = top1_score - top2_score
+                top1_label = proto_labels[top1_i]
 
-                    weights = np.array([
-                        self._compute_furniture_weight(g["label"])
-                        for g in group
-                    ])
-                    vecs    = np.stack([g["vec"] for g in group])
-                    v_space = (weights[:, None] * vecs).sum(axis=0)
-                    norm    = np.linalg.norm(v_space)
-                    if norm > 1e-8:
-                        v_space /= norm
+                furniture_all.append({
+                    "label":      label,
+                    "pos":        pos,
+                    "room":       room,
+                    "vec":        vec,
+                    "top1_label": top1_label,
+                    "top1_score": top1_score,
+                    "delta":      delta,
+                })
 
-                    zone_name = f"{act_lbl}_Zone"
-                    if zone_idx > 0:
-                        zone_name = f"{act_lbl}_Zone_{zone_idx + 1}"
+            if not furniture_all:
+                self.zone_graph = []
+                return
 
-                    zones.append({
-                        "room":       room_name,
-                        "zone_name":  zone_name,
-                        "action_label": act_lbl,
-                        "center":     [cx, cz],
-                        "v_space":    v_space.tolist(),
-                        "furniture":  labels,
-                    })
-                    print(f"  [Zone] {room_name} | {zone_name} | "
-                          f"furniture={labels} center=({cx:.1f},{cz:.1f})")
+            # ── Stage 1: classify Anchor vs Dependent ─────────────────
+            anchors    = []
+            dependents = []
+
+            for f in furniture_all:
+                lbl_lower  = f["label"].lower().strip()
+                top1_label = f["top1_label"]
+                top1_score = f["top1_score"]
+                delta      = f["delta"]
+
+                # Channel 1: semantic sharpness
+                ch1 = delta >= DELTA_THRESHOLD
+
+                # Channel 2: exclusive behaviour whitelist
+                ch2 = top1_label in EXCLUSIVE_BEHAVIOURS
+
+                # Channel 3: static fixture whitelist
+                ch3 = any(fix in lbl_lower for fix in STATIC_FIXTURES)
+
+                is_anchor = ch1 or ch2 or ch3
+
+                # Base mass: take maximum across triggered channels
+                base = 0.0
+                if ch1: base = max(base, BASE_MASS_CH12)
+                if ch2: base = max(base, BASE_MASS_CH12)
+                if ch3: base = max(base, BASE_MASS_CH3)
+
+                mass = base + top1_score * (1.0 + delta)
+
+                channel_str = "".join([
+                    "1" if ch1 else "_",
+                    "2" if ch2 else "_",
+                    "3" if ch3 else "_",
+                ])
+                f["is_anchor"]  = is_anchor
+                f["mass"]       = mass
+                f["channel"]    = channel_str
+
+                if is_anchor:
+                    anchors.append(f)
+                    print(f"  [Anchor|{channel_str}] {f['label']:20} "
+                          f"→ {top1_label:15} "
+                          f"Δ={delta:.2f} mass={mass:.2f}")
+                else:
+                    dependents.append(f)
+
+            # ── Stage 2: per-room weak Anchor fallback ────────────────
+            rooms_with_anchor = {a["room"] for a in anchors}
+            # Stage 2: weak Anchor fallback for rooms with no Anchor.
+            # Rebuild dependents AFTER weak Anchor promotion to avoid
+            # remove() timing issues and keep the logic clean.
+            rooms_with_anchor_pre = {a["room"] for a in anchors}
+            by_room_dep = {}
+            for f in furniture_all:
+                if not f.get("is_anchor", False):
+                    by_room_dep.setdefault(f["room"], []).append(f)
+
+            for room, flist in by_room_dep.items():
+                if room in rooms_with_anchor_pre:
+                    continue
+                best = max(flist, key=lambda x: x["top1_score"])
+                best["is_anchor"] = True
+                best["channel"]   = "W"
+                best["mass"]      = (BASE_MASS_WEAK
+                                     + best["top1_score"]
+                                     * (1.0 + best["delta"]))
+                anchors.append(best)
+                print(f"  [WeakAnchor] {best['label']:20} "
+                      f"promoted in room '{room}' "
+                      f"mass={best['mass']:.2f}")
+
+            # Final dependents: all non-anchor furniture after promotions
+            dependents = [
+                f for f in furniture_all
+                if not f.get("is_anchor", False)
+            ]
+
+            if not anchors:
+                print("[Zones] No anchors found — zone graph empty")
+                self.zone_graph = []
+                return
+
+            # ── Stage 3: gravity field propagation ────────────────────
+            # Each Anchor seeds its own Zone
+            zone_members = {i: [a] for i, a in enumerate(anchors)}
+
+            for dep in dependents:
+                dx, dz    = dep["pos"][0], dep["pos"][1]
+                dep_room  = dep["room"]
+                best_zone = None
+                best_cost = float("inf")
+
+                for i, anchor in enumerate(anchors):
+                    ax, az     = anchor["pos"][0], anchor["pos"][1]
+                    dist_sq    = (dx - ax)**2 + (dz - az)**2
+                    gamma      = (1.0 if dep_room == anchor["room"]
+                                  else CROSS_ROOM_GAMMA)
+                    cost       = dist_sq / anchor["mass"] * gamma
+
+                    if cost < best_cost:
+                        best_cost = cost
+                        best_zone = i
+
+                if best_zone is not None:
+                    zone_members[best_zone].append(dep)
+
+            # ── Build zone_graph entries ───────────────────────────────
+            zones          = []
+            zone_name_cnt  = {}
+
+            for i, anchor in enumerate(anchors):
+                members   = zone_members.get(i, [anchor])
+                positions = [m["pos"] for m in members]
+                labels    = [m["label"] for m in members]
+                act_lbl   = anchor["top1_label"]
+
+                # Weighted geometric centroid — Anchor mass dominates.
+                # Using np.mean() would allow chairs to drag the zone
+                # center away from the Anchor (semantic centroid drift).
+                weights = np.array([
+                    m["mass"] if m.get("is_anchor") else 0.3
+                    for m in members
+                ], dtype=np.float32)
+                cx = float(np.average(
+                    [p[0] for p in positions], weights=weights))
+                cz = float(np.average(
+                    [p[1] for p in positions], weights=weights))
+                vecs    = np.stack([m["vec"] for m in members])
+                v_space = (weights[:, None] * vecs).sum(axis=0)
+                v_norm  = np.linalg.norm(v_space)
+                if v_norm > 1e-8:
+                    v_space /= v_norm
+
+                base_name = f"{act_lbl}_Zone"
+                cnt       = zone_name_cnt.get(base_name, 0)
+                zone_name_cnt[base_name] = cnt + 1
+                zone_name = base_name if cnt == 0 else f"{base_name}_{cnt+1}"
+
+                zones.append({
+                    "room":         anchor["room"],
+                    "zone_name":    zone_name,
+                    "action_label": act_lbl,
+                    "center":       [cx, cz],
+                    "v_space":      v_space.tolist(),
+                    "furniture":    labels,
+                    "anchor":       anchor["label"],
+                    "anchor_mass":  round(anchor["mass"], 3),
+                })
+                print(f"  [Zone] {anchor['room']} | {zone_name} | "
+                      f"anchor={anchor['label']} "
+                      f"furniture={labels} "
+                      f"center=({cx:.1f},{cz:.1f})")
 
             self.zone_graph = zones
             print(f"[Zones] Built {len(zones)} zones across "
-                  f"{len(by_room)} rooms")
+                  f"{len({z['room'] for z in zones})} rooms")
 
         except Exception as e:
             import traceback
@@ -816,10 +962,17 @@ class PerceptionEngine:
 
 
     def _discover_zones_with_retry(self):
+        """
+        Background retry loop.
+        Polls every 5s (max 60 attempts = 5 minutes).
+        Triggers _distill_affinity_matrix() + _discover_zones()
+        as soon as scene_snapshots has data.
+        Also re-triggers if zone_graph is lost (ChangeStream hook future work).
+        """
         import time as _time
-        print("[Zones] Starting background retry loop...")
-        for attempt in range(20):
-            _time.sleep(15)
+        print("[Zones] Starting background retry loop (5s interval)...")
+        for attempt in range(60):
+            _time.sleep(5)
             count = self.col_scene.count_documents({})
             if count > 0:
                 print(f"[Zones] Retry {attempt+1}: "
@@ -832,7 +985,7 @@ class PerceptionEngine:
                     print(f"[Zones] Zone Graph ready: "
                           f"{len(self.zone_graph)} zones")
                     return
-        print("[Zones] Retry exhausted, Zone Graph still empty")
+        print("[Zones] Retry exhausted after 5 minutes")
 
     def _compute_zone_affinity(self, behavior, zone):
         if not zone:
@@ -878,6 +1031,9 @@ class PerceptionEngine:
         if not candidates:
             candidates = self.zone_graph
 
+        # Max search radius 5.0m to handle real home layouts
+        # (e.g. tv at (6.59,-0.67) and sofa at (2.35,-1.41) are 4.3m apart)
+        MAX_ZONE_SEARCH = 5.0
         best_zone = None
         best_dist = float("inf")
         for zone in candidates:
@@ -886,6 +1042,9 @@ class PerceptionEngine:
             if dist < best_dist:
                 best_dist = dist
                 best_zone = zone
+        # Return None if too far (no meaningful zone found)
+        if best_dist > MAX_ZONE_SEARCH:
+            return None
         return best_zone
 
 
@@ -907,6 +1066,10 @@ class PerceptionEngine:
                             user_pos, user_forward,
                             interacting_items, room_name,
                             user_id=""):
+        # Define TRANSITIONAL at function top to avoid UnboundLocalError
+        # when high_confidence triggers early return before should_upgrade.
+        TRANSITIONAL = {"PickingUp", "PuttingDown", "Standing", "Walking"}
+
         upgraded_action = vlm_action
         upgrade_reason  = ""
         zone_label      = ""
@@ -920,6 +1083,10 @@ class PerceptionEngine:
             items = [items] if items else []
 
         # L2A：持握物判斷（最高優先級）
+        # Also resolves transitional actions (PickingUp, PuttingDown):
+        #   PickingUp + cup → Drinking
+        #   PickingUp + remote → Watching
+        is_transitional = vlm_action in TRANSITIONAL
         for item in items:
             item_lower = item.lower().strip()
             for obj_key, action in self.ITEM_TO_ACTION.items():
@@ -929,8 +1096,12 @@ class PerceptionEngine:
                         upgrade_reason  = f"L2A_held:{item}->{action}"
                     return upgraded_action, upgrade_reason, zone_label
 
-        should_upgrade  = (vlm_action == "Unknown") or (sbert_sim < 0.50)
-        high_confidence = sbert_sim >= 0.80
+        should_upgrade  = (
+            vlm_action in ("Unknown", "none", "", None)
+            or vlm_action in TRANSITIONAL
+            or sbert_sim < 0.50
+        )
+        high_confidence = sbert_sim >= 0.80 and vlm_action not in TRANSITIONAL
 
         if high_confidence:
             return upgraded_action, "", zone_label
@@ -1761,6 +1932,14 @@ RULES:
         # instance (raw Unity label) is kept for debugging only.
         canonical_key = zone_name_for_log if zone_name_for_log else instance
 
+        # zone_name is used as query key — must NOT also appear in $set
+        # to avoid MongoDB ConflictingUpdateOperators (error code 40).
+        # MongoDB constraint: a field cannot appear in both $set and $setOnInsert,
+        # and query fields cannot appear in $set.
+        # Rules applied here:
+        #   zone_name → query only + $setOnInsert (not $set)
+        #   instance  → $set only (not $setOnInsert, which handles new-doc defaults)
+        #   user/action/time_slot → query only + $setOnInsert
         self.col_obs.find_one_and_update(
             {"user": user, "zone_name": canonical_key,
              "action": action, "time_slot": time_slot},
@@ -1773,7 +1952,6 @@ RULES:
                     "room":              bound_doc.get("room", "").strip()
                                          if bound_doc else "",
                     "instance":          instance,
-                    "zone_name":         canonical_key,
                     "last_seen":         datetime.datetime.utcnow(),
                     "last_date":         today,
                     "raw_vlm_desc":      raw_desc,
@@ -1783,7 +1961,6 @@ RULES:
                     "zone_name": canonical_key,
                     "action":    action,
                     "time_slot": time_slot,
-                    "instance":  instance,
                 },
             },
             upsert=True, return_document=ReturnDocument.AFTER,

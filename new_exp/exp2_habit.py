@@ -716,8 +716,11 @@ def run_entropy(db, out):
     print("=" * 60)
 
     try:
-        sys.path.insert(0, ".")
-        from manifold_engine import ManifoldEngine
+        import sys as _sys, os as _os
+        _root = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
+        if _root not in _sys.path:
+            _sys.path.insert(0, _root)
+        from modules.manifold_engine import ManifoldEngine
         me = ManifoldEngine(db)
         print("  ManifoldEngine loaded")
     except Exception as e:
@@ -801,8 +804,11 @@ def run_topology(db, out):
     print("=" * 60)
 
     try:
-        sys.path.insert(0, ".")
-        from manifold_engine import ManifoldEngine
+        import sys as _sys, os as _os
+        _root = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
+        if _root not in _sys.path:
+            _sys.path.insert(0, _root)
+        from modules.manifold_engine import ManifoldEngine
         me = ManifoldEngine(db)
     except Exception as e:
         print(f"  Cannot load ManifoldEngine: {e}")

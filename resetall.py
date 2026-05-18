@@ -1,3 +1,14 @@
+"""
+resetall.py
+Complete reset script for RobotBrain experiments.
+Clears ALL experiment-related collections before each run.
+
+Usage:
+  python3 resetall.py              # full reset
+  python3 resetall.py --keep-scene # keep scene_snapshots (skip re-scan)
+  python3 resetall.py --keep-affinity # keep Gemma affinity_matrix (slow to rebuild)
+"""
+
 import os
 import shutil
 import argparse
@@ -27,23 +38,57 @@ CLEAN_SKILL_TEMPLATE = """# {user_id} Skill Profile
 
 SKILL_USERS = ["User_Mom", "User_Dad"]
 
+# All collections that must be cleared between experiments
 COLLECTIONS_TO_CLEAR = [
+    # Experiment evaluation
     "eval_logs",
-    "observation_logs",
     "exp_checkpoint_logs",
+    "exp_checkpoints",
+
+    # Habit learning
+    "observation_logs",
+    "habit_snapshots",
     "activity_sequences",
-    "conversation_logs",
-    "raw_objects",
-    "dynamic_objects",
-    "scene_snapshots",
-    "semantic_memories",
-    "navigation_logs",
+
+    # Manifold engine
+    "manifold_training_data",
     "manifold_points",
+
+    # Affinity (conditionally kept)
+    "affinity_history",
+    "user_spatial_affinity",
+
+    # Scene and objects
+    "dynamic_objects",
+    "raw_objects",
+    "scene_snapshots",
+
+    # Memory
+    "semantic_memories",
+    "conversation_logs",
     "behavior_clusters",
+
+    # Service
     "service_proposals",
+    "service_results",
     "intent_stats",
+
+    # Skill
     "skill_chunks",
     "episodic_summaries",
+
+    # SayCan
+    "saycan_logs",
+    "saycan_behavior_objects",
+
+    # Navigation
+    "navigation_logs",
+    "user_positions",
+]
+
+# These are slow to rebuild — offer option to keep
+AFFINITY_COLLECTIONS = [
+    "affinity_matrix",       # Gemma distillation (~60s to rebuild)
 ]
 
 FAISS_FILES = [
@@ -51,44 +96,62 @@ FAISS_FILES = [
     "robot_memory_meta.json",
     "dynamic_memory.index",
     "dynamic_memory_meta.json",
+    "skill_chunks.index",
+    "skill_chunks_meta.json",
 ]
+
+MANIFOLD_MODEL_DIR = "manifold_models"
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--keep-scene", action="store_true",
-        help="Keep scene_snapshots (furniture positions, skip re-scan)"
-    )
+        help="Keep scene_snapshots (furniture positions, skip re-scan)")
+    parser.add_argument(
+        "--keep-affinity", action="store_true",
+        help="Keep affinity_matrix (Gemma distillation, ~60s to rebuild)")
     args = parser.parse_args()
 
     client = MongoClient(MONGO_URI)
     db     = client[DB_NAME]
 
-    print(f"\n{'='*50}")
-    print(f"  Reset Script  |  DB: {DB_NAME}")
+    print(f"\n{'='*55}")
+    print(f"  RobotBrain Reset  |  DB: {DB_NAME}")
     if args.keep_scene:
-        print(f"  Mode: keep scene_snapshots")
-    print(f"{'='*50}\n")
+        print(f"  --keep-scene: scene_snapshots preserved")
+    if args.keep_affinity:
+        print(f"  --keep-affinity: affinity_matrix preserved")
+    print(f"{'='*55}\n")
 
-    print("Record counts before reset:")
+    # Show current state
+    print("Record counts BEFORE reset:")
     for col in sorted(db.list_collection_names()):
         n = db[col].count_documents({})
         if n > 0:
-            print(f"  [{col}] {n} records")
+            print(f"  {n:5} | {col}")
+
+    # Build clear list
+    to_clear = list(COLLECTIONS_TO_CLEAR)
+    if args.keep_scene:
+        to_clear = [c for c in to_clear if c != "scene_snapshots"]
+    if not args.keep_affinity:
+        to_clear += AFFINITY_COLLECTIONS
 
     print("\nClearing collections...")
-    to_clear = [
-        c for c in COLLECTIONS_TO_CLEAR
-        if not (args.keep_scene and c == "scene_snapshots")
-    ]
+    total_deleted = 0
     for col in to_clear:
-        n = db[col].delete_many({}).deleted_count
-        if n > 0:
-            print(f"  [{col}] deleted {n}")
-        else:
-            print(f"  [{col}] already empty")
+        try:
+            n = db[col].delete_many({}).deleted_count
+            total_deleted += n
+            status = f"deleted {n}" if n > 0 else "already empty"
+            print(f"  [{col}] {status}")
+        except Exception as e:
+            print(f"  [{col}] ERROR: {e}")
 
+    print(f"\n  Total records deleted: {total_deleted}")
+
+    # Reset SKILL.md
     print("\nResetting SKILL.md...")
     date = datetime.now().strftime("%Y-%m-%d")
     for user_id in SKILL_USERS:
@@ -104,8 +167,9 @@ def main():
             }},
             upsert=True,
         )
-        print(f"  [{user_id}] reset to v1")
+        print(f"  [{user_id}] SKILL.md reset to v1")
 
+    # Remove FAISS index files
     print("\nRemoving FAISS index files...")
     for path in FAISS_FILES:
         if os.path.exists(path):
@@ -114,13 +178,36 @@ def main():
         else:
             print(f"  [FAISS] not found (skip): {path}")
 
+    # Remove manifold model files
+    print("\nRemoving ManifoldEngine models...")
+    if os.path.exists(MANIFOLD_MODEL_DIR):
+        for fname in os.listdir(MANIFOLD_MODEL_DIR):
+            if fname.endswith(".pkl"):
+                path = os.path.join(MANIFOLD_MODEL_DIR, fname)
+                os.remove(path)
+                print(f"  [Manifold] removed {path}")
+    else:
+        print(f"  [Manifold] directory not found (skip)")
+
+    # Remove debug images
     if os.path.exists("debug_images"):
         shutil.rmtree("debug_images")
         print("\n  [debug_images] removed")
 
-    print(f"\n{'='*50}")
-    print(f"  Done. Next: python3 app.py")
-    print(f"{'='*50}\n")
+    # Final state
+    print(f"\nRecord counts AFTER reset:")
+    for col in sorted(db.list_collection_names()):
+        n = db[col].count_documents({})
+        if n > 0:
+            print(f"  {n:5} | {col}")
+
+    print(f"\n{'='*55}")
+    print(f"  Done.")
+    print(f"  Next: python3 app.py")
+    if args.keep_affinity:
+        print(f"  Note: affinity_matrix kept "
+              f"({db.affinity_matrix.count_documents({})} entries)")
+    print(f"{'='*55}\n")
 
 
 if __name__ == "__main__":
