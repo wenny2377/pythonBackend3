@@ -1,29 +1,29 @@
 =================================================================
 Chapter 4.2: Habit Learning Summary
-Generated: 2026-05-18 14:42
+Generated: 2026-05-19 11:23
 =================================================================
 
-habit_snapshots : 264
-observation_logs: 80
+habit_snapshots : 70
+observation_logs: 37
 
 ── Per-combo Zone Ranking ──
   [Mom · Watching]
     Convergence Day = Not converged
-    Final Accuracy  = 100.0%
-    Zone 1 = chair2 (weight=1)
-    Zone 2 = Cooking_Zone (weight=1)
-    Zone 1/2 ratio  = 1.0×
+    Final Accuracy  = N/A
+    Zone 1 = N/A (weight=0)
+    Zone 2 = N/A (weight=0)
+    Zone 1/2 ratio  = 0.0×
 
   [Dad · Typing]
     Convergence Day = Not converged
-    Final Accuracy  = 33.3%
-    Zone 1 = chair2 (weight=14)
-    Zone 2 = Typing_Zone (weight=13)
-    Zone 1/2 ratio  = 1.1×
+    Final Accuracy  = N/A
+    Zone 1 = N/A (weight=0)
+    Zone 2 = N/A (weight=0)
+    Zone 1/2 ratio  = 0.0×
 
   [Mom · Opening]
-    Convergence Day = Day 1
-    Final Accuracy  = 66.7%
-    Zone 1 = chair2 (weight=4)
-    Zone 2 = table2 (weight=3)
-    Zone 1/2 ratio  = 1.3×
+    Convergence Day = Not converged
+    Final Accuracy  = N/A
+    Zone 1 = N/A (weight=0)
+    Zone 2 = N/A (weight=0)
+    Zone 1/2 ratio  = 0.0×

@@ -29,7 +29,7 @@ import faiss
 
 from dataclasses import dataclass, field
 from collections import defaultdict
-from pymongo import MongoClient, UpdateOne
+from pymongo import MongoClient, UpdateOne, ReturnDocument
 from sentence_transformers import SentenceTransformer
 
 try:
@@ -126,6 +126,48 @@ def build_x_for_record(virtual_hour, user_pos, prev_action):
     if prev_action in BEHAVIOR_LABELS:
         prev_vec[BEHAVIOR_LABELS.index(prev_action)] = 1.0
     return [sin_t, cos_t, x, z] + prev_vec
+
+
+def normalize_label(label, sbert_model=None):
+    if not label:
+        return ""
+    key = label.lower().strip().replace(" ", "").replace("_", "")
+    if key in LABEL_NORMALIZE_MAP:
+        return LABEL_NORMALIZE_MAP[key]
+    clean = label.lower().strip()
+    if clean in LABEL_NORMALIZE_MAP:
+        return LABEL_NORMALIZE_MAP[clean]
+    return clean
+
+
+
+def _get_time_slot(virtual_hour) -> str:
+    if virtual_hour is None:
+        return "Unknown"
+    try:
+        h = float(virtual_hour)
+        if h < 10:  return "Morning"
+        if h < 13:  return "Noon"
+        if h < 18:  return "Afternoon"
+        if h < 22:  return "Evening"
+        return "Night"
+    except Exception:
+        return "Unknown"
+
+def _virtual_day_to_date(virtual_day) -> str:
+    if virtual_day is None:
+        return datetime.datetime.utcnow().strftime("%Y-%m-%d")
+    if isinstance(virtual_day, str) and len(virtual_day) == 10:
+        try:
+            datetime.datetime.strptime(virtual_day, "%Y-%m-%d")
+            return virtual_day
+        except ValueError:
+            pass
+    return datetime.datetime.utcnow().strftime("%Y-%m-%d")
+
+
+
+
 
 
 # ── PerceptionResult dataclass ────────────────────────────────────────
@@ -362,11 +404,17 @@ class PerceptionEngine:
         self.face_app     = face_analyzer
         self.face_bank    = face_bank
 
-        self.col_scene   = db.scene_snapshots
-        self.col_dynamic = db.dynamic_objects
-        self.col_raw     = db.raw_objects
-        self.col_eval    = db.eval_logs
-        self.col_sem     = db.semantic_memories
+        self.col_scene      = db.scene_snapshots
+        self.col_dynamic    = db.dynamic_objects
+        self.col_raw        = db.raw_objects
+        self.col_eval       = db.eval_logs
+        self.col_sem        = db.semantic_memories
+        self.col_obs        = db.observation_logs
+        self.col_habit_snap = db.habit_snapshots
+        self.col_activity   = db.activity_sequences
+        self.col_user_aff   = db.user_spatial_affinity
+        self.col_aff_history = db.affinity_history
+        self.col_memory     = db.robot_memory
 
         # Proto vecs come from SceneEngine
         self._proto_labels = self.scene_engine._proto_labels
@@ -376,23 +424,26 @@ class PerceptionEngine:
         self._room_cache = RoomEmbeddingCache(self.sbert)
 
         # Bulk write buffer for dynamic objects
-        self._bulk_buf  = BulkWriteBuffer(
-            collection=self.col_dynamic,
-            threshold=BULK_WRITE_THRESHOLD,
-            interval=BULK_WRITE_INTERVAL,
-        )
+        self._bulk_buf  = BulkWriteBuffer(self.col_dynamic)
 
         # FAISS dynamic memory
         dim = self.sbert.get_sentence_embedding_dimension()
         from config import Config
         self._faiss_dyn = FAISSMemoryStore(
-            index_path=Config.DYNAMIC_INDEX_PATH,
-            meta_path=Config.DYNAMIC_META_PATH,
+            sbert_model=self.sbert,
             dim=dim,
         )
-        self._faiss_dyn.load()
+        self.faiss_store = FAISSMemoryStore(
+            sbert_model=self.sbert,
+            dim=dim,
+        )
 
         self._lock = threading.Lock()
+
+        self.room_cache = RoomEmbeddingCache(self.sbert)
+
+        self.scene_sync = None
+
         print(f"[PerceptionEngine] Ready | model={vlm_model}")
 
 
@@ -500,9 +551,10 @@ class PerceptionEngine:
     def _nearest_by_coord(self, user_pos, room_name, max_dist=3.0):
         if not user_pos: return None, float('inf')
         ux, uz = user_pos.get("x", 0), user_pos.get("z", 0)
-        docs   = (self.scene_sync.find_by_room(room_name)
-                  if room_name else self.scene_sync.all_docs())
-        if not docs: docs = self.scene_sync.all_docs()
+        query = {"room": {"$regex": room_name, "$options": "i"}} if room_name else {}
+        docs = list(self.col_scene.find(query, {"label":1,"pos":1,"room":1,"x":1,"z":1}))
+        if not docs:
+            docs = list(self.col_scene.find({}, {"label":1,"pos":1,"room":1,"x":1,"z":1}))
         best_doc, best_dist = None, float('inf')
         for doc in docs:
             pos = doc.get("pos")
@@ -519,7 +571,7 @@ class PerceptionEngine:
 
     def _sem_match_furniture(self, label, k=3):
         norm  = normalize_label(label)
-        exact = self.scene_sync.get(norm)
+        exact = self.col_scene.find_one({"label": norm})
         if exact: return [(exact, 1.0)]
         return self.room_cache.bind_topk(norm, k=k, threshold=SEMANTIC_THRESHOLD)
 
@@ -751,7 +803,7 @@ RULES:
         def _upsert(label, is_interacting):
             if not label or label in STRUCTURAL_BLACKLIST:
                 return
-            if self.scene_sync.get(label):
+            if self.col_scene.find_one({"label": label}):
                 return
             relation = item_rel_map.get(label, "near")
             is_held  = relation in ("in_hand_of", "held_by", "carrying", "in_hand")
@@ -759,7 +811,7 @@ RULES:
             if is_held:
                 resolved_label, resolved_pos = user_id, None
             elif furn:
-                fd = self.scene_sync.get(furn)
+                fd = self.col_scene.find_one({"label": furn})
                 resolved_label = fd["label"] if fd else bound_label
                 resolved_pos   = fd.get("pos") if fd else bound_pos
             else:
@@ -786,7 +838,7 @@ RULES:
             }
             if is_interacting:
                 update_op["$addToSet"] = {"interacted_by": user_id}
-            self.bulk_buffer.upsert(label, update_op, now)
+            self._bulk_buf.upsert(label, update_op, now)
 
         for item in interacting_items: _upsert(item, True)
         for item in scene_items:       _upsert(item, False)
@@ -1176,7 +1228,7 @@ RULES:
               f"spatial={spatial_action} @ {bound_label} "
               f"(conf={confidence}, date={day_key}, "
               f"slot={_get_time_slot(virtual_hour)}, "
-              f"pending={self.bulk_buffer.pending_count})\n")
+              f"pending={self._bulk_buf.pending_count})\n")
 
         # Record manifold training sample (L4 HabitLearner input)
         # Use spatial_action (post-L3 补全) as the ground-truth label
@@ -1241,7 +1293,237 @@ RULES:
             "confidence":     confidence,
         }
 
+
+    def _update_scene_snapshot(self, bound_doc, interacting_items,
+                                scene_items, spatial_relations):
+        if not bound_doc: return
+        all_items = list(set(interacting_items + scene_items))
+        update_op = {
+            "$addToSet": {"items": {"$each": all_items}},
+            "$set": {
+                "current_contents":  interacting_items,
+                "spatial_relations": spatial_relations,
+                "last_observation":  datetime.datetime.utcnow(),
+            },
+        }
+        counts = {f"spatial_counts.{r['subject']}|{r['relation']}|{r['object']}": 1
+                  for r in spatial_relations
+                  if r.get("subject") and r.get("object")}
+        if counts: update_op["$inc"] = counts
+        self.col_scene.update_one({"_id": bound_doc.get("_id")}, update_op)
+
+
+    def _compute_zone_affinity(self, zone, behavior):
+        return self.scene_engine.get_zone_affinity(zone, behavior)
+
+
+    def _is_ambiguous_zone(self, zone):
+        return self.scene_engine.is_ambiguous(zone)
+
+
+    def _update_activity_sequence(self, user, action, instance):
+        today = datetime.datetime.utcnow().strftime("%Y-%m-%d")
+        self.col_activity.update_one(
+            {"user": user, "date": today},
+            {
+                "$push": {"sequence": {
+                    "action":    action,
+                    "instance":  instance,
+                    "timestamp": datetime.datetime.utcnow().isoformat(),
+                }},
+                "$setOnInsert": {"user": user, "date": today},
+            },
+            upsert=True)
+        print(f"[Sequence] {user} -> {action}@{instance} ({today})")
+
+    def _update_observation_log(self, user, action, bound_doc,
+                                 interacting_items, spatial_relations,
+                                 raw_desc, virtual_hour=None, virtual_day=None,
+                                 ground_truth_activity=None,
+                                 sbert_sim=0.0,
+                                 combined_str="",
+                                 user_pos=None,
+                                 user_forward=None,
+                                 room_name=""):
+        if not bound_doc: return
+
+        instance  = bound_doc.get("label", "Unknown")
+        pos_raw   = bound_doc.get("pos")
+        pos_xy    = pos_raw if isinstance(pos_raw, list) else \
+                    [bound_doc.get("x", 0), bound_doc.get("z", 0)]
+        time_slot = _get_time_slot(virtual_hour)
+        today     = _virtual_day_to_date(virtual_day)
+
+        # NO_WEIGHT_ACTIONS: record to semantic_memories and dynamic_objects
+        # but do NOT accumulate weight in observation_logs.
+        # These transitional actions should not trigger FAT.
+        if action in NO_WEIGHT_ACTIONS:
+            print(f"[ObsLog] {user} -> {action} @ {instance} "
+                  f"[{time_slot}] no-weight action, skip weight update")
+            return
+
+        existing = self.col_obs.find_one({
+            "user": user, "instance": instance,
+            "action": action, "time_slot": time_slot, "last_date": today,
+        })
+        if existing:
+            self.col_obs.update_one(
+                {"_id": existing["_id"]},
+                {"$set": {"last_seen": datetime.datetime.utcnow(),
+                          "raw_vlm_desc": raw_desc}})
+            print(f"[ObsLog] {user} -> {action} @ {instance} "
+                  f"[{time_slot}] date={today} already counted")
+            return
+
+        # derive zone_name from nearest zone
+        try:
+            _nz = self._find_nearest_zone(user_pos, room_name)
+            zone_name_for_log = _nz["zone_name"] if _nz else ""
+        except Exception:
+            zone_name_for_log = ""
+
+        # Use zone_name as the canonical primary key for habit learning.
+        # If zone_name is available, it serves as the stable semantic token.
+        # instance (raw Unity label) is kept for debugging only.
+        canonical_key = zone_name_for_log if zone_name_for_log else instance
+
+        # zone_name is used as query key — must NOT also appear in $set
+        # to avoid MongoDB ConflictingUpdateOperators (error code 40).
+        # MongoDB constraint: a field cannot appear in both $set and $setOnInsert,
+        # and query fields cannot appear in $set.
+        # Rules applied here:
+        #   zone_name → query only + $setOnInsert (not $set)
+        #   instance  → $set only (not $setOnInsert, which handles new-doc defaults)
+        #   user/action/time_slot → query only + $setOnInsert
+        self.col_obs.find_one_and_update(
+            {"user": user, "zone_name": canonical_key,
+             "action": action, "time_slot": time_slot},
+            {
+                "$inc":         {"weight": 1},
+                "$addToSet":    {"interacting_items": {"$each": interacting_items}},
+                "$set":         {
+                    "observed_relations": spatial_relations,
+                    "pos":               pos_xy,
+                    "room":              bound_doc.get("room", "").strip()
+                                         if bound_doc else "",
+                    "instance":          instance,
+                    "last_seen":         datetime.datetime.utcnow(),
+                    "last_date":         today,
+                    "raw_vlm_desc":      raw_desc,
+                },
+                "$setOnInsert": {
+                    "user":      user,
+                    "zone_name": canonical_key,
+                    "action":    action,
+                    "time_slot": time_slot,
+                },
+            },
+            upsert=True, return_document=ReturnDocument.AFTER,
+        )
+        self._write_habit_snapshot(user, action, canonical_key,
+                                   zone_name_for_log, today)
+        self._update_user_affinity(user, action,
+                                   canonical_key, instance)
+        print(f"[ObsLog] {user} -> {action} @ {instance} "
+              f"[{time_slot}] date={today} +1 weight")
+
+
+    def _find_nearest_zone(self, user_pos, room_name=""):
+        return self.scene_engine.find_nearest_zone(user_pos, room_name)
+
+
+    def _update_user_affinity(self, user: str, action: str,
+                               zone_name: str, instance: str):
+        if not action or not user:
+            return
+        try:
+            pipeline = [
+                {"$match": {"user": user, "action": action}},
+                {"$group": {
+                    "_id":          "$zone_name",
+                    "total_weight": {"$sum": "$weight"},
+                }},
+            ]
+            results = list(self.col_obs.aggregate(pipeline))
+            total   = sum(r["total_weight"] for r in results)
+            if total == 0:
+                return
+
+            for r in results:
+                zone_key = r["_id"] or "Unknown_Zone"
+                personal = r["total_weight"] / total
+                self.col_user_aff.update_one(
+                    {"user_id": user,
+                     "action":  action,
+                     "zone":    zone_key},
+                    {"$set": {
+                        "affinity":    round(personal, 4),
+                        "updated_at":  datetime.datetime.utcnow(),
+                    }},
+                    upsert=True,
+                )
+                # record daily history for convergence curve
+                today = datetime.datetime.utcnow().strftime("%Y-%m-%d")
+                self.col_aff_history.update_one(
+                    {"user_id": user, "action": action,
+                     "zone": zone_key, "date": today},
+                    {"$set": {
+                        "affinity":  round(personal, 4),
+                        "timestamp": datetime.datetime.utcnow(),
+                    }},
+                    upsert=True,
+                )
+        except Exception as e:
+            print(f"[UserAffinity] {e}")
+
+    def _compute_furniture_weight(self, label: str) -> float:
+        lbl = label.lower().strip()
+        if self._affinity_matrix and lbl in self._affinity_matrix:
+            scores = list(self._affinity_matrix[lbl].values())
+            if scores:
+                sorted_s = sorted(scores, reverse=True)
+                top1     = sorted_s[0]
+                top2     = sorted_s[1] if len(sorted_s) > 1 else 0.0
+                uniqueness = top1 - top2
+                weight     = 1.0 + uniqueness * 10.0
+                return max(1.0, round(weight, 2))
+        try:
+            furn_vec    = self.sbert.encode(
+                label, normalize_embeddings=True
+            ).astype("float32")
+            proto_vecs  = self._get_proto_vecs()
+            sims        = proto_vecs @ furn_vec
+            sorted_sims = np.sort(sims)[::-1]
+            top1        = float(sorted_sims[0])
+            top2        = float(sorted_sims[1]) if len(sorted_sims) > 1 else 0.0
+            uniqueness  = top1 - top2
+            weight      = 1.0 + uniqueness * 10.0
+            return max(1.0, round(weight, 2))
+        except Exception:
+            return 1.0
+
+    def _write_habit_snapshot(self, user: str, action: str,
+                               canonical_key: str, zone_name: str,
+                               today: str):
+        try:
+            self.col_habit_snap.update_one(
+                {
+                    "user":         user,
+                    "action":       action,
+                    "canonical_key": canonical_key,
+                    "date":         today,
+                },
+                {
+                    "$inc": {"daily_count": 1},
+                    "$set": {"zone": zone_name or canonical_key},
+                },
+                upsert=True,
+            )
+        except Exception as e:
+            print(f"[HabitSnap] {e}")
+
     def shutdown(self):
-        self.bulk_buffer.force_flush()
-        self.scene_sync.stop()
-        print("[PerceptionEngine] Shutdown complete")
+        try:
+            self._bulk_buf.force_flush()
+        except Exception:
+            pass

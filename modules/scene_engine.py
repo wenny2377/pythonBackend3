@@ -1,3 +1,4 @@
+import json
 """
 scene_engine.py
 SceneEngine — Scene Understanding Module.
@@ -199,7 +200,7 @@ class SceneEngine:
               f"({len(furnitures)} furniture x {len(behaviors)} behaviors)...")
         try:
             resp = requests.post(
-                f"{self.url}/api/chat",
+                f"{self.ollama_url}/api/chat",
                 json={
                     "model":    "gemma3:4b",
                     "messages": [{"role": "user", "content": prompt}],
@@ -216,7 +217,12 @@ class SceneEngine:
                 print(f"[Affinity] JSON not found in response")
                 return
 
-            matrix = json.loads(m.group(0))
+            raw = m.group(0)
+            try:
+                matrix = json.loads(raw)
+            except json.JSONDecodeError:
+                raw_clean = re.sub(r',\s*([}\]])', r'\1', raw)
+                matrix = json.loads(raw_clean)
             bulk   = []
             for furn, action_scores in matrix.items():
                 for action, score in action_scores.items():
@@ -581,7 +587,7 @@ class SceneEngine:
         if not zone or not self._affinity_matrix:
             return False
         scores = []
-        for behavior in BEHAVIOR_LABELS:
+        for behavior in self.behavior_labels:
             s = self._compute_zone_affinity(behavior, zone)
             scores.append(s)
         if not scores or max(scores) < 0.05:

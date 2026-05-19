@@ -1,3 +1,4 @@
+import re
 """
 app.py — RobotBrain Server
 Clean architecture with decoupled modules.
@@ -123,7 +124,7 @@ perception = PerceptionEngine(
     scene_engine = scene_engine,
 )
 
-skill_manager = SkillManager(db, sbert_model)
+skill_manager = SkillManager(mongo_client, CONFIG.DB_NAME)
 
 habit_engine = HabitEngine(
     db              = db,
@@ -157,7 +158,10 @@ vector_memory.sync_from_mongo(db.dynamic_objects)
 atexit.register(perception.shutdown)
 
 # VLM lock — one VLM request at a time
-_vlm_lock = threading.Lock()
+_vlm_lock      = threading.Lock()
+_predict_queue = _queue.Queue()
+
+
 
 # LLM queue
 _llm_task_queue   = _queue.Queue()
@@ -190,6 +194,7 @@ def _llm_worker():
 _llm_worker_thread = threading.Thread(target=_llm_worker, daemon=True)
 _llm_worker_thread.start()
 print("[LLM Queue] worker started")
+
 
 
 def submit_llm_task(fn, *args, **kwargs):
@@ -571,10 +576,46 @@ def interact_stream():
 
 @app.route('/predict', methods=['POST'])
 def predict():
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "No data received"}), 400
+
+    episode_id = data.get("episode_id") or str(uuid.uuid4())
+
+    existing = db.eval_logs.find_one({"episode_id": episode_id})
+    if existing:
+        return jsonify({
+            "status":     "ok",
+            "episode_id": episode_id,
+            "cached":     True,
+        }), 200
+
+    _predict_queue.put((episode_id, data))
+
+    return jsonify({
+        "status":     "queued",
+        "episode_id": episode_id,
+    }), 200
+
+
+def _predict_worker():
+    while True:
+        try:
+            episode_id, data = _predict_queue.get(timeout=1)
+            try:
+                _process_predict(episode_id, data)
+            except Exception as e:
+                import traceback
+                print(f"[PredictWorker] {e}\n{traceback.format_exc()}")
+            finally:
+                _predict_queue.task_done()
+        except _queue.Empty:
+            continue
+
+
+def _process_predict(episode_id, data):
+    import time
     try:
-        data = request.get_json()
-        if not data:
-            return jsonify({"error": "No data received"}), 400
 
         image_list   = data.get('image_list', [])
         hint_user_id = data.get('userID', 'Unknown_User')
@@ -591,7 +632,8 @@ def predict():
                           if '_Cam' in first_node else first_node)
 
         if not image_list:
-            return jsonify({"error": "image_list is empty"}), 400
+            print(f"[PredictWorker] image_list empty for {episode_id}")
+            return
 
         preview_images(
             image_list, source_nodes, hint_user_id, activity)
@@ -629,17 +671,15 @@ def predict():
         data['user_forward'] = est_forward
         _wait_for_scene(max_wait=12.0)
 
-        acquired = _vlm_lock.acquire(timeout=180)
-        t0 = time.time()
-        try:
-            # ── New architecture: analyze → habit record ────────────────
+        with _vlm_lock:
+            t0 = time.time()
             result = perception.analyze_action_burst(data)
-            perception_res = result  # keep compatibility
+            perception_res = result
+            vlm_ms = int((time.time() - t0) * 1000)
 
-        # HabitEngine records (writes DB, triggers SKILL.md)
-            if result.get("spatial_action") and result.get("zone_name"):
-                habit_engine.record(
-                    user_id           = result.get("user_id", ""),
+        if result.get("spatial_action") and result.get("zone_name"):
+            habit_engine.record(
+                user_id           = result.get("user_id", ""),
                 action            = result.get("spatial_action", ""),
                 zone_name         = result.get("zone_name", ""),
                 pos               = [
@@ -655,10 +695,6 @@ def predict():
                 spatial_relations = result.get("spatial_relations", {}),
                 experiment_mode   = result.get("experiment_mode", "habit"),
             )
-        finally:
-            if acquired:
-                _vlm_lock.release()
-        vlm_ms = int((time.time() - t0) * 1000)
 
         user_id         = perception_res["user"]
         action          = perception_res["action"]
@@ -676,13 +712,8 @@ def predict():
               f"reason='{upgrade_reason}' | {vlm_ms}ms")
 
         if action == "none":
-            return jsonify({
-                "status":   "no_action",
-                "user":     user_id,
-                "action":   "none",
-                "bound_to": "Unknown_Area",
-                "reason":   "VLM returned no valid action",
-            }), 200
+            print(f"[PredictWorker] no_action for {episode_id} | {user_id}")
+            return
 
         final_bound_label = memory.bind_and_update(
             user_id           = user_id,
@@ -779,34 +810,33 @@ def predict():
                 )
                 has_proposal = proposal_result.get("has_proposal", False)
 
-            habit_learner.check_and_update(user_id)
+            habit_engine._check_and_update_skill(user_id)
 
         except Exception as manifold_err:
             print(f"[Manifold] non-critical error: {manifold_err}")
 
-        return jsonify({
-            "status":            "Success",
-            "user":              user_id,
-            "action":            action,
-            "spatial_action":    spatial_action,
-            "upgrade_reason":    upgrade_reason,
-            "zone_label":        zone_label,
-            "bound_to":          final_bound_label,
-            "interacting_items": detected_items,
-            "all_items":         all_items,
-            "spatial_relations": spatial_rels,
-            "description":       vlm_desc,
-            "estimated_pos":     est_pos,
-            "furniture_pos":     furniture_pos,
-            "vlm_inference_ms":  vlm_ms,
-            "intent_prediction": intent_prediction,
-            "has_proposal":      has_proposal,
-        }), 200
+        db.eval_logs.update_one(
+            {"episode_id": episode_id},
+            {"$set": {
+                "episode_id":    episode_id,
+                "status":        "done",
+                "user":          user_id,
+                "action":        action,
+                "spatial_action": spatial_action,
+                "ground_truth":  data.get("activity", ""),
+                "upgrade_reason": upgrade_reason,
+                "zone_label":    zone_label,
+                "vlm_ms":        vlm_ms,
+                "timestamp":     datetime.datetime.utcnow(),
+            }},
+            upsert=True,
+        )
+
+        print(f"[Predict] done | {user_id} | {action} → {spatial_action} | {vlm_ms}ms")
 
     except Exception as e:
         import traceback
-        print(f"[Predict Error] {e}\n{traceback.format_exc()}")
-        return jsonify({"error": str(e)}), 500
+        print(f"[PredictWorker] {e}\n{traceback.format_exc()}")
 
 
 @app.route('/scene', methods=['POST'])
@@ -1401,7 +1431,7 @@ def manifold_train():
 
 from modules.interaction import InteractionEngine
 from modules.training_exporter import TrainingExporter
-from modules.habit_learner import HabitLearner
+# HabitLearner replaced by HabitEngine
 
 interaction_engine = InteractionEngine(
     mongo_client  = mongo_client,
@@ -1411,10 +1441,7 @@ interaction_engine = InteractionEngine(
 )
 training_exporter = TrainingExporter(mongo_client)
 
-habit_learner = HabitLearner(
-    db_client     = mongo_client,
-    skill_manager = interaction_engine.skill_manager,
-)
+# habit_learner removed — using habit_engine
 
 
 @app.route('/habit_feedback', methods=['POST'])
@@ -1427,9 +1454,9 @@ def habit_feedback():
         item    = data.get("item", "")
 
         if result == "rejected":
-            habit_learner.handle_rejection(user_id, intent, item)
+            habit_engine.handle_rejection(user_id, intent, item)
         elif result == "accepted":
-            habit_learner.handle_acceptance(user_id, intent, item)
+            habit_engine.handle_acceptance(user_id, intent, item)
 
         return jsonify({"status": "ok"}), 200
     except Exception as e:
@@ -1443,11 +1470,16 @@ def habit_check():
         user_id = data.get("user_id", "")
         if not user_id:
             return jsonify({"error": "user_id required"}), 400
-        habit_learner.check_and_update(user_id)
+        habit_engine._check_and_update_skill(user_id)
         return jsonify({"status": "ok", "user_id": user_id}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+
+_predict_worker_thread = threading.Thread(
+    target=_predict_worker, daemon=True)
+_predict_worker_thread.start()
+print("[Predict Queue] worker started")
 
 if __name__ == "__main__":
     host = getattr(CONFIG, 'FLASK_HOST', '0.0.0.0')
