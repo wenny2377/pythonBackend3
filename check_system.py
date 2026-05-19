@@ -145,8 +145,12 @@ def check_eval(db):
     section("PerceptionEngine — eval_logs")
 
     total    = db.eval_logs.count_documents({})
-    upgraded = db.eval_logs.count_documents(
-        {"upgrade_reason": {"$ne": ""}})
+    upgraded = db.eval_logs.count_documents({
+        "$expr": {"$ne": [
+            {"$ifNull": ["$spatial_action", "Unknown"]},
+            {"$ifNull": ["$vlm_output", "Unknown"]}
+        ]}
+    })
 
     if total == 0:
         warn("eval_logs is EMPTY — no episodes processed yet")

@@ -677,33 +677,59 @@ def _process_predict(episode_id, data):
             perception_res = result
             vlm_ms = int((time.time() - t0) * 1000)
 
-        if result.get("spatial_action") and result.get("zone_name"):
+        _action    = result.get("spatial_action") or result.get("action", "Unknown")
+        _zone      = (result.get("zone_label") or
+                      result.get("zone_name") or "")
+        _user_id   = result.get("user", "") or result.get("user_id", "")
+        _user_pos  = result.get("user_pos") or {}
+        _exp_mode  = result.get("experiment_mode", "habit")
+
+        if _action and _action not in ("none", "", "Unknown") and _zone:
             habit_engine.record(
-                user_id           = result.get("user_id", ""),
-                action            = result.get("spatial_action", ""),
-                zone_name         = result.get("zone_name", ""),
+                user_id           = _user_id,
+                action            = _action,
+                zone_name         = _zone,
                 pos               = [
-                    result.get("user_pos", {}).get("x", 0),
-                    result.get("user_pos", {}).get("z", 0),
+                    _user_pos.get("x", 0),
+                    _user_pos.get("z", 0),
                 ],
                 virtual_hour      = result.get("virtual_hour", 12.0),
                 time_slot         = result.get("time_slot", ""),
-                interacting_items = result.get("interacting_items", []),
-                raw_desc          = result.get("raw_desc", ""),
+                interacting_items = result.get("items", []),
+                raw_desc          = str(result.get("result", "")),
                 room              = result.get("room", ""),
-                instance          = result.get("instance", ""),
+                instance          = _zone,
                 spatial_relations = result.get("spatial_relations", {}),
-                experiment_mode   = result.get("experiment_mode", "habit"),
+                experiment_mode   = _exp_mode,
             )
+
+        _spatial = result.get("spatial_action", "")
+        _manifold_action = (_spatial if _spatial and _spatial != "Unknown"
+                            else _action)
+        if (_manifold_action and
+                _manifold_action not in ("none", "", "Unknown") and
+                _exp_mode != "recognition"):
+            try:
+                manifold_engine.record_training_sample(
+                    user_id        = _user_id,
+                    current_action = _manifold_action,
+                    virtual_hour   = result.get("virtual_hour", 12.0),
+                    user_pos       = _user_pos,
+                    prev_action    = _manifold_action,
+                )
+                print(f"[Manifold] recorded: {_user_id} | {_manifold_action}")
+            except Exception as manifold_err:
+                print(f"[Manifold] error: {manifold_err}")
 
         user_id         = perception_res["user"]
         action          = perception_res["action"]
         spatial_action  = perception_res.get("spatial_action", action)
         upgrade_reason  = perception_res.get("upgrade_reason", "")
         zone_label      = perception_res.get("zone_label", "")
-        detected_items  = perception_res["items"]
-        all_items       = perception_res["all_items"]
-        spatial_rels    = perception_res["spatial"]
+        detected_items  = perception_res.get("items", [])
+        all_items       = perception_res.get("all_items", [])
+        spatial_rels    = perception_res.get("spatial_relations",
+                          perception_res.get("spatial", []))
         vlm_desc        = perception_res["result"].get(
             "context", "Observed behavior.")
         vlm_object      = perception_res["bound_instance"]
@@ -818,16 +844,17 @@ def _process_predict(episode_id, data):
         db.eval_logs.update_one(
             {"episode_id": episode_id},
             {"$set": {
-                "episode_id":    episode_id,
-                "status":        "done",
-                "user":          user_id,
-                "action":        action,
-                "spatial_action": spatial_action,
-                "ground_truth":  data.get("activity", ""),
-                "upgrade_reason": upgrade_reason,
-                "zone_label":    zone_label,
-                "vlm_ms":        vlm_ms,
-                "timestamp":     datetime.datetime.utcnow(),
+                "episode_id":     episode_id,
+                "status":         "done",
+                "user":           result.get("user", ""),
+                "vlm_output":     result.get("action", "Unknown"),
+                "spatial_action": result.get("spatial_action", "Unknown"),
+                "ground_truth":   data.get("activity", ""),
+                "upgrade_reason": result.get("upgrade_reason", ""),
+                "zone_label":     result.get("zone_label", ""),
+                "sbert_sim":      result.get("sbert_sim", 0.0),
+                "vlm_ms":         vlm_ms,
+                "timestamp":      datetime.datetime.utcnow(),
             }},
             upsert=True,
         )

@@ -89,11 +89,17 @@ class HabitEngine:
         # ── ManifoldEngine training sample ───────────────────────────
         if (self.manifold_engine is not None
                 and experiment_mode != "recognition"):
-            self.manifold_engine.record_training_sample(
-                user_id=user_id, action=action,
-                virtual_hour=virtual_hour, user_pos_raw=pos,
-                prev_action=action,
-            )
+            try:
+                self.manifold_engine.record_training_sample(
+                    user_id        = user_id,
+                    current_action = action,
+                    virtual_hour   = virtual_hour,
+                    user_pos       = {"x": pos[0]*10, "z": pos[1]*10}
+                                     if pos else {},
+                    prev_action    = action,
+                )
+            except Exception as me_err:
+                print(f"[Manifold] {me_err}")
 
         # ── SKILL.md update (background) ─────────────────────────────
         threading.Thread(

@@ -148,105 +148,111 @@ class SceneEngine:
         docs = list(self.col_affinity.find({}))
         if docs:
             for doc in docs:
-                furn    = doc["furniture"]
-                action  = doc["action"]
-                affinity= doc["affinity"]
+                furn   = doc.get("furniture", "")
+                action = doc.get("behavior") or doc.get("action", "")
+                score  = doc.get("score") or doc.get("affinity", 0.0)
+                if not furn or not action:
+                    continue
                 if furn not in self._affinity_matrix:
                     self._affinity_matrix[furn] = {}
-                self._affinity_matrix[furn][action] = affinity
+                self._affinity_matrix[furn][action] = float(score)
             print(f"[Affinity] Loaded {len(docs)} entries from MongoDB")
         else:
             print("[Affinity] No affinity_matrix found, will distill after zones ready")
 
+
+    def _builtin_affinity_fallback(self, furniture_list: list) -> dict:
+        BASE = {
+            "tv":          {"Watching":0.90,"Laying":0.05,"PhoneUse":0.03,"Reading":0.02},
+            "television":  {"Watching":0.90,"Laying":0.05,"PhoneUse":0.03,"Reading":0.02},
+            "monitor":     {"Typing":0.90,"Reading":0.07,"PhoneUse":0.03},
+            "keyboard":    {"Typing":0.95,"Reading":0.05},
+            "desk":        {"Typing":0.80,"Reading":0.15,"PhoneUse":0.05},
+            "stove":       {"Cooking":0.90,"Cleaning":0.05,"Eating":0.05},
+            "refrigerator":{"Opening":0.85,"Cooking":0.10,"Drinking":0.05},
+            "fridge":      {"Opening":0.85,"Cooking":0.10,"Drinking":0.05},
+            "cabinet":     {"Opening":0.60,"Cleaning":0.20,"Cooking":0.10,"Eating":0.10},
+            "cabinet2":    {"Opening":0.60,"Cleaning":0.20,"Cooking":0.10,"Eating":0.10},
+            "sofa":        {"Watching":0.40,"Laying":0.30,"Reading":0.15,"SittingDrink":0.10,"PhoneUse":0.05},
+            "couch":       {"Watching":0.40,"Laying":0.30,"Reading":0.15,"SittingDrink":0.10,"PhoneUse":0.05},
+            "sofa side":   {"Watching":0.40,"Laying":0.30,"SittingDrink":0.20,"PhoneUse":0.10},
+            "sofa side 2": {"Watching":0.40,"Laying":0.30,"SittingDrink":0.20,"PhoneUse":0.10},
+            "bed":         {"Laying":0.60,"Reading":0.30,"PhoneUse":0.10},
+            "dad's bed":   {"Laying":0.60,"Reading":0.30,"PhoneUse":0.10},
+            "dining table":{"Eating":0.40,"SittingDrink":0.35,"Cooking":0.15,"Drinking":0.10},
+            "table":       {"Eating":0.40,"SittingDrink":0.35,"Cooking":0.15,"Drinking":0.10},
+            "table2":      {"Eating":0.40,"SittingDrink":0.35,"Cooking":0.15,"Drinking":0.10},
+            "sink":        {"Drinking":0.40,"Cooking":0.35,"Cleaning":0.25},
+            "toilet":      {"Cleaning":0.60,"Standing":0.40},
+            "chair":       {"Eating":0.35,"SittingDrink":0.35,"Typing":0.20,"Reading":0.10},
+            "chair1":      {"Eating":0.35,"SittingDrink":0.35,"Typing":0.20,"Reading":0.10},
+            "chair2":      {"Eating":0.35,"SittingDrink":0.35,"Typing":0.20,"Reading":0.10},
+            "chair3":      {"Eating":0.35,"SittingDrink":0.35,"Typing":0.20,"Reading":0.10},
+        }
+        result = {}
+        for furn in furniture_list:
+            key = furn.lower().strip()
+            if key in BASE:
+                result[furn] = BASE[key]
+            else:
+                result[furn] = {"Eating":0.15,"Watching":0.15,"Laying":0.15,
+                                "Typing":0.15,"Reading":0.10,"Cleaning":0.10,
+                                "Drinking":0.10,"Cooking":0.10}
+        print(f"[Affinity] Built-in fallback: {len(result)} entries")
+        return result
+
     def _distill_affinity_matrix(self):
-        furnitures = [
-            d["label"] for d in self.col_scene.find(
-                {}, {"label": 1}) if d.get("label")
-        ]
-        if not furnitures:
-            print("[Affinity] No furniture in scene_snapshots, skip distillation")
-            return
+        all_docs = list(self.col_scene.find({}, {"label": 1}))
+        furniture_list = list({
+            doc["label"] for doc in all_docs if doc.get("label")
+        })
+        behavior_list = self.behavior_labels
 
-        behaviors = [
-            l for l in self._proto_labels
-            if l not in ("Standing", "Walking", "PickingUp", "PuttingDown")
-        ]
+        print(f"[Affinity] Computing via SBERT "
+              f"({len(furniture_list)} furniture x {len(behavior_list)} behaviors)...")
 
-        furniture_list = ", ".join(furnitures)
-        behavior_list  = ", ".join(behaviors)
+        proto_vecs = self._get_proto_vecs()
 
-        # ── Dynamic prompt — no hardcoded scores ─────────────────
-        # Gemma's commonsense is sufficient; we only provide the
-        # furniture list and behavior list. This makes the system
-        # scene-agnostic: a new scene only needs a new furniture list.
-        prompt = (
-            "You are a spatial behavior expert for home service robots. "
-            "Your task: build a semantic affordance matrix. "
-            "For each furniture item, rate its affinity (0.00 to 1.00) "
-            "with each behavior. "
-            "A high score means the behavior commonly occurs near "
-            "or inside the spatial boundary of that furniture. "
-            "Apply realistic spatial logic based on common sense "
-            "(e.g., sleeping happens on beds, cooking near stoves, "
-            "watching near televisions). "
-            "Each furniture's scores should sum to approximately 1.0. "
-            f"Behaviors: {behavior_list}. "
-            f"Furniture items: {furniture_list}. "
-            "Output ONLY valid JSON, no markdown, no explanation. "
-            "Format: { furniture_name: { behavior_name: score } }"
-        )
+        all_matrix = {}
+        for furn in furniture_list:
+            furn_vec = self.sbert.encode(
+                [furn], normalize_embeddings=True)[0].astype("float32")
+            sims = proto_vecs @ furn_vec
+            scores = {}
+            for i, beh in enumerate(behavior_list):
+                scores[beh] = round(float(max(0.0, sims[i])), 3)
+            all_matrix[furn] = scores
 
-        print(f"[Affinity] Distilling via gemma3:4b "
-              f"({len(furnitures)} furniture x {len(behaviors)} behaviors)...")
-        try:
-            resp = requests.post(
-                f"{self.ollama_url}/api/chat",
-                json={
-                    "model":    "gemma3:4b",
-                    "messages": [{"role": "user", "content": prompt}],
-                    "stream":   False,
-                    "options":  {"temperature": 0.1, "num_predict": 2000},
-                },
-                timeout=120,
-            )
-            raw = resp.json().get("message", {}).get("content", "").strip()
+        if not all_matrix:
+            print("[Affinity] SBERT produced no data — using built-in fallback")
+            all_matrix = self._builtin_affinity_fallback(furniture_list)
 
-            import re as _re
-            m = _re.search(r'\{.*\}', raw, _re.DOTALL)
-            if not m:
-                print(f"[Affinity] JSON not found in response")
-                return
+        bulk = []
+        for furn, action_scores in all_matrix.items():
+            for action, score in action_scores.items():
+                if action in self.behavior_labels:
+                    bulk.append({
+                        "furniture": furn,
+                        "behavior":  action,
+                        "score":     float(score),
+                    })
 
-            raw = m.group(0)
-            try:
-                matrix = json.loads(raw)
-            except json.JSONDecodeError:
-                raw_clean = re.sub(r',\s*([}\]])', r'\1', raw)
-                matrix = json.loads(raw_clean)
-            bulk   = []
-            for furn, action_scores in matrix.items():
-                for action, score in action_scores.items():
-                    if action in self._proto_labels:
-                        bulk.append({
-                            "furniture": furn.lower().strip(),
-                            "action":    action,
-                            "affinity":  float(score),
-                            "source":    "gemma3:4b",
-                        })
-                        fkey = furn.lower().strip()
-                        if fkey not in self._affinity_matrix:
-                            self._affinity_matrix[fkey] = {}
-                        self._affinity_matrix[fkey][action] = float(score)
+        if bulk:
+            self.col_affinity.delete_many({})
+            self.col_affinity.insert_many(bulk)
+            aff = {}
+            for d in bulk:
+                furn = d["furniture"]
+                if furn not in aff:
+                    aff[furn] = {}
+                aff[furn][d["behavior"]] = d["score"]
+            self._affinity_matrix = aff
+            furn_count = len(set(d["furniture"] for d in bulk))
+            print(f"[Affinity] Distilled {len(bulk)} entries "
+                  f"({furn_count} furniture x {len(behavior_list)} behaviors)")
+        else:
+            print("[Affinity] No valid entries")
 
-            if bulk:
-                self.col_affinity.delete_many({})
-                self.col_affinity.insert_many(bulk)
-                print(f"[Affinity] Distilled {len(bulk)} entries, stored in MongoDB")
-
-        except Exception as e:
-            import traceback
-            print(f"[Affinity] Distillation failed: {e}")
-            print(traceback.format_exc())
 
     def _get_furniture_affinity(self, furniture_label: str, action: str) -> float:
         label = furniture_label.lower().strip()
@@ -522,7 +528,7 @@ class SceneEngine:
             self._ready = False
 
 
-    def _compute_zone_affinity(self, behavior, zone):
+    def _compute_zone_affinity(self, zone, behavior):
         if not zone:
             return 0.0
         furnitures = zone.get("furniture", [])
@@ -588,7 +594,7 @@ class SceneEngine:
             return False
         scores = []
         for behavior in self.behavior_labels:
-            s = self._compute_zone_affinity(behavior, zone)
+            s = self._compute_zone_affinity(zone, behavior)
             scores.append(s)
         if not scores or max(scores) < 0.05:
             return True

@@ -658,7 +658,7 @@ class SayCanEngine:
             resp = requests.post(
                 f"{self.ollama_url}/api/chat",
                 json={
-                    "model":    "gemma3:4b",
+                    "model":    "llama3.1:8b-instruct-q4_K_M",
                     "messages": [{"role": "user", "content": prompt}],
                     "stream":   False,
                     "options":  {"temperature": 0.1, "num_predict": 600},
@@ -678,7 +678,7 @@ class SayCanEngine:
                     bulk.append({
                         "behavior": b,
                         "objects":  objs,
-                        "source":   "gemma3:4b",
+                        "source":   "llama3.1:8b-instruct-q4_K_M",
                         "timestamp": datetime.datetime.utcnow(),
                     })
                 if bulk:

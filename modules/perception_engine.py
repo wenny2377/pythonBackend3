@@ -62,7 +62,11 @@ STRUCTURAL_BLACKLIST = set(_ontology.get("structural_blacklist", [
 
 YOUR_OBJECTS = (
     set(_coco_cfg.get("coco_objects", [])) |
-    set(_ontology.get("scene_objects", []))
+    set(_ontology.get("scene_objects", [])) |
+    set(str(k).lower() for k in _ontology.get("item_to_action", {}).keys()) |
+    {"remote", "remote control", "tv remote", "juice", "cola", "pan",
+     "broom", "mop", "spatula", "bowl", "cup", "bottle", "phone",
+     "book", "laptop", "keyboard", "fork", "spoon", "plate", "food"}
 )
 
 LABEL_NORMALIZE_MAP = {
@@ -442,7 +446,8 @@ class PerceptionEngine:
 
         self.room_cache = RoomEmbeddingCache(self.sbert)
 
-        self.scene_sync = None
+        self.scene_sync      = None
+        self.manifold_engine = None
 
         print(f"[PerceptionEngine] Ready | model={vlm_model}")
 
@@ -664,10 +669,13 @@ RULES:
             scene_items.append(norm)
             spatial_relations.append({"subject": norm, "relation": rel, "object": on})
 
-        hand_lower = hand_state.lower()
+        combined_hand = (hand_state + " " + 
+                         data.get("summary", "")).lower()
+        hand_lower = combined_hand
         if any(kw in hand_lower for kw in
                ["holding", "raising", "carrying", "gripping", "reaching"]):
             words = re.findall(r'\b\w+(?:\s+\w+)?\b', hand_lower)
+            print(f"[Hand-dbg] words={words[:10]}")
             for w in words:
                 w = w.strip()
                 if len(w) < 3: continue
@@ -914,6 +922,8 @@ RULES:
         if isinstance(items, str):
             items = [items] if items else []
 
+        print(f"[L2A-dbg] items={items} vlm={vlm_action} zone={zone_label}")
+
         # L2A：持握物判斷（最高優先級）
         # Also resolves transitional actions (PickingUp, PuttingDown):
         #   PickingUp + cup → Drinking
@@ -921,7 +931,7 @@ RULES:
         is_transitional = vlm_action in TRANSITIONAL
         for item in items:
             item_lower = item.lower().strip()
-            for obj_key, action in self.ITEM_TO_ACTION.items():
+            for obj_key, action in ITEM_TO_ACTION.items():
                 if obj_key in item_lower:
                     if upgraded_action != action:
                         upgraded_action = action
@@ -934,6 +944,9 @@ RULES:
             or sbert_sim < 0.50
         )
         high_confidence = sbert_sim >= 0.80 and vlm_action not in TRANSITIONAL
+
+        print(f"[Spatial-dbg] vlm={vlm_action} sim={sbert_sim:.3f} "
+              f"upgrade={should_upgrade} zone={nearest_zone.get('zone_name','?') if nearest_zone else 'None'}")
 
         if high_confidence:
             return upgraded_action, "", zone_label
@@ -1035,7 +1048,7 @@ RULES:
         # L3：Zone Affinity 補全
         if best_action != vlm_action and best_score > 0.45:
             zone_affinity = self._compute_zone_affinity(
-                best_action, nearest_zone)
+                nearest_zone, best_action)
 
             personal_aff = 0.0
             if user_id and hasattr(self, "col_user_aff"):
@@ -1177,9 +1190,10 @@ RULES:
         # MUST run before observation_log write so that:
         #   (a) observation_logs stores spatial_action (not raw VLM output)
         #   (b) eval_logs Stage 1 vs Stage 2 columns are genuinely different
+        _sbert_score = sbert_sim[1] if isinstance(sbert_sim, tuple) else 0.0
         spatial_action, upgrade_reason, zone_label = self._spatial_reasoning(
             vlm_action        = final_action,
-            sbert_sim         = sbert_sim,
+            sbert_sim         = _sbert_score,
             user_pos          = user_pos,
             user_forward      = user_forward,
             interacting_items = validated["interacting_items"],
@@ -1279,18 +1293,25 @@ RULES:
             })
 
         return {
-            "user":           final_user,
-            "action":         final_action,
-            "spatial_action": spatial_action,
-            "upgrade_reason": upgrade_reason,
-            "zone_label":     zone_label,
-            "result":         result,
-            "items":          validated["interacting_items"],
-            "all_items":      validated["all_items"],
-            "spatial":        validated["spatial_relations"],
-            "bound_instance": bound_label,
-            "bound_room":     bound_room,
-            "confidence":     confidence,
+            "user":             final_user,
+            "action":           final_action,
+            "spatial_action":   spatial_action,
+            "upgrade_reason":   upgrade_reason,
+            "zone_label":       zone_label,
+            "result":           result,
+            "items":            validated["interacting_items"],
+            "all_items":        validated["all_items"],
+            "spatial_relations": validated["spatial_relations"],
+            "bound_instance":   bound_label,
+            "bound_room":       bound_room,
+            "confidence":       confidence,
+            "sbert_sim":        sbert_sim[1] if isinstance(sbert_sim, tuple) else 0.0,
+            "user_pos":         user_pos or {},
+            "virtual_hour":     virtual_hour or 12.0,
+            "room":             room_name or "",
+            "experiment_mode":  _exp_mode,
+            "time_slot":        _get_time_slot(virtual_hour),
+            "virtual_day":      virtual_day,
         }
 
 
