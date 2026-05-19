@@ -1,0 +1,156 @@
+# robot_ontology.yaml
+# Scene-specific ontology — edit this for each deployment environment.
+# Does NOT include behavior definitions (see behavior_config.yaml)
+# or system hyperparameters (see system_config.yaml).
+
+# ── 1. Structural blacklist ───────────────────────────────────────────
+# Background geometry — excluded from Zone Graph and object tracking.
+structural_blacklist:
+  - "wall"
+  - "floor"
+  - "ceiling"
+  - "wooden floor"
+  - "white wall"
+  - "white ceiling"
+  - "window"
+  - "door"
+  - "ground"
+  - "white box"
+  - "concrete floor"
+  - "tile floor"
+  - "carpet"
+  - "baseboard"
+  - "room"
+  - "background"
+  - "surface"
+  - "area"
+
+# ── 2. Zone Anchor: exclusive behaviours (Ch2) ────────────────────────
+# Furniture whose top-1 affinity behavior is in this list → Anchor.
+exclusive_behaviours:
+  - "Laying"
+  - "Cooking"
+  - "Opening"
+  - "Typing"
+  - "Cleaning"
+
+# ── 3. Zone Anchor: static fixtures (Ch3, Base_Mass=1.2) ─────────────
+# Large immovable furniture → physical prior → Anchor.
+static_fixtures:
+  - "sofa"
+  - "couch"
+  - "sectional"
+  - "bed"
+  - "bathtub"
+  - "wardrobe"
+  - "closet"
+  - "refrigerator"
+  - "fridge"
+  - "toilet"
+  - "shower"
+  - "cabinet"
+
+# ── 4. High-affordance furniture (L3 lower gate = 0.30) ──────────────
+# Strong exclusive affordance → lower L3 spatial reasoning gate.
+high_affordance_furniture:
+  - "tv"
+  - "television"
+  - "monitor"
+  - "screen"
+  - "stove"
+  - "oven"
+  - "refrigerator"
+  - "fridge"
+  - "keyboard"
+  - "cabinet"
+
+# ── 5. Scene-specific objects ─────────────────────────────────────────
+# Objects specific to THIS scene, beyond COCO vocabulary.
+# COCO objects are loaded separately from coco_objects.yaml.
+scene_objects:
+  - "juice"
+  - "cola"
+  - "pan"
+  - "frying pan"
+  - "broom"
+  - "mop"
+  - "dustpan"
+  - "food"
+  - "dish"
+  - "plate"
+  - "spatula"
+
+# ── 6. Label normalization map ────────────────────────────────────────
+# Maps VLM raw output → canonical label for this scene.
+# Covers both common synonyms and Unity GameObject name quirks.
+label_normalize_map:
+  # Common synonyms
+  juicebottle:    "juice"
+  juice bottle:   "juice"
+  orange juice:   "juice"
+  cola can:       "cola"
+  coca cola:      "cola"
+  coke:           "cola"
+  soda can:       "cola"
+  phone:          "cell phone"
+  mobile phone:   "cell phone"
+  smartphone:     "cell phone"
+  iphone:         "cell phone"
+  television:     "tv"
+  notebook:       "laptop"
+  computer:       "laptop"
+  tablet:         "laptop"
+  remote control: "remote"
+  tv remote:      "remote"
+  mug:            "cup"
+  coffee cup:     "cup"
+  tea cup:        "cup"
+  drinking glass: "cup"
+  water bottle:   "bottle"
+  sofa:           "couch"
+  settee:         "couch"
+  table:          "dining table"
+  kitchen table:  "dining table"
+  coffee table:   "dining table"
+  desk:           "dining table"
+  frying pan:     "pan"
+  cooking pan:    "pan"
+  skillet:        "pan"
+  broom:          "broom"
+  sweep:          "broom"
+  # Unity scene-specific GameObject names
+  table2:         "dining table"
+  chair1:         "chair"
+  chair2:         "chair"
+  chair3:         "chair"
+  sofa side:      "couch"
+  sofa side 2:    "couch"
+  dad's bed:      "bed"
+  cabinet2:       "cabinet"
+
+# ── 7. Item-to-action mapping (L2A held-object affordance) ───────────
+# Held object → behavior. SBERT fallback for unknown items.
+item_to_action:
+  bowl:       "Eating"
+  fork:       "Eating"
+  spoon:      "Eating"
+  plate:      "Eating"
+  food:       "Eating"
+  banana:     "Eating"
+  apple:      "Eating"
+  cell phone: "PhoneUse"
+  phone:      "PhoneUse"
+  book:       "Reading"
+  magazine:   "Reading"
+  laptop:     "Typing"
+  keyboard:   "Typing"
+  cup:        "Drinking"
+  bottle:     "Drinking"
+  mug:        "Drinking"
+  juice:      "Drinking"
+  cola:       "Drinking"
+  broom:      "Cleaning"
+  mop:        "Cleaning"
+  pan:        "Cooking"
+  spatula:    "Cooking"
+  remote:     "Watching"

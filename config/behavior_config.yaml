@@ -1,0 +1,122 @@
+# behavior_config.yaml
+# Behavior space definition — system-level, scene-independent.
+# Modify only when adding/removing behavior categories.
+
+# ── Behavior labels ───────────────────────────────────────────────────
+# Order matters: index = ManifoldEngine MLP one-hot position.
+behavior_labels:
+  - "Drinking"
+  - "SittingDrink"
+  - "Eating"
+  - "Cooking"
+  - "Opening"
+  - "Laying"
+  - "Watching"
+  - "Reading"
+  - "Cleaning"
+  - "PhoneUse"
+  - "Typing"
+  - "PickingUp"
+  - "PuttingDown"
+  - "Standing"
+  - "Walking"
+
+# ── No-weight actions ─────────────────────────────────────────────────
+# Transitional actions — captured by camera but do NOT accumulate
+# habit weight in observation_logs.
+# Opening is intentionally excluded: it is an Intent Pivot anchor
+# whose weight is needed for ManifoldEngine prev_action context.
+no_weight_actions:
+  - "PickingUp"
+  - "PuttingDown"
+  - "Walking"
+  - "Standing"
+
+# ── Vision prototypes ─────────────────────────────────────────────────
+# Semantic descriptions for SBERT-based behavior recognition.
+# Each description is compared against VLM output via cosine similarity.
+# Modify descriptions to improve recognition accuracy for specific VLMs.
+vision_prototypes:
+  Drinking: >
+    standing upright vertical full body posture weight on both feet.
+    single hand gripping cylindrical beverage container bottle glass cup can.
+    wrist raised elbow bent arm lifting container upward toward face.
+    container rim touching or nearly touching lips mouth.
+    swallowing throat movement fluid intake liquid ingestion.
+    NOT seated NOT holding paper NOT glowing screen
+
+  SittingDrink: >
+    seated stationary resting posture single hand or both hands holding cup vessel mug glass can box.
+    lifting container toward lips swallowing hot cold beverage tea coffee juice soda cola refreshment.
+    sipping drinking liquid intake without chewing jaw stationary relaxed sitting position
+
+  Eating: >
+    seated posture head tilted slightly forward hands holding dining tools chopsticks fork spoon utensils bowl plate.
+    solid food substance nourishment meal chunk raised toward open mouth.
+    jaw actively moving rhythmic chewing mastication grinding swallowing ingesting foodstuff
+
+  Cooking: >
+    standing stationary fixed position facing forward heat source stove flame.
+    both hands gripping cookware pan pot wok spatula ladle utensil.
+    active wrist rotation forearm stirring circular mixing motion.
+    head slightly bowed gaze directed downward into vessel container.
+    thermal culinary processing food preparation repetitive arm cycle
+
+  Opening: >
+    standing upright position facing large vertical surface volumetric structure refrigerator fridge unit.
+    one arm fully extended forward hand gripping long door handle knob profile.
+    pulling door assembly outward executing swinging motion opening large interior storage appliance cabinet.
+    cool cold air release from interior
+
+  Laying: >
+    body horizontal reclined flat spine fully extended parallel to ground floor.
+    head supported resting total body weight distributed passive stillness repose.
+    eyes closed or ceiling directed gaze non focused facial muscles relaxed sleeping napping
+
+  Watching: >
+    seated upright vertical spine orientation head level.
+    eyes directed straight forward sustained visual focus fixed forward gaze alignment.
+    hands empty resting relaxed on lap passive reception.
+    stationary still body minimal facial skeletal movement ongoing attention
+
+  Reading: >
+    both hands holding open physical paper book magazine printed document.
+    visible white paper pages paper sheets tangible physical pages.
+    turning flipping paper page with finger.
+    head bowed eyes scanning printed black text words lines on paper.
+    NOT holding electronic device NOT glowing screen NOT digital display
+
+  Cleaning: >
+    standing active locomotion lateral weight shift stepping displacement.
+    both hands firmly gripping elongated shaft pole handle broom mop tool.
+    wide sweeping arc arm motion bilateral rhythmic push pull stroke.
+    tool tip contact floor ground surface low trajectory.
+    repetitive cyclical whole body coordination house chores maintenance
+
+  PhoneUse: >
+    single hand only unilateral grip holding thin flat rectangular smartphone device.
+    glowing illuminated digital screen display lit up bright.
+    thumb actively scrolling swiping tapping touching glass screen surface.
+    face angled downward chin dropped eyes locked on luminous phone display.
+    NOT holding paper NOT holding cup NOT raising hand to mouth
+
+  Typing: >
+    seated upright forward workstation posture.
+    both hands dual hands flat palms down fingers actively pressing tapping discrete keys input interface.
+    wrists low forearms level synchronized bilateral hand activity typing working coding
+
+  PickingUp: >
+    bending forward at waist spine flexing hand reaching downward close to ground floor surface.
+    grasping small object item entity lifting upward elevation from ground counter
+
+  PuttingDown: >
+    bending forward or lowering arm hand lowering object item asset placing settling.
+    releasing grip item contact surface table floor setting down terminating carry
+
+  Standing: >
+    standing upright vertical body alignment both arms hanging loose at sides no object hands empty.
+    not moving idle stationary waiting neutral posture baseline status
+
+  Walking: >
+    locomotion legs stepping alternating feet forward displacement moving room path hallway.
+    arms swinging naturally body coordination walking gait translation motion velocity

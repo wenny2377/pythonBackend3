@@ -1,35 +1,76 @@
-import cv2
-import numpy as np
-import base64
+"""
+app.py — RobotBrain Server
+Clean architecture with decoupled modules.
+
+Startup sequence:
+  Phase 1: Infrastructure (MongoDB, SBERT, configs)
+  Phase 2: SceneEngine (Zone Graph — /scene triggers build)
+  Phase 3: PerceptionEngine, HabitEngine, ManifoldEngine
+  Phase 4: SayCanEngine, ServiceProposalEngine
+  Phase 5: Flask serves all endpoints
+
+/ready endpoint: returns SceneEngine.is_ready()
+/scene endpoint: triggers SceneEngine.build()
+/predict: requires SceneEngine.is_ready()
+"""
+
 import os
-import time
+import json
+import math
+import uuid
+import atexit
+import base64
 import datetime
 import threading
-import math
-import json
-import re
-import atexit
 import queue as _queue
 
+import numpy as np
+import cv2
 from flask import Flask, request, jsonify, Response, stream_with_context
 from pymongo import MongoClient
+from sentence_transformers import SentenceTransformer
 
 from config import Config
-from modules.perception import PerceptionEngine
-from modules.memory import MemoryManager
-from modules.memory_vector import VectorMemory
-from modules.classifier import ObjectClassifier, BASE_FURNITURE_KEYWORDS, OBJECT_CATEGORIES
-from modules.manifold_engine import ManifoldEngine, build_x
-from modules.service_proposal import ServiceProposalEngine
-from modules.saycan_engine import SayCanEngine
 
-from sentence_transformers import SentenceTransformer
+from modules.scene_engine      import SceneEngine
+from modules.perception_engine import PerceptionEngine, PerceptionResult
+from modules.habit_engine      import HabitEngine
+from modules.manifold_engine   import ManifoldEngine
+from modules.saycan_engine     import SayCanEngine
+from modules.service_proposal  import ServiceProposalEngine
+from modules.skill_manager     import SkillManager
+from modules.memory            import MemoryManager
+from modules.memory_vector     import VectorMemory
+from modules.classifier        import (ObjectClassifier,
+                                        BASE_FURNITURE_KEYWORDS,
+                                        OBJECT_CATEGORIES)
+
+try:
+    import yaml as _yaml
+    _YAML_OK = True
+except ImportError:
+    _YAML_OK = False
+
+
+def _load_yaml(path: str) -> dict:
+    if _YAML_OK and os.path.exists(path):
+        with open(path) as f:
+            return _yaml.safe_load(f) or {}
+    return {}
+
 
 app    = Flask(__name__)
 CONFIG = Config
 
-sbert_model = SentenceTransformer('all-MiniLM-L6-v2', device='cuda')
-print("SBERT loaded on CUDA")
+# ═══════════════════════════════════════════════════════════════════════
+# Phase 1: Infrastructure
+# ═══════════════════════════════════════════════════════════════════════
+print(f"System init: device={CONFIG.DEVICE} "
+      f"| LLM={CONFIG.LLM_MODEL} | VLM={CONFIG.VLM_MODEL}")
+
+sbert_model = SentenceTransformer('all-MiniLM-L6-v2',
+                                   device=CONFIG.DEVICE)
+print("SBERT loaded on", CONFIG.DEVICE)
 
 mongo_client = MongoClient(CONFIG.MONGO_URI)
 db           = mongo_client[CONFIG.DB_NAME]
@@ -39,33 +80,67 @@ try:
     db.observation_logs.create_index(
         [("last_seen", 1)],
         expireAfterSeconds=14 * 86400,
-        name="observation_ttl_14d"
-    )
+        name="observation_ttl_14d")
     print("[MongoDB] indexes ready")
 except Exception as e:
     print(f"[MongoDB] index notice: {e}")
 
+# Load ontology configs
+_ontology  = _load_yaml("config/robot_ontology.yaml")
+_beh_cfg   = _load_yaml("config/behavior_config.yaml")
+_sys_cfg   = _load_yaml("config/system_config.yaml")
+
+behavior_labels = _beh_cfg.get("behavior_labels", [
+    "Drinking","SittingDrink","Eating","Cooking","Opening",
+    "Laying","Watching","Reading","Cleaning","PhoneUse",
+    "Typing","PickingUp","PuttingDown","Standing","Walking",
+])
+
+# ═══════════════════════════════════════════════════════════════════════
+# Phase 2: SceneEngine
+# Zone Graph is built here. /scene endpoint triggers rebuild.
+# /ready returns is_ready() status.
+# ═══════════════════════════════════════════════════════════════════════
+scene_engine = SceneEngine(
+    db              = db,
+    ollama_url      = CONFIG.OLLAMA_URL,
+    sbert_model     = sbert_model,
+    ontology        = _ontology,
+    system_cfg      = _sys_cfg,
+    behavior_labels = behavior_labels,
+)
+
+# ═══════════════════════════════════════════════════════════════════════
+# Phase 3: PerceptionEngine + HabitEngine + ManifoldEngine
+# ═══════════════════════════════════════════════════════════════════════
 manifold_engine = ManifoldEngine(db=db, sbert_model=sbert_model)
 
 perception = PerceptionEngine(
-    ollama_url       = CONFIG.OLLAMA_URL,
-    model_name       = CONFIG.VLM_MODEL,
-    face_analyzer    = None,
-    face_bank        = None,
-    mongo_uri        = CONFIG.MONGO_URI,
-    db_name          = CONFIG.DB_NAME,
-    sbert_model_name = 'all-MiniLM-L6-v2',
-    manifold_engine  = manifold_engine,
+    db           = db,
+    ollama_url   = CONFIG.OLLAMA_URL,
+    vlm_model    = CONFIG.VLM_MODEL,
+    sbert_model  = sbert_model,
+    scene_engine = scene_engine,
 )
 
-memory        = MemoryManager(mongo_client, embedding_model=sbert_model)
-vector_memory = VectorMemory(device='cuda')
-classifier    = ObjectClassifier(db)
-classifier.start()
+skill_manager = SkillManager(db, sbert_model)
 
-vector_memory.sync_from_mongo(db.dynamic_objects)
+habit_engine = HabitEngine(
+    db              = db,
+    skill_manager   = skill_manager,
+    manifold_engine = manifold_engine,
+)
 
-atexit.register(perception.shutdown)
+# ═══════════════════════════════════════════════════════════════════════
+# Phase 4: SayCanEngine + ServiceProposalEngine
+# ═══════════════════════════════════════════════════════════════════════
+saycan_engine = SayCanEngine(
+    db              = db,
+    manifold_engine = manifold_engine,
+    ollama_url      = CONFIG.OLLAMA_URL,
+    llm_model       = CONFIG.LLM_MODEL,
+    sbert_model     = sbert_model,
+)
 
 proposal_engine = ServiceProposalEngine(
     db         = db,
@@ -73,20 +148,28 @@ proposal_engine = ServiceProposalEngine(
     llm_model  = CONFIG.LLM_MODEL,
 )
 
-saycan_engine = SayCanEngine(
-    db              = db,
-    manifold_engine = manifold_engine,
-    ollama_url      = CONFIG.OLLAMA_URL,
-    llm_model       = CONFIG.LLM_MODEL,
-    sbert_model     = sbert_model,   # shared SBERT instance
-)
+memory        = MemoryManager(mongo_client, embedding_model=sbert_model)
+vector_memory = VectorMemory(device=CONFIG.DEVICE)
+classifier    = ObjectClassifier(db)
+classifier.start()
+vector_memory.sync_from_mongo(db.dynamic_objects)
 
+atexit.register(perception.shutdown)
+
+# VLM lock — one VLM request at a time
 _vlm_lock = threading.Lock()
 
+# LLM queue
 _llm_task_queue   = _queue.Queue()
 _llm_task_results = {}
 _llm_task_lock    = threading.Lock()
 
+_robot_state = {
+    "nav_target":  None,
+    "nav_label":   "",
+    "last_answer": "",
+    "highlight":   "",
+}
 
 def _llm_worker():
     while True:
@@ -258,6 +341,45 @@ _robot_state = {
     "last_answer": "",
     "highlight":   "",
 }
+
+
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# ENDPOINTS
+# ═══════════════════════════════════════════════════════════════════════
+
+@app.route("/ready", methods=["GET"])
+def ready():
+    """
+    SceneEngine readiness probe.
+    Unity ExperimentRunner polls this before starting experiments.
+    Returns ready=True only when Zone Graph + affinity are built.
+    """
+    status = scene_engine.status()
+    return jsonify({
+        "ready":          status["ready"],
+        "zone_count":     status["zone_count"],
+        "affinity_count": status["affinity_count"],
+        "zones":          status["zones"],
+    }), 200
+
+
+@app.route("/experiment_done", methods=["POST"])
+def experiment_done():
+    """
+    Called by Unity ExperimentRunner when all episodes are complete.
+    Triggers final MLP training pass for any remaining samples.
+    """
+    def _final_train():
+        for uid in ["User_Mom", "User_Dad"]:
+            n = db.manifold_training_data.count_documents({"user_id": uid})
+            if n >= 20:
+                print(f"[ExperimentDone] Final MLP train: {uid} ({n} samples)")
+                manifold_engine.train_model(uid)
+    threading.Thread(target=_final_train, daemon=True).start()
+    return jsonify({"status": "ok", "message": "Final training triggered"}), 200
+
 
 
 @app.route('/nav_target', methods=['GET'])
@@ -510,7 +632,29 @@ def predict():
         acquired = _vlm_lock.acquire(timeout=180)
         t0 = time.time()
         try:
-            perception_res = perception.analyze_action_burst(data)
+            # ── New architecture: analyze → habit record ────────────────
+            result = perception.analyze_action_burst(data)
+            perception_res = result  # keep compatibility
+
+        # HabitEngine records (writes DB, triggers SKILL.md)
+            if result.get("spatial_action") and result.get("zone_name"):
+                habit_engine.record(
+                    user_id           = result.get("user_id", ""),
+                action            = result.get("spatial_action", ""),
+                zone_name         = result.get("zone_name", ""),
+                pos               = [
+                    result.get("user_pos", {}).get("x", 0),
+                    result.get("user_pos", {}).get("z", 0),
+                ],
+                virtual_hour      = result.get("virtual_hour", 12.0),
+                time_slot         = result.get("time_slot", ""),
+                interacting_items = result.get("interacting_items", []),
+                raw_desc          = result.get("raw_desc", ""),
+                room              = result.get("room", ""),
+                instance          = result.get("instance", ""),
+                spatial_relations = result.get("spatial_relations", {}),
+                experiment_mode   = result.get("experiment_mode", "habit"),
+            )
         finally:
             if acquired:
                 _vlm_lock.release()
