@@ -1,19 +1,19 @@
 [
   {
     "label": "apple",
-    "room": "LivingRoom",
-    "last_seen_on": "table",
-    "spatial_rel": "next to chair",
+    "room": "Kitchen ",
+    "last_seen_on": "table2",
+    "spatial_rel": "on",
     "furniture_pos": [
-      3.557,
-      -0.924
+      2.261,
+      5.641
     ],
     "seen_count": 2,
     "interact_count": 0,
     "interacted_by": [],
-    "memory_text": "apple next to chair table in LivingRoom. seen 2 times. interacted 0 times.",
-    "timestamp": "2026-05-19T15:28:09.809446",
-    "faiss_idx": 43
+    "memory_text": "apple on table2 in Kitchen . seen 2 times. interacted 0 times.",
+    "timestamp": "2026-05-20T17:02:11.222440",
+    "faiss_idx": 0
   },
   {
     "label": "banana",
@@ -21,14 +21,14 @@
     "last_seen_on": "table2",
     "spatial_rel": "on",
     "furniture_pos": [
-      2.349,
-      -1.41300011
+      2.085,
+      5.208
     ],
-    "seen_count": 1,
+    "seen_count": 2,
     "interact_count": 0,
     "interacted_by": [],
-    "memory_text": "banana on table2 in Kitchen . seen 1 times. interacted 0 times.",
-    "timestamp": "2026-05-19T15:18:51.480710",
+    "memory_text": "banana on table2 in Kitchen . seen 2 times. interacted 0 times.",
+    "timestamp": "2026-05-20T17:02:11.223730",
     "faiss_idx": 1
   },
   {
@@ -40,11 +40,11 @@
       -1.325,
       1.381
     ],
-    "seen_count": 1,
+    "seen_count": 2,
     "interact_count": 0,
     "interacted_by": [],
-    "memory_text": "mouse on desk in BedRoom(dad). seen 1 times. interacted 0 times.",
-    "timestamp": "2026-05-19T15:13:09.308117",
+    "memory_text": "mouse on desk in BedRoom(dad). seen 2 times. interacted 0 times.",
+    "timestamp": "2026-05-20T17:02:11.225191",
     "faiss_idx": 2
   },
   {
@@ -56,28 +56,30 @@
       5.24,
       5.037
     ],
-    "seen_count": 1,
+    "seen_count": 2,
     "interact_count": 0,
     "interacted_by": [],
-    "memory_text": "pan on sink in Kitchen . seen 1 times. interacted 0 times.",
-    "timestamp": "2026-05-19T15:13:09.315212",
+    "memory_text": "pan on sink in Kitchen . seen 2 times. interacted 0 times.",
+    "timestamp": "2026-05-20T17:02:11.226364",
     "faiss_idx": 3
   },
   {
     "label": "book",
-    "room": "Kitchen ",
-    "last_seen_on": "table2",
-    "spatial_rel": "next to",
+    "room": "LivingRoom",
+    "last_seen_on": "table",
+    "spatial_rel": "near",
     "furniture_pos": [
-      1.635,
-      5.445
+      6.161,
+      3.553
     ],
-    "seen_count": 5,
-    "interact_count": 0,
-    "interacted_by": [],
-    "memory_text": "book next to table2 in Kitchen . seen 5 times. interacted 0 times.",
-    "timestamp": "2026-05-19T15:33:45.307063",
-    "faiss_idx": 56
+    "seen_count": 3,
+    "interact_count": 1,
+    "interacted_by": [
+      "User_Mom"
+    ],
+    "memory_text": "book near table in LivingRoom. seen 3 times. interacted 1 times. used by User_Mom.",
+    "timestamp": "2026-05-20T17:04:40.904275",
+    "faiss_idx": 19
   },
   {
     "label": "broom",
@@ -88,11 +90,11 @@
       -0.39,
       3.95
     ],
-    "seen_count": 1,
+    "seen_count": 2,
     "interact_count": 0,
     "interacted_by": [],
-    "memory_text": "broom on floor in . seen 1 times. interacted 0 times.",
-    "timestamp": "2026-05-19T15:13:09.328641",
+    "memory_text": "broom on floor in . seen 2 times. interacted 0 times.",
+    "timestamp": "2026-05-20T17:02:11.235250",
     "faiss_idx": 5
   },
   {
@@ -104,11 +106,11 @@
       1.502,
       5.364
     ],
-    "seen_count": 1,
+    "seen_count": 2,
     "interact_count": 0,
     "interacted_by": [],
-    "memory_text": "juice on table2 in Kitchen . seen 1 times. interacted 0 times.",
-    "timestamp": "2026-05-19T15:13:09.333535",
+    "memory_text": "juice on table2 in Kitchen . seen 2 times. interacted 0 times.",
+    "timestamp": "2026-05-20T17:02:11.236504",
     "faiss_idx": 6
   },
   {
@@ -120,63 +122,64 @@
       1.81,
       5.879
     ],
-    "seen_count": 1,
+    "seen_count": 2,
     "interact_count": 0,
     "interacted_by": [],
-    "memory_text": "cola on table2 in Kitchen . seen 1 times. interacted 0 times.",
-    "timestamp": "2026-05-19T15:13:09.338749",
+    "memory_text": "cola on table2 in Kitchen . seen 2 times. interacted 0 times.",
+    "timestamp": "2026-05-20T17:02:11.237629",
     "faiss_idx": 7
   },
   {
     "label": "remote",
-    "room": "Kitchen ",
-    "last_seen_on": "User_Dad",
-    "spatial_rel": "held_by",
+    "room": "LivingRoom",
+    "last_seen_on": "table",
+    "spatial_rel": "on",
     "furniture_pos": [
-      3.652,
-      0.52
+      3.562,
+      -1.25
     ],
-    "seen_count": 51,
-    "interact_count": 17,
-    "interacted_by": [
-      "User_Dad",
-      "User_Mom"
-    ],
-    "memory_text": "remote held_by User_Dad in Kitchen . seen 51 times. interacted 17 times. used by User_Dad, User_Mom.",
-    "timestamp": "2026-05-19T15:38:28.295149",
-    "faiss_idx": 65
+    "seen_count": 2,
+    "interact_count": 0,
+    "interacted_by": [],
+    "memory_text": "remote on table in LivingRoom. seen 2 times. interacted 0 times.",
+    "timestamp": "2026-05-20T17:02:11.238886",
+    "faiss_idx": 8
   },
   {
     "label": "bowl",
-    "room": "Kitchen ",
-    "last_seen_on": "table2",
-    "spatial_rel": "on",
+    "room": "LivingRoom",
+    "last_seen_on": "Unknown_Area",
+    "spatial_rel": "near",
     "furniture_pos": [
-      2.162,
-      5.985
+      3.746,
+      1.096
     ],
-    "seen_count": 1,
-    "interact_count": 0,
-    "interacted_by": [],
-    "memory_text": "bowl on table2 in Kitchen . seen 1 times. interacted 0 times.",
-    "timestamp": "2026-05-19T15:13:09.350697",
-    "faiss_idx": 9
+    "seen_count": 4,
+    "interact_count": 2,
+    "interacted_by": [
+      "User_Mom"
+    ],
+    "memory_text": "bowl near Unknown_Area in LivingRoom. seen 4 times. interacted 2 times. used by User_Mom.",
+    "timestamp": "2026-05-20T17:03:15.199335",
+    "faiss_idx": 24
   },
   {
     "label": "cup",
-    "room": "Kitchen ",
-    "last_seen_on": "chair3",
-    "spatial_rel": "on",
+    "room": "Kitchen",
+    "last_seen_on": "Unknown_Area",
+    "spatial_rel": "near",
     "furniture_pos": [
-      6.38,
-      -0.5799999
+      6.161,
+      3.553
     ],
-    "seen_count": 1,
-    "interact_count": 0,
-    "interacted_by": [],
-    "memory_text": "cup on chair3 in Kitchen . seen 1 times. interacted 0 times.",
-    "timestamp": "2026-05-19T15:25:56.936573",
-    "faiss_idx": 10
+    "seen_count": 4,
+    "interact_count": 2,
+    "interacted_by": [
+      "User_Mom"
+    ],
+    "memory_text": "cup near Unknown_Area in Kitchen. seen 4 times. interacted 2 times. used by User_Mom.",
+    "timestamp": "2026-05-20T17:02:58.159876",
+    "faiss_idx": 23
   },
   {
     "label": "plate",
@@ -187,11 +190,11 @@
       6.135,
       4.656
     ],
-    "seen_count": 1,
+    "seen_count": 2,
     "interact_count": 0,
     "interacted_by": [],
-    "memory_text": "plate on sink in Kitchen . seen 1 times. interacted 0 times.",
-    "timestamp": "2026-05-19T15:13:09.361916",
+    "memory_text": "plate on sink in Kitchen . seen 2 times. interacted 0 times.",
+    "timestamp": "2026-05-20T17:02:11.250878",
     "faiss_idx": 11
   },
   {
@@ -203,116 +206,30 @@
       -1.289,
       0.785
     ],
-    "seen_count": 1,
+    "seen_count": 2,
     "interact_count": 0,
     "interacted_by": [],
-    "memory_text": "keyboard on desk in BedRoom(dad). seen 1 times. interacted 0 times.",
-    "timestamp": "2026-05-19T15:13:09.368564",
+    "memory_text": "keyboard on desk in BedRoom(dad). seen 2 times. interacted 0 times.",
+    "timestamp": "2026-05-20T17:02:11.253923",
     "faiss_idx": 12
   },
   {
-    "label": "laptop",
+    "label": "phone",
     "room": "LivingRoom",
-    "last_seen_on": "table",
-    "spatial_rel": "next to",
+    "last_seen_on": "Unknown_Area",
+    "spatial_rel": "near",
     "furniture_pos": [
-      3.557,
-      -0.924
+      -0.848,
+      0.79
     ],
-    "seen_count": 22,
-    "interact_count": 1,
+    "seen_count": 7,
+    "interact_count": 7,
     "interacted_by": [
+      "User_Mom",
       "User_Dad"
     ],
-    "memory_text": "laptop next to table in LivingRoom. seen 22 times. interacted 1 times. used by User_Dad.",
-    "timestamp": "2026-05-19T15:38:51.769904",
-    "faiss_idx": 63
-  },
-  {
-    "label": "couch",
-    "room": "Kitchen ",
-    "last_seen_on": "User_Mom",
-    "spatial_rel": "held_by",
-    "furniture_pos": [
-      2.438,
-      -1.46
-    ],
-    "seen_count": 1,
-    "interact_count": 1,
-    "interacted_by": [
-      "User_Mom"
-    ],
-    "memory_text": "couch held_by User_Mom in Kitchen . seen 1 times. interacted 1 times. used by User_Mom.",
-    "timestamp": "2026-05-19T15:15:31.362495",
-    "faiss_idx": 18
-  },
-  {
-    "label": "red cup",
-    "room": "LivingRoom",
-    "last_seen_on": "table",
-    "spatial_rel": "next to",
-    "furniture_pos": [
-      3.557,
-      -0.924
-    ],
-    "seen_count": 2,
-    "interact_count": 0,
-    "interacted_by": [],
-    "memory_text": "red cup next to table in LivingRoom. seen 2 times. interacted 0 times.",
-    "timestamp": "2026-05-19T15:37:12.092887",
-    "faiss_idx": 24
-  },
-  {
-    "label": "yellow object",
-    "room": "Kitchen ",
-    "last_seen_on": "table2",
-    "spatial_rel": "next to",
-    "furniture_pos": [
-      1.635,
-      5.445
-    ],
-    "seen_count": 1,
-    "interact_count": 0,
-    "interacted_by": [],
-    "memory_text": "yellow object next to table2 in Kitchen . seen 1 times. interacted 0 times.",
-    "timestamp": "2026-05-19T15:37:56.022740",
-    "faiss_idx": 29
-  },
-  {
-    "label": "dining table",
-    "room": "Kitchen ",
-    "last_seen_on": "chair2",
-    "spatial_rel": "in",
-    "furniture_pos": [
-      3.23,
-      5.31
-    ],
-    "seen_count": 2,
-    "interact_count": 1,
-    "interacted_by": [
-      "User_Mom"
-    ],
-    "memory_text": "dining table in chair2 in Kitchen . seen 2 times. interacted 1 times. used by User_Mom.",
-    "timestamp": "2026-05-19T15:33:45.305981",
-    "faiss_idx": 39
-  },
-  {
-    "label": "cell phone",
-    "room": "Kitchen ",
-    "last_seen_on": "table2",
-    "spatial_rel": "next to",
-    "furniture_pos": [
-      1.635,
-      5.445
-    ],
-    "seen_count": 5,
-    "interact_count": 2,
-    "interacted_by": [
-      "User_Dad",
-      "User_Mom"
-    ],
-    "memory_text": "cell phone next to table2 in Kitchen . seen 5 times. interacted 2 times. used by User_Dad, User_Mom.",
-    "timestamp": "2026-05-19T15:34:59.065414",
-    "faiss_idx": 59
+    "memory_text": "phone near Unknown_Area in LivingRoom. seen 7 times. interacted 7 times. used by User_Mom, User_Dad.",
+    "timestamp": "2026-05-20T17:04:57.705721",
+    "faiss_idx": 26
   }
 ]

@@ -46,7 +46,10 @@ AUGMENT_FACTOR   = 100      # Monte Carlo over-sampling multiplier
 TIME_NOISE_STD   = 0.5 / 24 # ± 30 min in normalised [0,1] scale
 POS_NOISE_STD    = 0.05     # ± ~0.5m (pos is divided by 10)
 RETRAIN_EVERY    = 20       # retrain after every N new samples
-MODEL_DIR        = "manifold_models"  # where pkl models are stored
+MODEL_DIR        = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)),
+    "..", "manifold_models"
+)  # absolute path relative to this file
 
 
 # ── helpers ──────────────────────────────────────────────────────────

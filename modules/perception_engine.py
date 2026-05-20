@@ -78,17 +78,35 @@ ITEM_TO_ACTION = {
     str(k).lower(): str(v).strip('"').strip()
     for k, v in _ontology.get("item_to_action", {}).items()
 } or {
-    "bowl":"Eating","fork":"Eating","spoon":"Eating","plate":"Eating",
-    "food":"Eating","banana":"Eating","apple":"Eating",
-    "cell phone":"PhoneUse","phone":"PhoneUse",
-    "book":"Reading","magazine":"Reading",
-    "laptop":"Typing","keyboard":"Typing",
-    "cup":"Drinking","bottle":"Drinking","mug":"Drinking",
-    "juice":"Drinking","cola":"Drinking",
-    "broom":"Cleaning","mop":"Cleaning",
-    "pan":"Cooking","spatula":"Cooking",
-    "remote":"Watching",
+    "remote": "Watching", "book": "Reading", "magazine": "Reading",
+    "phone": "PhoneUse", "smartphone": "PhoneUse", "laptop": "Typing",
+    "keyboard": "Typing", "broom": "Cleaning", "mop": "Cleaning",
+    "cup": "Drinking", "glass": "Drinking", "bottle": "Drinking",
+    "bowl": "Eating", "fork": "Eating", "spoon": "Eating",
+    "chopsticks": "Eating", "pan": "Cooking", "spatula": "Cooking",
 }
+
+_OBJECT_VOCAB_FROM_YAML = _ontology.get("object_vocab", [])
+
+OBJECT_VOCAB = list(dict.fromkeys(
+    list(ITEM_TO_ACTION.keys()) +
+    (list(_OBJECT_VOCAB_FROM_YAML) if _OBJECT_VOCAB_FROM_YAML else []) +
+    ["none", "remote", "book", "phone", "laptop", "broom", "mop",
+     "cup", "glass", "bottle", "bowl", "fork", "spoon", "pan",
+     "spatula", "keyboard", "magazine", "chopsticks", "smartphone"]
+))
+
+_BODY_CONSTRAINTS_RAW = _ontology.get("body_constraints", {}).get("impossible", {})
+BODY_IMPOSSIBLE = {
+    (pos.lower(), beh)
+    for pos, behs in _BODY_CONSTRAINTS_RAW.items()
+    for beh in (behs or [])
+}
+
+_BODY_FEASIBILITY_DEFAULT = float(_hp.get("body_feasibility_default", 0.50))
+_NEARBY_OBJECT_RADIUS     = float(_hp.get("nearby_object_radius", 2.0))
+_OBJECT_NORM_THRESHOLD    = float(_hp.get("object_norm_threshold", 0.45))
+_ZONE_SIGMA               = float(_hp.get("zone_sigma", 2.0))
 
 BEHAVIOR_LABELS = _beh_cfg.get("behavior_labels", [
     "Drinking","SittingDrink","Eating","Cooking","Opening",
@@ -461,13 +479,19 @@ class PerceptionEngine:
         return self._proto_vecs
 
     def _build_sbert_input(self, parsed: dict) -> str:
-        parts = [
-            parsed.get("body_posture", ""),
-            parsed.get("gaze_target",  ""),
-            parsed.get("hand_state",   ""),
-            parsed.get("summary",      ""),
-            parsed.get("summary",      ""),
-        ]
+        # Support both old format (body_posture/hand_state) and new (body_position/held_object)
+        body   = parsed.get("body_posture") or parsed.get("body_position", "")
+        gaze   = parsed.get("gaze_target", "")
+        hand   = parsed.get("hand_state", "")
+        held   = parsed.get("held_object", "")
+        summary = parsed.get("summary", "")
+
+        # Build held_object context string for SBERT
+        held_ctx = ""
+        if held and held not in ("none", "empty", ""):
+            held_ctx = f"holding {held}"
+
+        parts = [body, gaze, hand, held_ctx, summary, summary]
         return " ".join(p for p in parts if p).strip()
 
     def _normalize_action(self, sbert_input: str) -> str:
@@ -612,34 +636,18 @@ class PerceptionEngine:
         return None, "unknown"
 
     def _build_prompt(self, room_name, room_furniture, coord_label, coord_dist):
-        furn_hint = (f"\nKNOWN FURNITURE: {', '.join(room_furniture)}.\n"
-                     if room_furniture else "")
-        coord_hint = (f"\nSPATIAL HINT: person is ~{coord_dist:.1f}m from '{coord_label}'.\n"
-                      if coord_label and coord_dist < 3.0 else "")
-        return f"""You are a visual observation system for a home robot.
-Analyze the person in the image. Do NOT name the activity.
-Room: "{room_name}".{furn_hint}{coord_hint}
-Output ONLY valid JSON:
+        return """You are a home robot camera. Observe the human and output ONE valid JSON object.
+Be short, precise, and objective. Do NOT use markdown.
 
-{{
-  "body_posture": "describe spine and leg position. Use terms like: upright, bent forward, horizontal, walking, or similar.",
-  "gaze_target": "where are the eyes looking. Use terms like: downward at hands, at screen, forward, closed eyes, or similar.",
-  "hand_state": "what are the hands doing. Use terms like: holding small object, empty, on surface, raising to face, holding device, reaching downward, or similar.",
-  "summary": "one short sentence of what you actually see",
-  "person_near": "name of the closest furniture or surface",
-  "objects_on_furniture": [
-    {{"object": "object name", "on": "furniture name", "relation": "on/in/next_to"}}
-  ]
-}}
+{
+  "activity": "Choose the single BEST fit: Eating/Drinking/SittingDrink/Cooking/Opening/Laying/Watching/Reading/Cleaning/PhoneUse/Typing/Standing/Walking",
+  "body_position": "Choose ONE: standing/sitting/lying",
+  "held_object": "Name ONE object held in hands (broom/cup/remote/fork/phone/book/pan/bottle/bowl/laptop/none)"
+}
 
-RULES:
-- body_posture: is the person flat, upright, bent, or moving?
-- gaze_target: follow head and eye direction carefully.
-- hand_state: look carefully at hands — what do they hold or touch?
-- objects_on_furniture: use standard object names (cup, bottle, juice, cola, book, laptop, remote, cell phone, pan, broom, food, bowl, etc).
-- NEVER include wall, floor, ceiling, window, door in objects_on_furniture.
-- Do NOT guess the activity name.
+Look closely at hands and posture. Output ONLY the JSON object.
 """
+
 
     def _parse_vlm_output(self, raw: str) -> dict:
         try:
@@ -647,10 +655,20 @@ RULES:
         except Exception:
             return {}
 
-        body_posture = data.get("body_posture", "").strip()
+        # Support both old format (body_posture/hand_state) and new (activity/body_position)
+        activity     = data.get("activity",     "").strip()
+        body_posture = data.get("body_posture", "") or data.get("body_position", "")
+        body_posture = body_posture.strip()
         gaze_target  = data.get("gaze_target",  "").strip()
+        held_object  = data.get("held_object",  "").strip().lower()
         hand_state   = data.get("hand_state",   "").strip()
-        summary      = data.get("summary",      "").strip()
+        if held_object and held_object not in ("none", "empty", ""):
+            hand_state = f"holding {held_object} " + hand_state
+        # If new format, build summary from activity
+        summary = data.get("summary", "")
+        if not summary and activity:
+            summary = f"person is {activity.lower()}"
+        summary = summary.strip()
         person_near  = data.get("person_near",  "unknown").lower().strip()
         objs         = data.get("objects_on_furniture", [])
 
@@ -660,22 +678,29 @@ RULES:
 
         for entry in objs:
             if not isinstance(entry, dict): continue
-            obj = entry.get("object", "").lower().strip()
-            on  = entry.get("on",     "").lower().strip()
-            rel = entry.get("relation", "on").lower().strip()
+            obj = (entry.get("object") or "").lower().strip()
+            on  = (entry.get("on")     or "").lower().strip()
+            rel = (entry.get("relation") or "on").lower().strip()
             if not obj or not on: continue
             norm = normalize_label(obj, self.sbert)
             if norm in STRUCTURAL_BLACKLIST: continue
             scene_items.append(norm)
             spatial_relations.append({"subject": norm, "relation": rel, "object": on})
 
-        combined_hand = (hand_state + " " + 
-                         data.get("summary", "")).lower()
+        # New prompt format: held_object is a clean single word (e.g. "cup", "none")
+        # Add it directly to interacting_items without keyword parsing
+        if held_object and held_object not in ("none", "empty", ""):
+            norm_held = self._normalize_object(held_object)
+            if norm_held and norm_held != "none" and norm_held not in STRUCTURAL_BLACKLIST:
+                if norm_held not in interacting_items:
+                    interacting_items.append(norm_held)
+
+        combined_hand = ((hand_state or "") + " " +
+                         (data.get("summary") or "")).lower()
         hand_lower = combined_hand
         if any(kw in hand_lower for kw in
                ["holding", "raising", "carrying", "gripping", "reaching"]):
             words = re.findall(r'\b\w+(?:\s+\w+)?\b', hand_lower)
-            print(f"[Hand-dbg] words={words[:10]}")
             for w in words:
                 w = w.strip()
                 if len(w) < 3: continue
@@ -696,6 +721,7 @@ RULES:
             "gaze_target":       gaze_target,
             "hand_state":        hand_state,
             "summary":           summary,
+            "activity_hint":     activity,   # direct activity from new prompt format
             "main_object":       person_near,
             "interacting_items": interacting_items,
             "scene_items":       scene_items,
@@ -891,10 +917,88 @@ RULES:
         })
         print(f"[FAISS] memory: {instance} | {action}")
 
+
+    def _normalize_object(self, raw_obj: str) -> str:
+        """
+        Layer 2: SBERT Open-vocabulary Object Normalization.
+        Maps VLM free-form description to standard ontology vocabulary.
+        e.g. "long stick with bristles" → "broom"
+        """
+        if not raw_obj or raw_obj.lower() in ("none", "empty", ""):
+            return "none"
+
+        raw_lower = raw_obj.lower().strip()
+
+        # Direct match first (fast path)
+        for vocab_word in OBJECT_VOCAB:
+            if vocab_word in raw_lower:
+                return vocab_word
+
+        # SBERT semantic similarity (slow path, only when no direct match)
+        try:
+            vocab_vecs = self.sbert.encode(
+                OBJECT_VOCAB, normalize_embeddings=True)
+            raw_vec = self.sbert.encode(
+                [raw_lower], normalize_embeddings=True)[0]
+            sims = vocab_vecs @ raw_vec
+            best_idx = int(sims.argmax())
+            best_sim = float(sims[best_idx])
+            if best_sim > 0.45:
+                return OBJECT_VOCAB[best_idx]
+        except Exception:
+            pass
+
+        return "none"
+
+    def _compute_p_semantic(self, obj: str, behavior: str) -> float:
+        """
+        P(L): Semantic plausibility of behavior given held object.
+        Formula: P_L = E(O*) . E(Vision_Prototype(A))
+        Uses Vision Prototypes as semantic anchors for behavior descriptions.
+        Falls back to behavior label if no prototype found.
+        """
+        if obj == "none":
+            return 0.0
+        try:
+            obj_vec  = self.sbert.encode(
+                [obj], normalize_embeddings=True)[0]
+            prototype = VISION_PROTOTYPES.get(behavior, behavior)
+            beh_vec  = self.sbert.encode(
+                [prototype], normalize_embeddings=True)[0]
+            return float(max(0.0, obj_vec @ beh_vec))
+        except Exception:
+            return 0.0
+
+    def _compute_p_physical(self, body_position: str,
+                             behavior: str,
+                             zone_affinity: float = 0.0) -> float:
+        """
+        P(V): Physical feasibility of behavior given body position and zone.
+        Uses kinematic impossibility constraints from robot_ontology.yaml.
+        Impossible combinations -> P(V) = 0.
+        All others -> default 0.50, boosted by zone spatial affinity.
+        """
+        pos = body_position.lower().strip() if body_position else "standing"
+        if (pos, behavior) in BODY_IMPOSSIBLE:
+            return 0.0
+        spatial  = float(zone_affinity)
+        ergonomic = _BODY_FEASIBILITY_DEFAULT
+        return 0.6 * ergonomic + 0.4 * spatial
+
+    def _saycан_score(self, obj: str, body_position: str,
+                      behavior: str, zone_affinity: float = 0.0) -> float:
+        """
+        SayCan-inspired dual probability score:
+        Score(a) = P_semantic(a) × P_physical(a)
+        """
+        p_l = self._compute_p_semantic(obj, behavior)
+        p_v = self._compute_p_physical(body_position, behavior, zone_affinity)
+        return p_l * p_v
+
     def _spatial_reasoning(self, vlm_action, sbert_sim,
                             user_pos, user_forward,
                             interacting_items, room_name,
-                            user_id=""):
+                            user_id="", body_position="standing"):
         # Define TRANSITIONAL at function top to avoid UnboundLocalError
         # when high_confidence triggers early return before should_upgrade.
         TRANSITIONAL = {"PickingUp", "PuttingDown", "Standing", "Walking"}
@@ -922,31 +1026,55 @@ RULES:
         if isinstance(items, str):
             items = [items] if items else []
 
-        print(f"[L2A-dbg] items={items} vlm={vlm_action} zone={zone_label}")
-
-        # L2A：持握物判斷（最高優先級）
-        # Also resolves transitional actions (PickingUp, PuttingDown):
-        #   PickingUp + cup → Drinking
-        #   PickingUp + remote → Watching
+        # ── L2A：SayCan 雙重機率篩選 ────────────────────────────────
+        # Score(a) = P_semantic(held_object, a) × P_physical(body_pos, a, zone_aff)
+        # Inspired by SayCan (Ahn et al., Google DeepMind 2022)
         is_transitional = vlm_action in TRANSITIONAL
-        for item in items:
-            item_lower = item.lower().strip()
-            for obj_key, action in ITEM_TO_ACTION.items():
-                if obj_key in item_lower:
-                    if upgraded_action != action:
-                        upgraded_action = action
-                        upgrade_reason  = f"L2A_held:{item}->{action}"
-                    return upgraded_action, upgrade_reason, zone_label
+        body_pos_local  = body_position  # from parameter
 
+        if items:
+            best_action = None
+            best_score  = 0.0
+
+            for item in items:
+                # Layer 2: SBERT open-vocabulary normalization
+                norm_obj = self._normalize_object(item)
+                if norm_obj == "none":
+                    continue
+
+                for behavior in self._proto_labels:
+                    if behavior in ("Standing", "Walking",
+                                    "PickingUp", "PuttingDown"):
+                        continue
+
+                    # Zone affinity for this behavior
+                    z_aff = self._compute_zone_affinity(
+                        nearest_zone, behavior) if nearest_zone else 0.0
+
+                    # SayCan score
+                    score = self._saycан_score(
+                        norm_obj, body_pos_local, behavior, z_aff)
+
+                    if score > best_score:
+                        best_score  = score
+                        best_action = behavior
+                        best_item   = norm_obj
+
+            if best_action and best_score > 0.10:
+                upgraded_action = best_action
+                upgrade_reason  = (f"L2A_saycаn:{best_item}->"
+                                   f"{best_action}(score={best_score:.2f})")
+                print(f"[L2A] {best_item} → {best_action} "
+                      f"(score={best_score:.2f})")
+                return upgraded_action, upgrade_reason, zone_label
+
+        _sim_val = sbert_sim[1] if isinstance(sbert_sim, tuple) else float(sbert_sim)
         should_upgrade  = (
             vlm_action in ("Unknown", "none", "", None)
             or vlm_action in TRANSITIONAL
-            or sbert_sim < 0.50
+            or _sim_val < 0.50
         )
         high_confidence = sbert_sim >= 0.80 and vlm_action not in TRANSITIONAL
-
-        print(f"[Spatial-dbg] vlm={vlm_action} sim={sbert_sim:.3f} "
-              f"upgrade={should_upgrade} zone={nearest_zone.get('zone_name','?') if nearest_zone else 'None'}")
 
         if high_confidence:
             return upgraded_action, "", zone_label
@@ -1148,6 +1276,24 @@ RULES:
         final_user              = max(set(user_votes), key=user_votes.count) if user_votes else hint_user_id
         combined_str            = self._aggregate_frames(parsed_list, used_scores_list)
         final_action, sbert_sim = self._normalize_action_with_score(combined_str)
+
+        # activity_hint: if new prompt format gave a direct label, use it
+        # but only if sbert confidence is low (sim < 0.42) or Unknown
+        _activity_hints = [
+            p.get("activity_hint", "")
+            for p in parsed_list
+            if p.get("activity_hint", "") in self._proto_labels
+               and p.get("activity_hint") not in ("Standing", "Walking", "Unknown", "")
+        ]
+        _sim_score = sbert_sim[1] if isinstance(sbert_sim, tuple) else float(sbert_sim)
+        if _activity_hints and (final_action == "Unknown" or _sim_score < 0.42):
+            from collections import Counter
+            _hint = Counter(_activity_hints).most_common(1)[0][0]
+            final_action = _hint
+            # Set sim to 0.45 so Stage 2 can still upgrade if zone disagrees
+            sbert_sim    = (_hint, 0.45)
+            print(f"[Hint] VLM activity_hint → {_hint} (sim=0.45, Stage2 still active)")
+
         final_object            = self._vote_main_object(parsed_list, used_scores_list)
 
         best_parsed = dict(parsed_list[0])
@@ -1191,6 +1337,48 @@ RULES:
         #   (a) observation_logs stores spatial_action (not raw VLM output)
         #   (b) eval_logs Stage 1 vs Stage 2 columns are genuinely different
         _sbert_score = sbert_sim[1] if isinstance(sbert_sim, tuple) else 0.0
+        _body_pos = best_parsed.get("body_posture", "") or                     best_parsed.get("body_position", "standing")
+
+        # Step 1: Collect activity_hints from VLM direct output
+        _activity_hints_raw = []
+        _confidence_map = {"high": 0.80, "medium": 0.55, "low": 0.35}
+        for p in parsed_list:
+            act_h = (p.get("activity_hint") or p.get("activity") or "").strip()
+            conf  = (p.get("confidence") or "medium").lower().strip()
+            if act_h and act_h in BEHAVIOR_LABELS and                act_h not in ("Standing", "Walking", "Unknown"):
+                _activity_hints_raw.append((act_h, _confidence_map.get(conf, 0.55)))
+
+        if _activity_hints_raw:
+            from collections import Counter
+            _hint_votes = Counter(h[0] for h in _activity_hints_raw)
+            _top_hint   = _hint_votes.most_common(1)[0][0]
+            _top_conf   = max(c for h, c in _activity_hints_raw if h == _top_hint)
+
+            if final_action in ("Unknown", "Standing", "Walking") or                (isinstance(sbert_sim, tuple) and sbert_sim[1] < 0.50):
+                final_action = _top_hint
+                sbert_sim    = (final_action, _top_conf)
+                print(f"[ActivityHint] VLM direct → {_top_hint} "
+                      f"(conf={_top_conf:.2f})")
+
+        # Step 2: held_object direct mapping (PreL2A)
+        _held_objs = []
+        for p in parsed_list:
+            ho = (p.get("held_object") or "").strip().lower()
+            if ho and ho not in ("none", "empty", ""):
+                norm = self._normalize_object(ho)
+                if norm and norm != "none":
+                    _held_objs.append(norm)
+
+        if _held_objs:
+            from collections import Counter
+            _top_held = Counter(_held_objs).most_common(1)[0][0]
+            _direct_action = ITEM_TO_ACTION.get(_top_held)
+            if _direct_action and final_action in ("Unknown", "Standing", "Walking"):
+                print(f"[PreL2A] {_top_held} → {_direct_action} "
+                      f"(direct ITEM_TO_ACTION)")
+                final_action = _direct_action
+                sbert_sim    = (final_action, 0.45)
+
         spatial_action, upgrade_reason, zone_label = self._spatial_reasoning(
             vlm_action        = final_action,
             sbert_sim         = _sbert_score,
@@ -1199,6 +1387,7 @@ RULES:
             interacting_items = validated["interacting_items"],
             room_name         = room_name,
             user_id           = final_user,
+            body_position     = _body_pos,
         )
 
         if upgrade_reason:

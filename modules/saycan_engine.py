@@ -642,17 +642,28 @@ class SayCanEngine:
                   f"({len(self._behavior_objects)} entries)")
             return
 
-        print("[SayCan] Distilling behavior-object map via Gemma...")
+        print("[SayCan] Distilling behavior-object map via llama3.1...")
+
+        scene_objects = list(self.db.dynamic_objects.distinct("label"))
+        object_vocab  = list(self.db.scene_snapshots.distinct("label"))
+        all_objects   = list(dict.fromkeys(
+            [o.lower().strip() for o in scene_objects + object_vocab
+             if o and len(o) > 1]
+        ))
+        object_list_str  = ", ".join(all_objects) if all_objects else                            "remote, book, cup, broom, phone, laptop, fork, pan"
         behavior_list = ", ".join(BEHAVIOR_LABELS)
+
         prompt = (
-            f"You are a home robot spatial expert.\n"
-            f"For each behaviour, list the physical objects "
-            f"that are REQUIRED or strongly associated.\n"
-            f"Use simple lowercase English nouns only.\n"
-            f"Behaviours: {behavior_list}\n\n"
-            f"Output ONLY valid JSON. Example:\n"
-            f"{{\"Eating\": [\"food\", \"bowl\", \"fork\"], "
-            f"\"Watching\": [\"tv\", \"remote\"]}}"
+            f"You are an AI robotics ontologist.\n"
+            f"For each action, map it to the most relevant physical objects "
+            f"that are REQUIRED or strongly associated to perform it.\n\n"
+            f"Allowed Actions: [{behavior_list}]\n\n"
+            f"STRICT CONSTRAINT: You MUST ONLY select object names from "
+            f"this allowed list: [{object_list_str}]\n"
+            f"Do NOT use any words outside of this list.\n\n"
+            f"Output ONLY a valid JSON dictionary. No explanations.\n"
+            f"Example: {{\"Eating\": [\"bowl\", \"fork\"], "
+            f"\"Watching\": [\"remote\"]}}"
         )
         try:
             resp = requests.post(

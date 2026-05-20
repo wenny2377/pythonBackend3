@@ -1,35 +1,25 @@
-# system_config.yaml
-# System-level hyperparameters — tuning only.
-# No scene or behavior definitions here.
-
 hyperparameters:
-  # ── SBERT behavior recognition ────────────────────────────────────
-  normalize_threshold: 0.38      # absolute similarity floor
-  margin_threshold: 0.12         # top1 - top2 must exceed this
-
-  # ── Zone Graph construction ───────────────────────────────────────
-  delta_threshold: 0.30          # Ch1 semantic sharpness gate
-  cross_room_gamma: 10.0         # cross-room cost penalty multiplier
-  base_mass_ch12: 1.0            # Anchor mass base (Ch1/Ch2)
-  base_mass_ch3: 1.2             # Anchor mass base (Ch3 Fixture)
-  base_mass_weak: 0.5            # Weak Anchor fallback mass
-  max_zone_search: 5.0           # metres — nearest zone search radius
-
-  # ── L3 spatial reasoning gates ───────────────────────────────────
-  high_affordance_l3_threshold: 0.30   # lower gate for exclusive furniture
-  l3_standard_threshold: 0.40          # standard zone affinity gate
-  l3_ambiguous_threshold: 0.40         # sofa/bed ambiguous zone gate
-
-  # ── Object matching ───────────────────────────────────────────────
+  normalize_threshold: 0.38
+  margin_threshold: 0.12
+  delta_threshold: 0.30
+  cross_room_gamma: 10.0
+  base_mass_ch12: 1.0
+  base_mass_ch3: 1.2
+  base_mass_weak: 0.5
+  max_zone_search: 5.0
+  high_affordance_l3_threshold: 0.30
+  l3_standard_threshold: 0.40
+  l3_ambiguous_threshold: 0.40
   semantic_threshold: 0.35
   coord_verify_dist: 2.0
   coord_match_dist: 1.5
-
-  # ── Habit learning ────────────────────────────────────────────────
-  fat_threshold: 5               # Fast Adaptation Threshold
+  fat_threshold: 5
   bulk_write_threshold: 20
   bulk_write_interval: 30.0
-
-  # ── SceneEngine retry ─────────────────────────────────────────────
-  scene_retry_interval: 5.0      # seconds between zone graph rebuild attempts
-  scene_retry_max: 60            # max attempts (= 5 minutes)
+  scene_retry_interval: 5.0
+  scene_retry_max: 60
+  object_norm_threshold: 0.45
+  nearby_object_radius: 2.0
+  body_feasibility_default: 0.50
+  heading_threshold: 0.55
+  zone_sigma: 2.0
