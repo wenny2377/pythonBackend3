@@ -1,18 +1,3 @@
-"""
-perception_engine.py
-PerceptionEngine — Single-frame Behavior Recognition Module.
-
-Responsibilities:
-  - VLM (LLaVA) image analysis
-  - SBERT Margin-based Gating (0.38/0.12)
-  - Spatial reasoning L2A/L2B/L3 (queries SceneEngine)
-  - Dynamic object tracking
-  - FAISS semantic memory indexing
-
-Returns PerceptionResult to app.py.
-app.py calls HabitEngine.record() with the result.
-"""
-
 import re
 import json
 import math
@@ -46,7 +31,6 @@ def _load_config(path: str) -> dict:
     return {}
 
 
-# ── Load configs at module level ──────────────────────────────────────
 _ontology = _load_config("config/robot_ontology.yaml")
 _beh_cfg  = _load_config("config/behavior_config.yaml")
 _sys_cfg  = _load_config("config/system_config.yaml")
@@ -54,10 +38,9 @@ _coco_cfg = _load_config("config/coco_objects.yaml")
 
 _hp = _sys_cfg.get("hyperparameters", {})
 
-# ── Constants ─────────────────────────────────────────────────────────
 STRUCTURAL_BLACKLIST = set(_ontology.get("structural_blacklist", [
-    "wall","floor","ceiling","wooden floor","white wall","window",
-    "door","ground","concrete floor","tile floor","carpet","baseboard",
+    "wall", "floor", "ceiling", "wooden floor", "white wall", "window",
+    "door", "ground", "concrete floor", "tile floor", "carpet", "baseboard",
 ]))
 
 YOUR_OBJECTS = (
@@ -77,20 +60,11 @@ LABEL_NORMALIZE_MAP = {
 ITEM_TO_ACTION = {
     str(k).lower(): str(v).strip('"').strip()
     for k, v in _ontology.get("item_to_action", {}).items()
-} or {
-    "remote": "Watching", "book": "Reading", "magazine": "Reading",
-    "phone": "PhoneUse", "smartphone": "PhoneUse", "laptop": "Typing",
-    "keyboard": "Typing", "broom": "Cleaning", "mop": "Cleaning",
-    "cup": "Drinking", "glass": "Drinking", "bottle": "Drinking",
-    "bowl": "Eating", "fork": "Eating", "spoon": "Eating",
-    "chopsticks": "Eating", "pan": "Cooking", "spatula": "Cooking",
 }
-
-_OBJECT_VOCAB_FROM_YAML = _ontology.get("object_vocab", [])
 
 OBJECT_VOCAB = list(dict.fromkeys(
     list(ITEM_TO_ACTION.keys()) +
-    (list(_OBJECT_VOCAB_FROM_YAML) if _OBJECT_VOCAB_FROM_YAML else []) +
+    (list(_ontology.get("object_vocab", []))) +
     ["none", "remote", "book", "phone", "laptop", "broom", "mop",
      "cup", "glass", "bottle", "bowl", "fork", "spoon", "pan",
      "spatula", "keyboard", "magazine", "chopsticks", "smartphone"]
@@ -103,64 +77,39 @@ BODY_IMPOSSIBLE = {
     for beh in (behs or [])
 }
 
-_BODY_FEASIBILITY_DEFAULT = float(_hp.get("body_feasibility_default", 0.50))
-_NEARBY_OBJECT_RADIUS     = float(_hp.get("nearby_object_radius", 2.0))
-_OBJECT_NORM_THRESHOLD    = float(_hp.get("object_norm_threshold", 0.45))
-_ZONE_SIGMA               = float(_hp.get("zone_sigma", 2.0))
-
 BEHAVIOR_LABELS = _beh_cfg.get("behavior_labels", [
-    "Drinking","SittingDrink","Eating","Cooking","Opening",
-    "Laying","Watching","Reading","Cleaning","PhoneUse",
-    "Typing","PickingUp","PuttingDown","Standing","Walking",
+    "Drinking", "SittingDrink", "Eating", "Cooking", "Opening",
+    "Laying", "Watching", "Reading", "Cleaning", "PhoneUse",
+    "Typing", "PickingUp", "PuttingDown", "Standing", "Walking",
 ])
 
 NO_WEIGHT_ACTIONS = set(_beh_cfg.get("no_weight_actions",
-    ["PickingUp","PuttingDown","Walking","Standing"]))
+    ["PickingUp", "PuttingDown", "Walking", "Standing"]))
 
 VISION_PROTOTYPES = {
     k: v.strip()
     for k, v in _beh_cfg.get("vision_prototypes", {}).items()
 }
 
-HIGH_AFFORDANCE_FURNITURE = set(_ontology.get("high_affordance_furniture", [
-    "tv","television","stove","oven","refrigerator","fridge",
-    "keyboard","monitor","cabinet"]))
-
-NORMALIZE_THRESHOLD          = float(_hp.get("normalize_threshold",  0.38))
-MARGIN_THRESHOLD             = float(_hp.get("margin_threshold",     0.12))
+NEARBY_OBJECT_RADIUS  = float(_hp.get("nearby_object_radius", 2.0))
+HEADING_THRESHOLD     = float(_hp.get("heading_threshold", 0.55))
+NORMALIZE_THRESHOLD   = float(_hp.get("normalize_threshold", 0.38))
+SEMANTIC_THRESHOLD    = float(_hp.get("semantic_threshold", 0.35))
+COORD_MATCH_DIST      = float(_hp.get("coord_match_dist", 1.5))
+COORD_VERIFY_DIST     = float(_hp.get("coord_verify_dist", 2.0))
+BULK_WRITE_THRESHOLD  = int(_hp.get("bulk_write_threshold", 20))
+BULK_WRITE_INTERVAL   = float(_hp.get("bulk_write_interval", 30.0))
+L3_STANDARD_THRESHOLD = float(_hp.get("l3_standard_threshold", 0.40))
 HIGH_AFFORDANCE_L3_THRESHOLD = float(_hp.get("high_affordance_l3_threshold", 0.30))
-SEMANTIC_THRESHOLD           = float(_hp.get("semantic_threshold",   0.35))
-COORD_VERIFY_DIST            = float(_hp.get("coord_verify_dist",    2.0))
-COORD_MATCH_DIST             = float(_hp.get("coord_match_dist",     1.5))
-BULK_WRITE_THRESHOLD         = int(_hp.get("bulk_write_threshold",   20))
-BULK_WRITE_INTERVAL          = float(_hp.get("bulk_write_interval",  30.0))
 
+HIGH_AFFORDANCE_FURNITURE = set(_ontology.get("high_affordance_furniture", [
+    "tv", "television", "stove", "oven", "refrigerator", "fridge",
+    "keyboard", "monitor", "cabinet"
+]))
 
-def build_x_for_record(virtual_hour, user_pos, prev_action):
-    """Build 19-dim feature vector for ManifoldEngine."""
-    h        = float(virtual_hour) if virtual_hour is not None else 12.0
-    rad      = 2 * math.pi * h / 24.0
-    sin_t    = math.sin(rad)
-    cos_t    = math.cos(rad)
-    x        = float(user_pos.get("x", 0)) / 10.0 if user_pos else 0.0
-    z        = float(user_pos.get("z", 0)) / 10.0 if user_pos else 0.0
-    prev_vec = [0.0] * len(BEHAVIOR_LABELS)
-    if prev_action in BEHAVIOR_LABELS:
-        prev_vec[BEHAVIOR_LABELS.index(prev_action)] = 1.0
-    return [sin_t, cos_t, x, z] + prev_vec
-
-
-def normalize_label(label, sbert_model=None):
-    if not label:
-        return ""
-    key = label.lower().strip().replace(" ", "").replace("_", "")
-    if key in LABEL_NORMALIZE_MAP:
-        return LABEL_NORMALIZE_MAP[key]
-    clean = label.lower().strip()
-    if clean in LABEL_NORMALIZE_MAP:
-        return LABEL_NORMALIZE_MAP[clean]
-    return clean
-
+HELD_WEIGHT   = 0.7
+NEARBY_WEIGHT = 0.3
+SAYCАН_MIN_SCORE = 0.05
 
 
 def _get_time_slot(virtual_hour) -> str:
@@ -176,6 +125,7 @@ def _get_time_slot(virtual_hour) -> str:
     except Exception:
         return "Unknown"
 
+
 def _virtual_day_to_date(virtual_day) -> str:
     if virtual_day is None:
         return datetime.datetime.utcnow().strftime("%Y-%m-%d")
@@ -188,14 +138,20 @@ def _virtual_day_to_date(virtual_day) -> str:
     return datetime.datetime.utcnow().strftime("%Y-%m-%d")
 
 
+def normalize_label(label, sbert_model=None):
+    if not label:
+        return ""
+    key = label.lower().strip().replace(" ", "").replace("_", "")
+    if key in LABEL_NORMALIZE_MAP:
+        return LABEL_NORMALIZE_MAP[key]
+    clean = label.lower().strip()
+    if clean in LABEL_NORMALIZE_MAP:
+        return LABEL_NORMALIZE_MAP[clean]
+    return clean
 
 
-
-
-# ── PerceptionResult dataclass ────────────────────────────────────────
 @dataclass
 class PerceptionResult:
-    """Returned by PerceptionEngine.analyze(). Consumed by HabitEngine."""
     vlm_output:        str   = ""
     spatial_action:    str   = ""
     zone_name:         str   = ""
@@ -243,7 +199,6 @@ class RoomEmbeddingCache:
                 show_progress_bar=False).astype("float32")
         else:
             self._embeddings = None
-        print(f"[RoomCache] Room '{room_name}' -> {len(self._labels)} furniture cached")
 
     def bind_topk(self, label, k=3, threshold=0.35):
         if self._embeddings is None or not self._labels:
@@ -259,7 +214,6 @@ class RoomEmbeddingCache:
     def current_room(self): return self._room
 
 
-
 class ChangeStreamSync:
     def __init__(self, scene_col, room_cache):
         self.scene_col  = scene_col
@@ -273,7 +227,6 @@ class ChangeStreamSync:
         docs = list(self.scene_col.find({}))
         with self._lock:
             self._map = {d.get("label", ""): d for d in docs}
-        print(f"    [ChangeSync] Loaded {len(self._map)} scene objects")
 
     def start(self):
         self._running = True
@@ -285,7 +238,6 @@ class ChangeStreamSync:
     def _watch_loop(self):
         try:
             with self.scene_col.watch(full_document="updateLookup") as stream:
-                print("    [ChangeSync] Change Stream mode")
                 for change in stream:
                     if not self._running: break
                     op  = change.get("operationType")
@@ -298,14 +250,13 @@ class ChangeStreamSync:
                             self._map.pop(
                                 change.get("documentKey", {}).get("label", ""), None)
         except Exception:
-            print("    [ChangeSync] Polling mode")
             while self._running:
                 try:
                     docs = list(self.scene_col.find({}))
                     with self._lock:
                         self._map = {d.get("label", ""): d for d in docs}
-                except Exception as e:
-                    print(f"    [ChangeSync] Poll error: {e}")
+                except Exception:
+                    pass
                 time.sleep(10)
 
     def get(self, label):
@@ -319,7 +270,6 @@ class ChangeStreamSync:
 
     def all_docs(self):
         with self._lock: return list(self._map.values())
-
 
 
 class BulkWriteBuffer:
@@ -354,18 +304,15 @@ class BulkWriteBuffer:
             self._pending.clear()
             self._last_flush = time.time()
         try:
-            r = self.col.bulk_write(ops, ordered=False)
-            print(f"    [BulkWrite] Flushed {len(ops)} ops "
-                  f"(upserted={r.upserted_count}, modified={r.modified_count})")
+            self.col.bulk_write(ops, ordered=False)
         except Exception as e:
-            print(f"    [BulkWrite] Failed: {e}")
+            print(f"[BulkWrite] Failed: {e}")
 
     def force_flush(self): self._flush()
 
     @property
     def pending_count(self):
         with self._lock: return len(self._pending)
-
 
 
 class FAISSMemoryStore:
@@ -406,14 +353,7 @@ class FAISSMemoryStore:
                 for s, i in zip(scores[0], indices[0]) if i >= 0]
 
 
-
-
 class PerceptionEngine:
-    """
-    Single-frame behavior recognition.
-    Queries SceneEngine for zone lookup — does not own zone_graph.
-    Does not write to observation_logs — delegates to HabitEngine.
-    """
 
     def __init__(self, db, ollama_url: str, vlm_model: str,
                  sbert_model, scene_engine,
@@ -422,138 +362,317 @@ class PerceptionEngine:
         self.url          = ollama_url
         self.model        = vlm_model
         self.sbert        = sbert_model
-        self.scene_engine = scene_engine   # injected SceneEngine
+        self.scene_engine = scene_engine
         self.face_app     = face_analyzer
         self.face_bank    = face_bank
 
-        self.col_scene      = db.scene_snapshots
-        self.col_dynamic    = db.dynamic_objects
-        self.col_raw        = db.raw_objects
-        self.col_eval       = db.eval_logs
-        self.col_sem        = db.semantic_memories
-        self.col_obs        = db.observation_logs
-        self.col_habit_snap = db.habit_snapshots
-        self.col_activity   = db.activity_sequences
-        self.col_user_aff   = db.user_spatial_affinity
+        self.col_scene       = db.scene_snapshots
+        self.col_dynamic     = db.dynamic_objects
+        self.col_raw         = db.raw_objects
+        self.col_eval        = db.eval_logs
+        self.col_sem         = db.semantic_memories
+        self.col_obs         = db.observation_logs
+        self.col_habit_snap  = db.habit_snapshots
+        self.col_activity    = db.activity_sequences
+        self.col_user_aff    = db.user_spatial_affinity
         self.col_aff_history = db.affinity_history
-        self.col_memory     = db.robot_memory
+        self.col_memory      = db.robot_memory
 
-        # Proto vecs come from SceneEngine
         self._proto_labels = self.scene_engine._proto_labels
         self._proto_vecs   = self.scene_engine._proto_vecs
 
-        # Room cache
+        self._proto_vecs_sbert = None
+        self._build_prototype_vecs()
+
         self._room_cache = RoomEmbeddingCache(self.sbert)
+        self._bulk_buf   = BulkWriteBuffer(self.col_dynamic)
 
-        # Bulk write buffer for dynamic objects
-        self._bulk_buf  = BulkWriteBuffer(self.col_dynamic)
-
-        # FAISS dynamic memory
         dim = self.sbert.get_sentence_embedding_dimension()
-        from config import Config
-        self._faiss_dyn = FAISSMemoryStore(
-            sbert_model=self.sbert,
-            dim=dim,
-        )
-        self.faiss_store = FAISSMemoryStore(
-            sbert_model=self.sbert,
-            dim=dim,
-        )
+        self._faiss_dyn = FAISSMemoryStore(sbert_model=self.sbert, dim=dim)
+        self.faiss_store = FAISSMemoryStore(sbert_model=self.sbert, dim=dim)
 
         self._lock = threading.Lock()
-
         self.room_cache = RoomEmbeddingCache(self.sbert)
-
         self.scene_sync      = None
         self.manifold_engine = None
 
-        print(f"[PerceptionEngine] Ready | model={vlm_model}")
+    def _build_prototype_vecs(self):
+        labels = list(VISION_PROTOTYPES.keys())
+        texts  = [VISION_PROTOTYPES[l] for l in labels]
+        if texts:
+            self._proto_vecs_sbert = self.sbert.encode(
+                texts, normalize_embeddings=True).astype("float32")
+            self._proto_behavior_labels = labels
 
+    def _build_prompt(self, room_name, room_furniture, coord_label, coord_dist):
+        return (
+            "You are a home robot camera. Observe the human carefully.\n"
+            "Output ONLY valid JSON. No markdown. No explanation.\n\n"
+            "{\n"
+            '  "activity": "Choose ONE: Eating/Drinking/SittingDrink/Cooking/Opening/'
+            'Laying/Watching/Reading/Cleaning/PhoneUse/Typing/PickingUp/PuttingDown/Standing/Walking",\n'
+            '  "body_position": "Choose ONE: standing/sitting/lying",\n'
+            '  "held_object": "Name ONE object held in hands or none"\n'
+            "}\n\n"
+            "Rules:\n"
+            "- held_object must be a single noun (cup/fork/phone/book/remote/broom/pan/bottle/none)\n"
+            "- If hands are empty output none\n"
+            "- Output ONLY the JSON object"
+        )
 
-    def _get_proto_vecs(self):
-        if self._proto_vecs is None:
-            self._proto_vecs = self.sbert.encode(
-                list(VISION_PROTOTYPES.values()),
-                normalize_embeddings=True).astype("float32")
-            print(f"[SBERT] prototype vectors built ({len(self._proto_labels)} classes)")
-        return self._proto_vecs
-
-    def _build_sbert_input(self, parsed: dict) -> str:
-        # Support both old format (body_posture/hand_state) and new (body_position/held_object)
-        body   = parsed.get("body_posture") or parsed.get("body_position", "")
-        gaze   = parsed.get("gaze_target", "")
-        hand   = parsed.get("hand_state", "")
-        held   = parsed.get("held_object", "")
-        summary = parsed.get("summary", "")
-
-        # Build held_object context string for SBERT
-        held_ctx = ""
-        if held and held not in ("none", "empty", ""):
-            held_ctx = f"holding {held}"
-
-        parts = [body, gaze, hand, held_ctx, summary, summary]
-        return " ".join(p for p in parts if p).strip()
-
-    def _normalize_action(self, sbert_input: str) -> str:
-        if not sbert_input or sbert_input.strip() in ("", "none", "unknown"):
-            return "Unknown"
+    def _parse_vlm_output(self, raw: str) -> dict:
         try:
-            vecs   = self._get_proto_vecs()
-            vec    = self.sbert.encode(
-                [sbert_input], normalize_embeddings=True)[0].astype("float32")
-            sims   = vecs @ vec
-            best_i = int(np.argmax(sims))
-            best_s = float(sims[best_i])
-            best_l = self._proto_labels[best_i]
+            cleaned = re.sub(r'```(?:json)?\s*', '', raw).strip().rstrip('`')
+            m = re.search(r'\{.*\}', cleaned, re.DOTALL)
+            if not m:
+                return {}
+            data = json.loads(m.group(0))
+        except Exception:
+            return {}
 
-            if best_s >= NORMALIZE_THRESHOLD:
-                print(f"[Normalize] '{sbert_input[:60]}' -> '{best_l}' "
-                      f"(sim={best_s:.2f})")
-                return best_l
+        activity     = data.get("activity", "").strip()
+        body_position = data.get("body_position", "standing").strip().lower()
+        held_object  = data.get("held_object", "none").strip().lower()
 
-            # Below threshold: return Unknown instead of raw string
-            # This keeps eval_logs clean for analysis
-            print(f"[Normalize] low sim (best={best_l} sim={best_s:.2f} "
-                  f"< {NORMALIZE_THRESHOLD}) -> Unknown")
-            return "Unknown"
+        if held_object in ("", "null", "nothing", "empty", "n/a"):
+            held_object = "none"
 
-        except Exception as e:
-            print(f"[Normalize] failed: {e}")
-            return "Unknown"
+        return {
+            "activity":     activity,
+            "body_position": body_position,
+            "held_object":  held_object,
+        }
 
-    def _normalize_action_with_score(self, sbert_input: str):
-        if not sbert_input or sbert_input.strip() in ("", "none", "unknown"):
-            return "Unknown", 0.0
+    def _normalize_object(self, raw_obj: str) -> str:
+        if not raw_obj or raw_obj.lower() in ("none", "empty", ""):
+            return "none"
+        raw_lower = raw_obj.lower().strip()
+        for vocab_word in OBJECT_VOCAB:
+            if vocab_word in raw_lower:
+                return vocab_word
         try:
-            vecs       = self._get_proto_vecs()
-            vec        = self.sbert.encode(
-                [sbert_input], normalize_embeddings=True)[0].astype("float32")
-            sims       = vecs @ vec
-            sorted_idx = np.argsort(sims)[::-1]
-            best_i     = int(sorted_idx[0])
-            best_s     = float(sims[best_i])
-            best_l     = self._proto_labels[best_i]
-            second_s   = float(sims[sorted_idx[1]]) if len(sorted_idx) > 1 else 0.0
-            margin     = best_s - second_s
+            vocab_vecs = self.sbert.encode(OBJECT_VOCAB, normalize_embeddings=True)
+            raw_vec    = self.sbert.encode([raw_lower], normalize_embeddings=True)[0]
+            sims       = vocab_vecs @ raw_vec
+            best_idx   = int(sims.argmax())
+            if float(sims[best_idx]) > 0.45:
+                return OBJECT_VOCAB[best_idx]
+        except Exception:
+            pass
+        return "none"
 
-            # Hard accept: above absolute threshold
-            if best_s >= 0.42:
-                print(f"[Normalize] '{sbert_input[:50]}' -> '{best_l}' "
-                      f"(sim={best_s:.2f} hard-accept)")
-                return best_l, best_s
+    def _get_nearby_objects(self, user_pos: dict, room_name: str) -> list:
+        if not user_pos:
+            return []
+        ux = float(user_pos.get("x", 0))
+        uz = float(user_pos.get("z", 0))
+        try:
+            docs = list(self.col_dynamic.find(
+                {"room": {"$regex": room_name, "$options": "i"}} if room_name else {},
+                {"label": 1, "sensor_pos": 1, "furniture_pos": 1}
+            ))
+            nearby = []
+            for doc in docs:
+                pos = doc.get("sensor_pos") or doc.get("furniture_pos")
+                if not isinstance(pos, list) or len(pos) < 2:
+                    continue
+                dist = math.sqrt((ux - pos[0]) ** 2 + (uz - pos[1]) ** 2)
+                if dist <= NEARBY_OBJECT_RADIUS:
+                    label = doc.get("label", "").lower().strip()
+                    if label and label not in STRUCTURAL_BLACKLIST:
+                        nearby.append(label)
+            return nearby
+        except Exception:
+            return []
 
-            # Margin accept: above lowered floor AND clear winner
-            if best_s >= NORMALIZE_THRESHOLD and margin >= MARGIN_THRESHOLD:
-                print(f"[Normalize] '{sbert_input[:50]}' -> '{best_l}' "
-                      f"(sim={best_s:.2f} margin={margin:.2f} margin-accept)")
-                return best_l, best_s
+    def _compute_p_l(self, obj_label: str, behavior: str) -> float:
+        if not obj_label or obj_label == "none":
+            return 0.0
+        try:
+            prototype = VISION_PROTOTYPES.get(behavior, behavior)
+            obj_vec   = self.sbert.encode([obj_label], normalize_embeddings=True)[0]
+            beh_vec   = self.sbert.encode([prototype], normalize_embeddings=True)[0]
+            return float(max(0.0, obj_vec @ beh_vec))
+        except Exception:
+            return 0.0
 
-            print(f"[Normalize] low sim (best={best_l} sim={best_s:.2f} "
-                  f"margin={margin:.2f}) -> Unknown")
-            return "Unknown", best_s
-        except Exception as e:
-            print(f"[Normalize] failed: {e}")
-            return "Unknown", 0.0
+    def _compute_p_v(self, body_position: str, behavior: str, zone_affinity: float = 0.0) -> float:
+        pos = body_position.lower().strip() if body_position else "standing"
+        if (pos, behavior) in BODY_IMPOSSIBLE:
+            return 0.0
+        ergonomic = 0.50
+        return 0.6 * ergonomic + 0.4 * float(zone_affinity)
+
+    def _saycан_score(self, held_obj: str, nearby_objs: list,
+                       body_position: str, behavior: str,
+                       zone_affinity: float = 0.0) -> float:
+        if (body_position.lower(), behavior) in BODY_IMPOSSIBLE:
+            return 0.0
+
+        p_l_held   = self._compute_p_l(held_obj, behavior)
+        p_l_nearby = 0.0
+        if nearby_objs:
+            p_l_nearby = max(
+                self._compute_p_l(obj, behavior) for obj in nearby_objs
+            )
+
+        if held_obj and held_obj != "none":
+            p_l = HELD_WEIGHT * p_l_held + NEARBY_WEIGHT * p_l_nearby
+        else:
+            p_l = p_l_nearby
+
+        p_v = self._compute_p_v(body_position, behavior, zone_affinity)
+        return p_l * p_v
+
+    def _layer3a_saycан(self, held_obj: str, nearby_objs: list,
+                         body_position: str, nearest_zone: dict) -> tuple:
+        scores = {}
+        for behavior in BEHAVIOR_LABELS:
+            if behavior in NO_WEIGHT_ACTIONS:
+                continue
+            z_aff = self.scene_engine.get_zone_affinity(nearest_zone, behavior) \
+                    if nearest_zone else 0.0
+            scores[behavior] = self._saycан_score(
+                held_obj, nearby_objs, body_position, behavior, z_aff)
+
+        if not scores:
+            return None, "", 0.0
+
+        best_behavior = max(scores, key=scores.get)
+        best_score    = scores[best_behavior]
+
+        if best_score < SAYCАН_MIN_SCORE:
+            return None, "", best_score
+
+        held_info = held_obj if held_obj != "none" else f"nearby:{nearby_objs[:1]}"
+        reason = f"L3a_saycаn:{held_info}->{best_behavior}(score={best_score:.2f})"
+        return best_behavior, reason, best_score
+
+    def _layer3b_heading(self, user_pos: dict, user_forward: dict,
+                          nearest_zone: dict, body_position: str) -> tuple:
+        if not user_pos or not user_forward or not nearest_zone:
+            return None, ""
+
+        ux = float(user_pos.get("x", 0))
+        uz = float(user_pos.get("z", 0))
+        cx = nearest_zone["center"][0]
+        cz = nearest_zone["center"][1]
+
+        dx, dz = cx - ux, cz - uz
+        dist = math.sqrt(dx * dx + dz * dz)
+        if dist < 0.01:
+            return None, ""
+
+        dx /= dist
+        dz /= dist
+
+        fwd_x = float(user_forward.get("x", 0))
+        fwd_z = float(user_forward.get("z", 0))
+        fwd_len = math.sqrt(fwd_x * fwd_x + fwd_z * fwd_z)
+        if fwd_len < 0.01:
+            return None, ""
+
+        fwd_x /= fwd_len
+        fwd_z /= fwd_len
+
+        heading = float(fwd_x * dx + fwd_z * dz)
+        if heading < HEADING_THRESHOLD:
+            return None, ""
+
+        zone_furniture = set(f.lower() for f in nearest_zone.get("furniture", []))
+        is_high_aff    = bool(zone_furniture & HIGH_AFFORDANCE_FURNITURE)
+
+        if not is_high_aff and heading < 0.65:
+            return None, ""
+
+        action_label = nearest_zone.get("action_label", "")
+        if not action_label or action_label in NO_WEIGHT_ACTIONS:
+            return None, ""
+
+        if (body_position.lower(), action_label) in BODY_IMPOSSIBLE:
+            return None, ""
+
+        reason = (
+            f"L3b_heading:{nearest_zone['zone_name']}"
+            f"->{action_label}(cos={heading:.2f})"
+        )
+        return action_label, reason
+
+    def _layer3c_zone_affinity(self, nearest_zone: dict,
+                                body_position: str) -> tuple:
+        if not nearest_zone:
+            return None, ""
+
+        zone_furniture = set(f.lower() for f in nearest_zone.get("furniture", []))
+        is_high_aff    = bool(zone_furniture & HIGH_AFFORDANCE_FURNITURE)
+        threshold      = HIGH_AFFORDANCE_L3_THRESHOLD if is_high_aff else L3_STANDARD_THRESHOLD
+
+        best_behavior = None
+        best_aff      = threshold
+
+        for behavior in BEHAVIOR_LABELS:
+            if behavior in NO_WEIGHT_ACTIONS:
+                continue
+            if (body_position.lower(), behavior) in BODY_IMPOSSIBLE:
+                continue
+            aff = self.scene_engine.get_zone_affinity(nearest_zone, behavior)
+            if aff > best_aff:
+                best_aff      = aff
+                best_behavior = behavior
+
+        if not best_behavior:
+            return None, ""
+
+        reason = (
+            f"L3c_zone:{nearest_zone['zone_name']}"
+            f"->{best_behavior}(aff={best_aff:.2f})"
+        )
+        return best_behavior, reason
+
+    def _minimum_prior_defense(self, body_position: str) -> tuple:
+        pos = body_position.lower().strip() if body_position else "standing"
+        mapping = {
+            "lying":   "Laying",
+            "sitting": "SittingDrink",
+            "standing": "Standing",
+        }
+        action = mapping.get(pos, "Standing")
+        return action, f"MinPrior:{pos}->{action}"
+
+    def _spatial_reasoning(self, activity_hint: str, body_position: str,
+                            held_obj: str, user_pos: dict, user_forward: dict,
+                            room_name: str, user_id: str) -> tuple:
+        if not self.scene_engine.is_ready():
+            return activity_hint or "Unknown", "zone_not_ready", ""
+
+        nearest_zone = self.scene_engine.find_nearest_zone(user_pos, room_name)
+        zone_label   = nearest_zone["zone_name"] if nearest_zone else ""
+
+        nearby_objs = self._get_nearby_objects(user_pos, room_name)
+        norm_held   = self._normalize_object(held_obj)
+
+        action, reason, score = self._layer3a_saycан(
+            norm_held, nearby_objs, body_position, nearest_zone)
+
+        if action:
+            return action, reason, zone_label
+
+        if activity_hint and activity_hint in BEHAVIOR_LABELS \
+                and activity_hint not in NO_WEIGHT_ACTIONS \
+                and (body_position.lower(), activity_hint) not in BODY_IMPOSSIBLE:
+            return activity_hint, f"VLM_hint:{activity_hint}", zone_label
+
+        action, reason = self._layer3b_heading(
+            user_pos, user_forward, nearest_zone, body_position)
+        if action:
+            return action, reason, zone_label
+
+        action, reason = self._layer3c_zone_affinity(nearest_zone, body_position)
+        if action:
+            return action, reason, zone_label
+
+        action, reason = self._minimum_prior_defense(body_position)
+        return action, reason, zone_label
 
     def _get_user_id(self, img_b64, hint="Unknown_User"):
         if not self.face_app or not self.face_bank:
@@ -573,8 +692,7 @@ class PerceptionEngine:
                 sim = float(np.dot(face.normed_embedding, known))
                 if sim > max_sim: max_sim, best = sim, name
             return best if max_sim > 0.40 else hint
-        except Exception as e:
-            print(f"Face ReID: {e}")
+        except Exception:
             return hint
 
     def _nearest_by_coord(self, user_pos, room_name, max_dist=3.0):
@@ -635,154 +753,21 @@ class PerceptionEngine:
         if topk: return topk[0][0], "sbert_low"
         return None, "unknown"
 
-    def _build_prompt(self, room_name, room_furniture, coord_label, coord_dist):
-        return """You are a home robot camera. Observe the human and output ONE valid JSON object.
-Be short, precise, and objective. Do NOT use markdown.
+    def _select_sample_indices(self, image_list, node_scores, max_samples=3):
+        n = len(image_list)
+        if n <= max_samples: return list(range(n))
+        if node_scores and len(node_scores) == n:
+            return sorted(range(n),
+                          key=lambda i: node_scores[i], reverse=True)[:max_samples]
+        step = n / max_samples
+        return [int(i * step) for i in range(max_samples)]
 
-{
-  "activity": "Choose the single BEST fit: Eating/Drinking/SittingDrink/Cooking/Opening/Laying/Watching/Reading/Cleaning/PhoneUse/Typing/Standing/Walking",
-  "body_position": "Choose ONE: standing/sitting/lying",
-  "held_object": "Name ONE object held in hands (broom/cup/remote/fork/phone/book/pan/bottle/bowl/laptop/none)"
-}
-
-Look closely at hands and posture. Output ONLY the JSON object.
-"""
-
-
-    def _parse_vlm_output(self, raw: str) -> dict:
-        try:
-            data = json.loads(self._extract_json(raw))
-        except Exception:
-            return {}
-
-        # Support both old format (body_posture/hand_state) and new (activity/body_position)
-        activity     = data.get("activity",     "").strip()
-        body_posture = data.get("body_posture", "") or data.get("body_position", "")
-        body_posture = body_posture.strip()
-        gaze_target  = data.get("gaze_target",  "").strip()
-        held_object  = data.get("held_object",  "").strip().lower()
-        hand_state   = data.get("hand_state",   "").strip()
-        if held_object and held_object not in ("none", "empty", ""):
-            hand_state = f"holding {held_object} " + hand_state
-        # If new format, build summary from activity
-        summary = data.get("summary", "")
-        if not summary and activity:
-            summary = f"person is {activity.lower()}"
-        summary = summary.strip()
-        person_near  = data.get("person_near",  "unknown").lower().strip()
-        objs         = data.get("objects_on_furniture", [])
-
-        spatial_relations = []
-        scene_items       = []
-        interacting_items = []
-
-        for entry in objs:
-            if not isinstance(entry, dict): continue
-            obj = (entry.get("object") or "").lower().strip()
-            on  = (entry.get("on")     or "").lower().strip()
-            rel = (entry.get("relation") or "on").lower().strip()
-            if not obj or not on: continue
-            norm = normalize_label(obj, self.sbert)
-            if norm in STRUCTURAL_BLACKLIST: continue
-            scene_items.append(norm)
-            spatial_relations.append({"subject": norm, "relation": rel, "object": on})
-
-        # New prompt format: held_object is a clean single word (e.g. "cup", "none")
-        # Add it directly to interacting_items without keyword parsing
-        if held_object and held_object not in ("none", "empty", ""):
-            norm_held = self._normalize_object(held_object)
-            if norm_held and norm_held != "none" and norm_held not in STRUCTURAL_BLACKLIST:
-                if norm_held not in interacting_items:
-                    interacting_items.append(norm_held)
-
-        combined_hand = ((hand_state or "") + " " +
-                         (data.get("summary") or "")).lower()
-        hand_lower = combined_hand
-        if any(kw in hand_lower for kw in
-               ["holding", "raising", "carrying", "gripping", "reaching"]):
-            words = re.findall(r'\b\w+(?:\s+\w+)?\b', hand_lower)
-            for w in words:
-                w = w.strip()
-                if len(w) < 3: continue
-                if w in {"the", "and", "with", "its", "his", "her",
-                         "holding", "raising", "carrying", "small", "large",
-                         "object", "something", "device", "reaching",
-                         "downward", "forward"}: continue
-                norm = normalize_label(w, self.sbert)
-                if norm not in STRUCTURAL_BLACKLIST and norm not in YOUR_OBJECTS:
-                    continue
-                interacting_items.append(norm)
-                spatial_relations.append({
-                    "subject": norm, "relation": "in_hand_of", "object": "person"})
-                break
-
+    def _empty_result(self, user_id):
         return {
-            "body_posture":      body_posture,
-            "gaze_target":       gaze_target,
-            "hand_state":        hand_state,
-            "summary":           summary,
-            "activity_hint":     activity,   # direct activity from new prompt format
-            "main_object":       person_near,
-            "interacting_items": interacting_items,
-            "scene_items":       scene_items,
-            "spatial_relations": spatial_relations,
+            "user": user_id, "action": "none", "result": {},
+            "items": [], "all_items": [], "spatial": [],
+            "bound_instance": "Unknown_Area", "bound_room": "", "confidence": "unknown",
         }
-
-    def _validate_scene_graph(self, parsed, user_pos, room_name, user_id):
-        vlm_furn              = parsed.get("main_object", "unknown")
-        bound_doc, confidence = self._bind_furniture(vlm_furn, user_pos, room_name)
-        bound_label = bound_doc.get("label", "Unknown_Area") if bound_doc else "Unknown_Area"
-        bound_room  = (bound_doc.get("room") or bound_doc.get("room_name", room_name)
-                       if bound_doc else room_name)
-        print(f"    [Validate] person_near: '{vlm_furn}' -> '{bound_label}' (conf={confidence})")
-
-        validated_spatial = []
-        for rel in parsed.get("spatial_relations", []):
-            subj = rel.get("subject", "")
-            obj  = rel.get("object",  "")
-            r    = rel.get("relation", "on")
-            if obj == "person":
-                validated_spatial.append(
-                    {"subject": subj, "relation": r, "object": user_id})
-                continue
-            topk = self._sem_match_furniture(obj, k=3)
-            furn_label = topk[0][0].get("label", obj) if topk else normalize_label(obj)
-            validated_spatial.append(
-                {"subject": subj, "relation": r, "object": furn_label})
-
-        return {
-            "bound_doc":         bound_doc,
-            "bound_label":       bound_label,
-            "bound_room":        bound_room,
-            "confidence":        confidence,
-            "body_posture":      parsed.get("body_posture", ""),
-            "gaze_target":       parsed.get("gaze_target",  ""),
-            "hand_state":        parsed.get("hand_state",   ""),
-            "summary":           parsed.get("summary",      ""),
-            "interacting_items": parsed.get("interacting_items", []),
-            "scene_items":       parsed.get("scene_items", []),
-            "all_items":         list(set(
-                parsed.get("interacting_items", []) +
-                parsed.get("scene_items", []))),
-            "spatial_relations": validated_spatial,
-        }
-
-    def _aggregate_frames(self, parsed_list, used_scores):
-        parts = []
-        for parsed, score in zip(parsed_list, used_scores):
-            frame_str = self._build_sbert_input(parsed)
-            if frame_str:
-                repeat = max(1, round(max(float(score), 0.1) * 3))
-                parts.extend([frame_str] * repeat)
-        combined = " ".join(parts)
-        print(f"[AtomicAgg] {len(parts)} weighted frames -> '{combined[:100]}'")
-        return combined
-
-    def _vote_main_object(self, parsed_list, used_scores):
-        weights = defaultdict(float)
-        for parsed, score in zip(parsed_list, used_scores):
-            weights[parsed.get("main_object", "unknown")] += max(float(score), 0.1)
-        return max(weights, key=weights.get) if weights else "unknown"
 
     def _extract_json(self, raw):
         cleaned = re.sub(r'```(?:json)?\s*', '', raw).strip()
@@ -802,416 +787,6 @@ Look closely at hands and posture. Output ONLY the JSON object.
                     except Exception:
                         continue
             return text
-
-    def _select_sample_indices(self, image_list, node_scores, max_samples=3):
-        n = len(image_list)
-        if n <= max_samples: return list(range(n))
-        if node_scores and len(node_scores) == n:
-            return sorted(range(n),
-                          key=lambda i: node_scores[i], reverse=True)[:max_samples]
-        step = n / max_samples
-        return [int(i * step) for i in range(max_samples)]
-
-    def _empty_result(self, user_id):
-        return {
-            "user": user_id, "action": "none", "result": {},
-            "items": [], "all_items": [], "spatial": [],
-            "bound_instance": "Unknown_Area", "bound_room": "", "confidence": "unknown",
-        }
-
-    def _update_dynamic_objects(self, user_id, interacting_items, scene_items,
-                                 spatial_relations, bound_doc, room_name, user_pos=None):
-        now         = datetime.datetime.utcnow()
-        bound_label = bound_doc.get("label", "Unknown_Area") if bound_doc else "Unknown_Area"
-        bound_pos   = bound_doc.get("pos") if bound_doc else None
-
-        item_rel_map, item_furn_map = {}, {}
-        for rel in spatial_relations:
-            subj = rel.get("subject", "").lower().strip()
-            obj  = rel.get("object",  "").lower().strip()
-            r    = rel.get("relation", "on").lower().strip()
-            if subj:
-                item_rel_map[subj]  = r
-                item_furn_map[subj] = obj
-
-        def _upsert(label, is_interacting):
-            if not label or label in STRUCTURAL_BLACKLIST:
-                return
-            if self.col_scene.find_one({"label": label}):
-                return
-            relation = item_rel_map.get(label, "near")
-            is_held  = relation in ("in_hand_of", "held_by", "carrying", "in_hand")
-            furn     = item_furn_map.get(label)
-            if is_held:
-                resolved_label, resolved_pos = user_id, None
-            elif furn:
-                fd = self.col_scene.find_one({"label": furn})
-                resolved_label = fd["label"] if fd else bound_label
-                resolved_pos   = fd.get("pos") if fd else bound_pos
-            else:
-                resolved_label, resolved_pos = bound_label, bound_pos
-
-            base_set = {
-                "last_seen_on": resolved_label,
-                "spatial_rel":  "held_by" if is_held else relation,
-                "room":         room_name,
-                "last_seen":    now,
-                "source":       "vlm",
-            }
-            if is_held and user_pos:
-                base_set["furniture_pos"] = [user_pos.get("x", 0), user_pos.get("z", 0)]
-            elif resolved_pos:
-                base_set["furniture_pos"] = resolved_pos
-
-            inc_ops   = {"seen_count": 1}
-            if is_interacting: inc_ops["interact_count"] = 1
-            update_op = {
-                "$inc":         inc_ops,
-                "$set":         base_set,
-                "$setOnInsert": {"first_seen": now},
-            }
-            if is_interacting:
-                update_op["$addToSet"] = {"interacted_by": user_id}
-            self._bulk_buf.upsert(label, update_op, now)
-
-        for item in interacting_items: _upsert(item, True)
-        for item in scene_items:       _upsert(item, False)
-
-    def _write_semantic_memory(self, user, action, bound_doc,
-                                confidence, result, source_nodes):
-        instance = bound_doc.get("label", "Unknown_Area") if bound_doc else "Unknown_Area"
-        room     = (bound_doc.get("room") or bound_doc.get("room_name", "")
-                    if bound_doc else "")
-        self.col_memory.insert_one({
-            "user":         user,
-            "action":       action,
-            "bound_to":     instance,
-            "bound_room":   room,
-            "confidence":   confidence,
-            "details":      result,
-            "source_nodes": source_nodes,
-            "timestamp":    datetime.datetime.utcnow(),
-        })
-
-    def _index_to_faiss(self, user, action, bound_doc, result, mongo_id):
-        instance = bound_doc.get("label", "Unknown") if bound_doc else "Unknown"
-        pos_raw  = bound_doc.get("pos") if bound_doc else None
-        pos_xy   = pos_raw if isinstance(pos_raw, list) else \
-                   ([bound_doc.get("x", 0), bound_doc.get("z", 0)]
-                    if bound_doc else [0, 0])
-        text = self.faiss_store.build_memory_text(
-            user=user, action=action, instance=instance,
-            interacting_items=result.get("interacting_items", []),
-            all_items=result.get("all_items", []),
-            spatial_relations=result.get("spatial_relations", []))
-        self.faiss_store.add(text, {
-            "user":              user,
-            "action":            action,
-            "instance":          instance,
-            "interacting_items": result.get("interacting_items", []),
-            "all_items":         result.get("all_items", []),
-            "spatial_relations": result.get("spatial_relations", []),
-            "furniture_pos":     pos_xy,
-            "mongo_id":          mongo_id,
-            "timestamp":         datetime.datetime.utcnow().isoformat(),
-        })
-        print(f"[FAISS] memory: {instance} | {action}")
-
-
-    def _normalize_object(self, raw_obj: str) -> str:
-        """
-        Layer 2: SBERT Open-vocabulary Object Normalization.
-        Maps VLM free-form description to standard ontology vocabulary.
-        e.g. "long stick with bristles" → "broom"
-        """
-        if not raw_obj or raw_obj.lower() in ("none", "empty", ""):
-            return "none"
-
-        raw_lower = raw_obj.lower().strip()
-
-        # Direct match first (fast path)
-        for vocab_word in OBJECT_VOCAB:
-            if vocab_word in raw_lower:
-                return vocab_word
-
-        # SBERT semantic similarity (slow path, only when no direct match)
-        try:
-            vocab_vecs = self.sbert.encode(
-                OBJECT_VOCAB, normalize_embeddings=True)
-            raw_vec = self.sbert.encode(
-                [raw_lower], normalize_embeddings=True)[0]
-            sims = vocab_vecs @ raw_vec
-            best_idx = int(sims.argmax())
-            best_sim = float(sims[best_idx])
-            if best_sim > 0.45:
-                return OBJECT_VOCAB[best_idx]
-        except Exception:
-            pass
-
-        return "none"
-
-    def _compute_p_semantic(self, obj: str, behavior: str) -> float:
-        """
-        P(L): Semantic plausibility of behavior given held object.
-        Formula: P_L = E(O*) . E(Vision_Prototype(A))
-        Uses Vision Prototypes as semantic anchors for behavior descriptions.
-        Falls back to behavior label if no prototype found.
-        """
-        if obj == "none":
-            return 0.0
-        try:
-            obj_vec  = self.sbert.encode(
-                [obj], normalize_embeddings=True)[0]
-            prototype = VISION_PROTOTYPES.get(behavior, behavior)
-            beh_vec  = self.sbert.encode(
-                [prototype], normalize_embeddings=True)[0]
-            return float(max(0.0, obj_vec @ beh_vec))
-        except Exception:
-            return 0.0
-
-    def _compute_p_physical(self, body_position: str,
-                             behavior: str,
-                             zone_affinity: float = 0.0) -> float:
-        """
-        P(V): Physical feasibility of behavior given body position and zone.
-        Uses kinematic impossibility constraints from robot_ontology.yaml.
-        Impossible combinations -> P(V) = 0.
-        All others -> default 0.50, boosted by zone spatial affinity.
-        """
-        pos = body_position.lower().strip() if body_position else "standing"
-        if (pos, behavior) in BODY_IMPOSSIBLE:
-            return 0.0
-        spatial  = float(zone_affinity)
-        ergonomic = _BODY_FEASIBILITY_DEFAULT
-        return 0.6 * ergonomic + 0.4 * spatial
-
-    def _saycан_score(self, obj: str, body_position: str,
-                      behavior: str, zone_affinity: float = 0.0) -> float:
-        """
-        SayCan-inspired dual probability score:
-        Score(a) = P_semantic(a) × P_physical(a)
-        """
-        p_l = self._compute_p_semantic(obj, behavior)
-        p_v = self._compute_p_physical(body_position, behavior, zone_affinity)
-        return p_l * p_v
-
-    def _spatial_reasoning(self, vlm_action, sbert_sim,
-                            user_pos, user_forward,
-                            interacting_items, room_name,
-                            user_id="", body_position="standing"):
-        # Define TRANSITIONAL at function top to avoid UnboundLocalError
-        # when high_confidence triggers early return before should_upgrade.
-        TRANSITIONAL = {"PickingUp", "PuttingDown", "Standing", "Walking"}
-
-        upgraded_action = vlm_action
-        upgrade_reason  = ""
-        zone_label      = ""
-
-        # ── Zone Graph cold-start guard ───────────────────────────────
-        # If Zone Graph is not ready yet (scene_snapshots not yet synced),
-        # skip spatial reasoning entirely.
-        # This prevents dirty data: zone_name = "chair2" (instance)
-        # instead of "Watching_Zone" (semantic).
-        # The episode is still recorded in eval_logs by the caller,
-        # but observation_logs and manifold_training_data are NOT written.
-        if not self.scene_engine.is_ready():
-            print("[Spatial] Zone Graph not ready — skipping spatial reasoning")
-            return vlm_action, "zone_not_ready", ""
-
-        nearest_zone = self.scene_engine.find_nearest_zone(user_pos, room_name)
-        if nearest_zone:
-            zone_label = nearest_zone["zone_name"]
-
-        items = interacting_items or []
-        if isinstance(items, str):
-            items = [items] if items else []
-
-        # ── L2A：SayCan 雙重機率篩選 ────────────────────────────────
-        # Score(a) = P_semantic(held_object, a) × P_physical(body_pos, a, zone_aff)
-        # Inspired by SayCan (Ahn et al., Google DeepMind 2022)
-        is_transitional = vlm_action in TRANSITIONAL
-        body_pos_local  = body_position  # from parameter
-
-        if items:
-            best_action = None
-            best_score  = 0.0
-
-            for item in items:
-                # Layer 2: SBERT open-vocabulary normalization
-                norm_obj = self._normalize_object(item)
-                if norm_obj == "none":
-                    continue
-
-                for behavior in self._proto_labels:
-                    if behavior in ("Standing", "Walking",
-                                    "PickingUp", "PuttingDown"):
-                        continue
-
-                    # Zone affinity for this behavior
-                    z_aff = self._compute_zone_affinity(
-                        nearest_zone, behavior) if nearest_zone else 0.0
-
-                    # SayCan score
-                    score = self._saycан_score(
-                        norm_obj, body_pos_local, behavior, z_aff)
-
-                    if score > best_score:
-                        best_score  = score
-                        best_action = behavior
-                        best_item   = norm_obj
-
-            if best_action and best_score > 0.10:
-                upgraded_action = best_action
-                upgrade_reason  = (f"L2A_saycаn:{best_item}->"
-                                   f"{best_action}(score={best_score:.2f})")
-                print(f"[L2A] {best_item} → {best_action} "
-                      f"(score={best_score:.2f})")
-                return upgraded_action, upgrade_reason, zone_label
-
-        _sim_val = sbert_sim[1] if isinstance(sbert_sim, tuple) else float(sbert_sim)
-        should_upgrade  = (
-            vlm_action in ("Unknown", "none", "", None)
-            or vlm_action in TRANSITIONAL
-            or _sim_val < 0.50
-        )
-        high_confidence = sbert_sim >= 0.80 and vlm_action not in TRANSITIONAL
-
-        if high_confidence:
-            return upgraded_action, "", zone_label
-
-        if not should_upgrade or not nearest_zone:
-            return upgraded_action, upgrade_reason, zone_label
-
-        # 判斷是否為多義模糊區
-        is_ambiguous = self._is_ambiguous_zone(nearest_zone)
-
-        proto_vecs = self._get_proto_vecs()
-        zone_v     = np.array(nearest_zone["v_space"], dtype="float32")
-
-        if is_ambiguous:
-            # 多義模糊區：攔截 L3，只靠 L2B 方位
-            if user_forward and user_pos:
-                best_score  = 0.65
-                best_action = vlm_action
-                for i, label in enumerate(self._proto_labels):
-                    if label in ("Standing", "Walking",
-                                 "PickingUp", "PuttingDown"):
-                        continue
-                    sim = float(proto_vecs[i] @ zone_v)
-                    if sim > best_score:
-                        best_score  = sim
-                        best_action = label
-
-                if best_action != vlm_action:
-                    ux  = float(user_pos.get("x", 0))
-                    uz  = float(user_pos.get("z", 0))
-                    cx  = nearest_zone["center"][0]
-                    cz  = nearest_zone["center"][1]
-                    dx, dz = cx - ux, cz - uz
-                    dist   = math.sqrt(dx*dx + dz*dz)
-                    if dist > 0.01:
-                        dx /= dist
-                        dz /= dist
-                        fwd_x   = float(user_forward.get("x", 0))
-                        fwd_z   = float(user_forward.get("z", 0))
-                        fwd_len = math.sqrt(fwd_x*fwd_x + fwd_z*fwd_z)
-                        if fwd_len > 0.01:
-                            fwd_x   /= fwd_len
-                            fwd_z   /= fwd_len
-                            heading  = max(0.0, fwd_x*dx + fwd_z*dz)
-                            combined = best_score * 0.55 + heading * 0.45
-                            if combined > 0.65:
-                                upgraded_action = best_action
-                                upgrade_reason  = (
-                                    f"L2B_ambiguous_heading:"
-                                    f"{nearest_zone['zone_name']}"
-                                    f"->{best_action}"
-                                    f" vsim={best_score:.2f}"
-                                    f" heading={heading:.2f}"
-                                )
-            return upgraded_action, upgrade_reason, zone_label
-
-        # 明確功能區：L3 強制補全流程
-        best_score  = 0.55
-        best_action = vlm_action
-        for i, label in enumerate(self._proto_labels):
-            if label in ("Standing", "Walking",
-                         "PickingUp", "PuttingDown"):
-                continue
-            sim = float(proto_vecs[i] @ zone_v)
-            if sim > best_score:
-                best_score  = sim
-                best_action = label
-
-        # L2B：方位對齊（明確區）
-        if user_forward and user_pos and best_action != vlm_action:
-            ux  = float(user_pos.get("x", 0))
-            uz  = float(user_pos.get("z", 0))
-            cx  = nearest_zone["center"][0]
-            cz  = nearest_zone["center"][1]
-            dx, dz = cx - ux, cz - uz
-            dist   = math.sqrt(dx*dx + dz*dz)
-            if dist > 0.01:
-                dx /= dist
-                dz /= dist
-                fwd_x   = float(user_forward.get("x", 0))
-                fwd_z   = float(user_forward.get("z", 0))
-                fwd_len = math.sqrt(fwd_x*fwd_x + fwd_z*fwd_z)
-                if fwd_len > 0.01:
-                    fwd_x   /= fwd_len
-                    fwd_z   /= fwd_len
-                    heading  = max(0.0, fwd_x*dx + fwd_z*dz)
-                    combined = best_score * 0.6 + heading * 0.4
-                    if combined > 0.55:
-                        upgraded_action = best_action
-                        upgrade_reason  = (
-                            f"L2B_heading+zone:"
-                            f"{nearest_zone['zone_name']}"
-                            f"->{best_action}"
-                            f" vsim={best_score:.2f}"
-                            f" heading={heading:.2f}"
-                        )
-                        return upgraded_action, upgrade_reason, zone_label
-
-        # L3：Zone Affinity 補全
-        if best_action != vlm_action and best_score > 0.45:
-            zone_affinity = self._compute_zone_affinity(
-                nearest_zone, best_action)
-
-            personal_aff = 0.0
-            if user_id and hasattr(self, "col_user_aff"):
-                doc = self.col_user_aff.find_one({
-                    "user_id": user_id,
-                    "action":  best_action,
-                    "zone":    nearest_zone.get("zone_name", ""),
-                })
-                if doc:
-                    personal_aff = doc.get("affinity", 0.0)
-
-            effective_aff = max(zone_affinity, personal_aff)
-
-            # Determine if this zone has exclusive high affordance
-            zone_furniture = set(
-                f.lower().strip()
-                for f in nearest_zone.get("furniture", []))
-            is_high_affordance = bool(
-                zone_furniture & HIGH_AFFORDANCE_FURNITURE)
-            l3_gate = (HIGH_AFFORDANCE_L3_THRESHOLD
-                       if is_high_affordance else 0.40)
-
-            if effective_aff >= l3_gate:
-                upgraded_action = best_action
-                aff_src         = ("personal" if personal_aff > zone_affinity
-                                   else "static")
-                gate_src        = "high-aff" if is_high_affordance else "std"
-                upgrade_reason  = (
-                    f"L3_zone:{nearest_zone['zone_name']}"
-                    f"->{best_action}"
-                    f" vsim={best_score:.2f}"
-                    f" aff={effective_aff:.2f}({aff_src},{gate_src})"
-                )
-
-        return upgraded_action, upgrade_reason, zone_label
 
     def analyze_action_burst(self, payload: dict) -> dict:
         image_list   = payload.get("image_list", [])
@@ -1234,13 +809,16 @@ Look closely at hands and posture. Output ONLY the JSON object.
 
         coord_doc, coord_dist = self._nearest_by_coord(user_pos, room_name)
         coord_label    = coord_doc.get("label", "") if coord_doc else ""
-        room_furniture = [d.get("label", "") for d in self.room_cache.all_docs
-                          if d.get("label")]
-        prompt         = self._build_prompt(
-            room_name, room_furniture, coord_label, coord_dist)
+        room_furniture = [d.get("label", "") for d in self.room_cache.all_docs if d.get("label")]
+        prompt         = self._build_prompt(room_name, room_furniture, coord_label, coord_dist)
         sample_indices = self._select_sample_indices(image_list, node_scores)
 
-        user_votes, parsed_list, used_scores_list = [], [], []
+        user_votes   = []
+        parsed_list  = []
+        activity_votes = []
+        body_votes   = []
+        held_votes   = []
+        used_scores_list = []
 
         for idx in sample_indices:
             try:
@@ -1248,7 +826,6 @@ Look closely at hands and posture. Output ONLY the JSON object.
                 uid        = self._get_user_id(img_b64, hint_user_id)
                 user_votes.append(uid)
                 img_clean  = img_b64.split(',')[1] if ',' in img_b64 else img_b64
-                node_score = node_scores[idx] if idx < len(node_scores) else 0.5
                 resp = requests.post(
                     f"{self.url}/api/chat",
                     json={
@@ -1256,16 +833,20 @@ Look closely at hands and posture. Output ONLY the JSON object.
                         "messages": [{"role": "user", "content": prompt,
                                       "images": [img_clean]}],
                         "stream":   False,
-                        "options":  {"temperature": 0.05, "num_predict": 600},
+                        "options":  {"temperature": 0.05, "num_predict": 200},
                     },
                     timeout=120)
-                raw       = resp.json().get("message", {}).get("content", "").strip()
-                node_name = source_nodes[idx] if idx < len(source_nodes) else f"node_{idx}"
-                print(f" [Frame {idx}|{node_name}|score={node_score:.2f}] {raw[:200]}")
+                raw    = resp.json().get("message", {}).get("content", "").strip()
                 parsed = self._parse_vlm_output(raw)
-                if parsed and any([parsed.get("body_posture"), parsed.get("summary")]):
+                if parsed:
                     parsed_list.append(parsed)
-                    used_scores_list.append(node_score)
+                    used_scores_list.append(node_scores[idx] if idx < len(node_scores) else 0.5)
+                    if parsed.get("activity"):
+                        activity_votes.append(parsed["activity"])
+                    if parsed.get("body_position"):
+                        body_votes.append(parsed["body_position"])
+                    if parsed.get("held_object"):
+                        held_votes.append(parsed["held_object"])
             except Exception as e:
                 print(f"[Frame {idx}] error: {e}")
 
@@ -1273,152 +854,87 @@ Look closely at hands and posture. Output ONLY the JSON object.
             return self._empty_result(
                 max(set(user_votes), key=user_votes.count) if user_votes else hint_user_id)
 
-        final_user              = max(set(user_votes), key=user_votes.count) if user_votes else hint_user_id
-        combined_str            = self._aggregate_frames(parsed_list, used_scores_list)
-        final_action, sbert_sim = self._normalize_action_with_score(combined_str)
+        from collections import Counter, defaultdict
 
-        # activity_hint: if new prompt format gave a direct label, use it
-        # but only if sbert confidence is low (sim < 0.42) or Unknown
-        _activity_hints = [
-            p.get("activity_hint", "")
-            for p in parsed_list
-            if p.get("activity_hint", "") in self._proto_labels
-               and p.get("activity_hint") not in ("Standing", "Walking", "Unknown", "")
-        ]
-        _sim_score = sbert_sim[1] if isinstance(sbert_sim, tuple) else float(sbert_sim)
-        if _activity_hints and (final_action == "Unknown" or _sim_score < 0.42):
-            from collections import Counter
-            _hint = Counter(_activity_hints).most_common(1)[0][0]
-            final_action = _hint
-            # Set sim to 0.45 so Stage 2 can still upgrade if zone disagrees
-            sbert_sim    = (_hint, 0.45)
-            print(f"[Hint] VLM activity_hint → {_hint} (sim=0.45, Stage2 still active)")
+        def _weighted_vote(votes: list, scores: list, default: str = "") -> str:
+            if not votes:
+                return default
+            weights = defaultdict(float)
+            for v, s in zip(votes, scores):
+                weights[v] += max(float(s), 0.1)
+            return max(weights, key=weights.get)
 
-        final_object            = self._vote_main_object(parsed_list, used_scores_list)
+        final_user    = max(set(user_votes), key=user_votes.count) if user_votes else hint_user_id
+        activity_hint = _weighted_vote(activity_votes, used_scores_list, default="")
+        body_position = _weighted_vote(body_votes,     used_scores_list, default="standing")
+        held_object   = _weighted_vote(held_votes,     used_scores_list, default="none")
 
-        best_parsed = dict(parsed_list[0])
-        best_parsed["main_object"] = final_object
+        if held_object in ("", "null", "nothing", "empty", "n/a"):
+            held_object = "none"
 
-        validated = self._validate_scene_graph(
-            best_parsed, user_pos, room_name, final_user)
+        print(f"[VLM] activity={activity_hint} body={body_position} held={held_object}")
 
-        bound_doc   = validated["bound_doc"]
-        bound_label = validated["bound_label"]
-        bound_room  = validated["bound_room"]
-        confidence  = validated["confidence"]
+        spatial_action, upgrade_reason, zone_label = self._spatial_reasoning(
+            activity_hint = activity_hint,
+            body_position = body_position,
+            held_obj      = held_object,
+            user_pos      = user_pos,
+            user_forward  = user_forward,
+            room_name     = room_name,
+            user_id       = final_user,
+        )
+
+        bound_doc, confidence = self._bind_furniture(coord_label, user_pos, room_name)
+        bound_label = bound_doc.get("label", "Unknown_Area") if bound_doc else "Unknown_Area"
+        bound_room  = bound_doc.get("room", room_name) if bound_doc else room_name
+
+        interacting_items = []
+        norm_held = self._normalize_object(held_object)
+        if norm_held and norm_held != "none":
+            interacting_items.append(norm_held)
+
+        nearby_objs = self._get_nearby_objects(user_pos, room_name)
 
         result = {
             "location":          bound_label,
             "room":              bound_room,
-            "interacting_items": validated["interacting_items"],
-            "scene_items":       validated["scene_items"],
-            "all_items":         validated["all_items"],
-            "spatial_relations": validated["spatial_relations"],
-            "context":           validated.get("summary", ""),
-            "_body_posture":     validated.get("body_posture", ""),
-            "_gaze_target":      validated.get("gaze_target",  ""),
-            "_hand_state":       validated.get("hand_state",   ""),
-            "_sbert_input":      combined_str,
+            "interacting_items": interacting_items,
+            "scene_items":       nearby_objs,
+            "all_items":         list(set(interacting_items + nearby_objs)),
+            "spatial_relations": [],
+            "context":           f"{final_user} {spatial_action} near {bound_label}",
+            "_body_position":    body_position,
+            "_held_object":      held_object,
+            "_activity_hint":    activity_hint,
             "_coord_label":      coord_label,
             "_coord_dist":       round(coord_dist, 2) if coord_dist != float('inf') else None,
             "_confidence":       confidence,
         }
 
-        self._update_scene_snapshot(
-            bound_doc, validated["interacting_items"],
-            validated["scene_items"], validated["spatial_relations"])
+        self._update_scene_snapshot(bound_doc, interacting_items, nearby_objs, [])
+        self._update_dynamic_objects(
+            user_id=final_user,
+            interacting_items=interacting_items,
+            scene_items=nearby_objs,
+            spatial_relations=[],
+            bound_doc=bound_doc,
+            room_name=bound_room,
+            user_pos=user_pos)
+        self._write_semantic_memory(final_user, spatial_action, bound_doc, confidence, result, source_nodes)
+        self._update_activity_sequence(final_user, spatial_action, bound_label)
 
-        # Pass ground-truth activity label from Unity if available.
-        # Used only for eval_logs — perception still runs blind.
         ground_truth_activity = payload.get("activity", None)
 
-        # ── Stage 2: Spatial Reasoning ────────────────────────────────
-        # MUST run before observation_log write so that:
-        #   (a) observation_logs stores spatial_action (not raw VLM output)
-        #   (b) eval_logs Stage 1 vs Stage 2 columns are genuinely different
-        _sbert_score = sbert_sim[1] if isinstance(sbert_sim, tuple) else 0.0
-        _body_pos = best_parsed.get("body_posture", "") or                     best_parsed.get("body_position", "standing")
-
-        # Step 1: Collect activity_hints from VLM direct output
-        _activity_hints_raw = []
-        _confidence_map = {"high": 0.80, "medium": 0.55, "low": 0.35}
-        for p in parsed_list:
-            act_h = (p.get("activity_hint") or p.get("activity") or "").strip()
-            conf  = (p.get("confidence") or "medium").lower().strip()
-            if act_h and act_h in BEHAVIOR_LABELS and                act_h not in ("Standing", "Walking", "Unknown"):
-                _activity_hints_raw.append((act_h, _confidence_map.get(conf, 0.55)))
-
-        if _activity_hints_raw:
-            from collections import Counter
-            _hint_votes = Counter(h[0] for h in _activity_hints_raw)
-            _top_hint   = _hint_votes.most_common(1)[0][0]
-            _top_conf   = max(c for h, c in _activity_hints_raw if h == _top_hint)
-
-            if final_action in ("Unknown", "Standing", "Walking") or                (isinstance(sbert_sim, tuple) and sbert_sim[1] < 0.50):
-                final_action = _top_hint
-                sbert_sim    = (final_action, _top_conf)
-                print(f"[ActivityHint] VLM direct → {_top_hint} "
-                      f"(conf={_top_conf:.2f})")
-
-        # Step 2: held_object direct mapping (PreL2A)
-        _held_objs = []
-        for p in parsed_list:
-            ho = (p.get("held_object") or "").strip().lower()
-            if ho and ho not in ("none", "empty", ""):
-                norm = self._normalize_object(ho)
-                if norm and norm != "none":
-                    _held_objs.append(norm)
-
-        if _held_objs:
-            from collections import Counter
-            _top_held = Counter(_held_objs).most_common(1)[0][0]
-            _direct_action = ITEM_TO_ACTION.get(_top_held)
-            if _direct_action and final_action in ("Unknown", "Standing", "Walking"):
-                print(f"[PreL2A] {_top_held} → {_direct_action} "
-                      f"(direct ITEM_TO_ACTION)")
-                final_action = _direct_action
-                sbert_sim    = (final_action, 0.45)
-
-        spatial_action, upgrade_reason, zone_label = self._spatial_reasoning(
-            vlm_action        = final_action,
-            sbert_sim         = _sbert_score,
-            user_pos          = user_pos,
-            user_forward      = user_forward,
-            interacting_items = validated["interacting_items"],
-            room_name         = room_name,
-            user_id           = final_user,
-            body_position     = _body_pos,
-        )
-
-        if upgrade_reason:
-            print(f"[Spatial] {final_action} -> {spatial_action} | {upgrade_reason}")
-
-        # Use spatial_action for downstream storage (habit learning uses
-        # the post-reasoning label, not the raw VLM output)
-        log_action = spatial_action if spatial_action != "Unknown" else final_action
+        log_action = spatial_action if spatial_action not in ("Unknown", "none", "") \
+                     else activity_hint or "Unknown"
 
         self._update_observation_log(
             final_user, log_action, bound_doc,
-            validated["interacting_items"], validated["spatial_relations"],
-            validated.get("summary", ""), virtual_hour, virtual_day,
+            interacting_items, [],
+            result["context"], virtual_hour, virtual_day,
             ground_truth_activity=ground_truth_activity,
-            sbert_sim=sbert_sim,
-            combined_str=combined_str,
             user_pos=user_pos,
-            user_forward=user_forward,
             room_name=room_name)
-
-        self._update_dynamic_objects(
-            user_id=final_user,
-            interacting_items=validated["interacting_items"],
-            scene_items=validated["scene_items"],
-            spatial_relations=validated["spatial_relations"],
-            bound_doc=bound_doc, room_name=bound_room, user_pos=user_pos)
-
-        self._write_semantic_memory(
-            final_user, log_action, bound_doc, confidence, result, source_nodes)
-
-        self._update_activity_sequence(final_user, log_action, bound_label)
 
         mem_doc  = self.col_memory.find_one(
             {"user": final_user, "action": log_action},
@@ -1426,83 +942,67 @@ Look closely at hands and posture. Output ONLY the JSON object.
         mongo_id = str(mem_doc["_id"]) if mem_doc else ""
         self._index_to_faiss(final_user, log_action, bound_doc, result, mongo_id)
 
-        day_key = _virtual_day_to_date(virtual_day)
-        print(f"\n [Done] {final_user} -> vlm={final_action} "
-              f"spatial={spatial_action} @ {bound_label} "
-              f"(conf={confidence}, date={day_key}, "
-              f"slot={_get_time_slot(virtual_hour)}, "
-              f"pending={self._bulk_buf.pending_count})\n")
-
-        # Record manifold training sample (L4 HabitLearner input)
-        # Use spatial_action (post-L3 补全) as the ground-truth label
-        # Only record habitual actions — skip transitional ones
-        _record_action   = spatial_action if spatial_action != "Unknown" else final_action
-        _exp_mode        = payload.get("experiment_mode", "habit")
-        _should_record   = (
-            _record_action not in (
-                "Unknown", "Standing", "Walking",
-                "PickingUp", "PuttingDown", "none", "")
-            and self.manifold_engine is not None
-            and _exp_mode != "recognition"
-        )
-        if _should_record:
-            try:
-                prev_seq = self.col_activity.find_one(
-                    {"user": final_user},
-                    sort=[("timestamp", -1)])
-                _prev = ""
-                if prev_seq and prev_seq.get("sequence"):
-                    last_acts = prev_seq["sequence"]
-                    if len(last_acts) >= 2:
-                        _prev = last_acts[-2].get("action", "")
-                self.manifold_engine.record_training_sample(
-                    user_id        = final_user,
-                    virtual_hour   = virtual_hour,
-                    user_pos       = user_pos,
-                    prev_action    = _prev,
-                    current_action = _record_action,
-                )
-            except Exception as _me:
-                pass   # non-critical
-
         if ground_truth_activity:
             self.db["eval_logs"].insert_one({
                 "user_id":           final_user,
                 "ground_truth":      ground_truth_activity,
-                "vlm_output":        final_action,
+                "vlm_output":        activity_hint,
                 "spatial_action":    spatial_action,
                 "upgrade_reason":    upgrade_reason,
                 "zone_label":        zone_label,
-                "sbert_sim":         sbert_sim,
+                "body_position":     body_position,
+                "held_object":       held_object,
                 "room_name":         room_name,
                 "user_pos":          user_pos,
-                "user_forward":      user_forward,
-                "interacting_items": validated["interacting_items"],
+                "interacting_items": interacting_items,
                 "timestamp":         datetime.datetime.utcnow(),
             })
 
-        return {
-            "user":             final_user,
-            "action":           final_action,
-            "spatial_action":   spatial_action,
-            "upgrade_reason":   upgrade_reason,
-            "zone_label":       zone_label,
-            "result":           result,
-            "items":            validated["interacting_items"],
-            "all_items":        validated["all_items"],
-            "spatial_relations": validated["spatial_relations"],
-            "bound_instance":   bound_label,
-            "bound_room":       bound_room,
-            "confidence":       confidence,
-            "sbert_sim":        sbert_sim[1] if isinstance(sbert_sim, tuple) else 0.0,
-            "user_pos":         user_pos or {},
-            "virtual_hour":     virtual_hour or 12.0,
-            "room":             room_name or "",
-            "experiment_mode":  _exp_mode,
-            "time_slot":        _get_time_slot(virtual_hour),
-            "virtual_day":      virtual_day,
-        }
+        _record_action = spatial_action if spatial_action not in ("Unknown", "none", "") \
+                         else activity_hint or ""
+        _exp_mode = payload.get("experiment_mode", "habit")
 
+        if (_record_action and
+                _record_action not in NO_WEIGHT_ACTIONS and
+                _record_action != "Unknown" and
+                self.manifold_engine is not None and
+                _exp_mode != "recognition"):
+            try:
+                self.manifold_engine.record_training_sample(
+                    user_id        = final_user,
+                    virtual_hour   = virtual_hour,
+                    user_pos       = user_pos,
+                    prev_action    = _record_action,
+                    current_action = _record_action,
+                )
+            except Exception:
+                pass
+
+        print(f"[Done] {final_user} | hint={activity_hint} | "
+              f"spatial={spatial_action} | reason={upgrade_reason} | "
+              f"zone={zone_label} | bound={bound_label}")
+
+        return {
+            "user":              final_user,
+            "action":            activity_hint,
+            "spatial_action":    spatial_action,
+            "upgrade_reason":    upgrade_reason,
+            "zone_label":        zone_label,
+            "result":            result,
+            "items":             interacting_items,
+            "all_items":         result["all_items"],
+            "spatial_relations": [],
+            "bound_instance":    bound_label,
+            "bound_room":        bound_room,
+            "confidence":        confidence,
+            "sbert_sim":         0.0,
+            "user_pos":          user_pos or {},
+            "virtual_hour":      virtual_hour or 12.0,
+            "room":              room_name or "",
+            "experiment_mode":   _exp_mode,
+            "time_slot":         _get_time_slot(virtual_hour),
+            "virtual_day":       virtual_day,
+        }
 
     def _update_scene_snapshot(self, bound_doc, interacting_items,
                                 scene_items, spatial_relations):
@@ -1516,20 +1016,87 @@ Look closely at hands and posture. Output ONLY the JSON object.
                 "last_observation":  datetime.datetime.utcnow(),
             },
         }
-        counts = {f"spatial_counts.{r['subject']}|{r['relation']}|{r['object']}": 1
-                  for r in spatial_relations
-                  if r.get("subject") and r.get("object")}
-        if counts: update_op["$inc"] = counts
         self.col_scene.update_one({"_id": bound_doc.get("_id")}, update_op)
 
+    def _update_dynamic_objects(self, user_id, interacting_items, scene_items,
+                                 spatial_relations, bound_doc, room_name, user_pos=None):
+        now         = datetime.datetime.utcnow()
+        bound_label = bound_doc.get("label", "Unknown_Area") if bound_doc else "Unknown_Area"
+        bound_pos   = bound_doc.get("pos") if bound_doc else None
+
+        def _upsert(label, is_interacting):
+            if not label or label in STRUCTURAL_BLACKLIST:
+                return
+            if self.col_scene.find_one({"label": label}):
+                return
+            base_set = {
+                "last_seen_on": bound_label,
+                "spatial_rel":  "near",
+                "room":         room_name,
+                "last_seen":    now,
+                "source":       "vlm",
+            }
+            if bound_pos:
+                base_set["furniture_pos"] = bound_pos
+            inc_ops   = {"seen_count": 1}
+            if is_interacting: inc_ops["interact_count"] = 1
+            update_op = {
+                "$inc":         inc_ops,
+                "$set":         base_set,
+                "$setOnInsert": {"first_seen": now},
+            }
+            if is_interacting:
+                update_op["$addToSet"] = {"interacted_by": user_id}
+            self._bulk_buf.upsert(label, update_op, now)
+
+        for item in interacting_items: _upsert(item, True)
+        for item in scene_items:       _upsert(item, False)
+
+    def _write_semantic_memory(self, user, action, bound_doc,
+                                confidence, result, source_nodes):
+        instance = bound_doc.get("label", "Unknown_Area") if bound_doc else "Unknown_Area"
+        room     = bound_doc.get("room", "") if bound_doc else ""
+        self.col_memory.insert_one({
+            "user":         user,
+            "action":       action,
+            "bound_to":     instance,
+            "bound_room":   room,
+            "confidence":   confidence,
+            "details":      result,
+            "source_nodes": source_nodes,
+            "timestamp":    datetime.datetime.utcnow(),
+        })
+
+    def _index_to_faiss(self, user, action, bound_doc, result, mongo_id):
+        instance = bound_doc.get("label", "Unknown") if bound_doc else "Unknown"
+        pos_raw  = bound_doc.get("pos") if bound_doc else None
+        pos_xy   = pos_raw if isinstance(pos_raw, list) else \
+                   ([bound_doc.get("x", 0), bound_doc.get("z", 0)] if bound_doc else [0, 0])
+        text = self.faiss_store.build_memory_text(
+            user=user, action=action, instance=instance,
+            interacting_items=result.get("interacting_items", []),
+            all_items=result.get("all_items", []),
+            spatial_relations=result.get("spatial_relations", []))
+        self.faiss_store.add(text, {
+            "user":              user,
+            "action":            action,
+            "instance":          instance,
+            "interacting_items": result.get("interacting_items", []),
+            "all_items":         result.get("all_items", []),
+            "spatial_relations": result.get("spatial_relations", []),
+            "furniture_pos":     pos_xy,
+            "mongo_id":          mongo_id,
+            "timestamp":         datetime.datetime.utcnow().isoformat(),
+        })
+
+    def _find_nearest_zone(self, user_pos, room_name=""):
+        return self.scene_engine.find_nearest_zone(user_pos, room_name)
 
     def _compute_zone_affinity(self, zone, behavior):
         return self.scene_engine.get_zone_affinity(zone, behavior)
 
-
     def _is_ambiguous_zone(self, zone):
         return self.scene_engine.is_ambiguous(zone)
-
 
     def _update_activity_sequence(self, user, action, instance):
         today = datetime.datetime.utcnow().strftime("%Y-%m-%d")
@@ -1544,18 +1111,14 @@ Look closely at hands and posture. Output ONLY the JSON object.
                 "$setOnInsert": {"user": user, "date": today},
             },
             upsert=True)
-        print(f"[Sequence] {user} -> {action}@{instance} ({today})")
 
     def _update_observation_log(self, user, action, bound_doc,
                                  interacting_items, spatial_relations,
                                  raw_desc, virtual_hour=None, virtual_day=None,
                                  ground_truth_activity=None,
-                                 sbert_sim=0.0,
-                                 combined_str="",
-                                 user_pos=None,
-                                 user_forward=None,
-                                 room_name=""):
+                                 user_pos=None, room_name=""):
         if not bound_doc: return
+        if action in NO_WEIGHT_ACTIONS: return
 
         instance  = bound_doc.get("label", "Unknown")
         pos_raw   = bound_doc.get("pos")
@@ -1564,47 +1127,14 @@ Look closely at hands and posture. Output ONLY the JSON object.
         time_slot = _get_time_slot(virtual_hour)
         today     = _virtual_day_to_date(virtual_day)
 
-        # NO_WEIGHT_ACTIONS: record to semantic_memories and dynamic_objects
-        # but do NOT accumulate weight in observation_logs.
-        # These transitional actions should not trigger FAT.
-        if action in NO_WEIGHT_ACTIONS:
-            print(f"[ObsLog] {user} -> {action} @ {instance} "
-                  f"[{time_slot}] no-weight action, skip weight update")
-            return
-
-        existing = self.col_obs.find_one({
-            "user": user, "instance": instance,
-            "action": action, "time_slot": time_slot, "last_date": today,
-        })
-        if existing:
-            self.col_obs.update_one(
-                {"_id": existing["_id"]},
-                {"$set": {"last_seen": datetime.datetime.utcnow(),
-                          "raw_vlm_desc": raw_desc}})
-            print(f"[ObsLog] {user} -> {action} @ {instance} "
-                  f"[{time_slot}] date={today} already counted")
-            return
-
-        # derive zone_name from nearest zone
         try:
-            _nz = self._find_nearest_zone(user_pos, room_name)
-            zone_name_for_log = _nz["zone_name"] if _nz else ""
+            nz = self._find_nearest_zone(user_pos, room_name)
+            zone_name_for_log = nz["zone_name"] if nz else ""
         except Exception:
             zone_name_for_log = ""
 
-        # Use zone_name as the canonical primary key for habit learning.
-        # If zone_name is available, it serves as the stable semantic token.
-        # instance (raw Unity label) is kept for debugging only.
         canonical_key = zone_name_for_log if zone_name_for_log else instance
 
-        # zone_name is used as query key — must NOT also appear in $set
-        # to avoid MongoDB ConflictingUpdateOperators (error code 40).
-        # MongoDB constraint: a field cannot appear in both $set and $setOnInsert,
-        # and query fields cannot appear in $set.
-        # Rules applied here:
-        #   zone_name → query only + $setOnInsert (not $set)
-        #   instance  → $set only (not $setOnInsert, which handles new-doc defaults)
-        #   user/action/time_slot → query only + $setOnInsert
         self.col_obs.find_one_and_update(
             {"user": user, "zone_name": canonical_key,
              "action": action, "time_slot": time_slot},
@@ -1614,8 +1144,7 @@ Look closely at hands and posture. Output ONLY the JSON object.
                 "$set":         {
                     "observed_relations": spatial_relations,
                     "pos":               pos_xy,
-                    "room":              bound_doc.get("room", "").strip()
-                                         if bound_doc else "",
+                    "room":              bound_doc.get("room", "").strip() if bound_doc else "",
                     "instance":          instance,
                     "last_seen":         datetime.datetime.utcnow(),
                     "last_date":         today,
@@ -1630,17 +1159,8 @@ Look closely at hands and posture. Output ONLY the JSON object.
             },
             upsert=True, return_document=ReturnDocument.AFTER,
         )
-        self._write_habit_snapshot(user, action, canonical_key,
-                                   zone_name_for_log, today)
-        self._update_user_affinity(user, action,
-                                   canonical_key, instance)
-        print(f"[ObsLog] {user} -> {action} @ {instance} "
-              f"[{time_slot}] date={today} +1 weight")
-
-
-    def _find_nearest_zone(self, user_pos, room_name=""):
-        return self.scene_engine.find_nearest_zone(user_pos, room_name)
-
+        self._write_habit_snapshot(user, action, canonical_key, zone_name_for_log, today)
+        self._update_user_affinity(user, action, canonical_key, instance)
 
     def _update_user_affinity(self, user: str, action: str,
                                zone_name: str, instance: str):
@@ -1649,80 +1169,37 @@ Look closely at hands and posture. Output ONLY the JSON object.
         try:
             pipeline = [
                 {"$match": {"user": user, "action": action}},
-                {"$group": {
-                    "_id":          "$zone_name",
-                    "total_weight": {"$sum": "$weight"},
-                }},
+                {"$group": {"_id": "$zone_name", "total_weight": {"$sum": "$weight"}}},
             ]
             results = list(self.col_obs.aggregate(pipeline))
             total   = sum(r["total_weight"] for r in results)
             if total == 0:
                 return
-
             for r in results:
                 zone_key = r["_id"] or "Unknown_Zone"
                 personal = r["total_weight"] / total
                 self.col_user_aff.update_one(
-                    {"user_id": user,
-                     "action":  action,
-                     "zone":    zone_key},
-                    {"$set": {
-                        "affinity":    round(personal, 4),
-                        "updated_at":  datetime.datetime.utcnow(),
-                    }},
+                    {"user_id": user, "action": action, "zone": zone_key},
+                    {"$set": {"affinity": round(personal, 4),
+                              "updated_at": datetime.datetime.utcnow()}},
                     upsert=True,
                 )
-                # record daily history for convergence curve
                 today = datetime.datetime.utcnow().strftime("%Y-%m-%d")
                 self.col_aff_history.update_one(
-                    {"user_id": user, "action": action,
-                     "zone": zone_key, "date": today},
-                    {"$set": {
-                        "affinity":  round(personal, 4),
-                        "timestamp": datetime.datetime.utcnow(),
-                    }},
+                    {"user_id": user, "action": action, "zone": zone_key, "date": today},
+                    {"$set": {"affinity": round(personal, 4),
+                              "timestamp": datetime.datetime.utcnow()}},
                     upsert=True,
                 )
         except Exception as e:
             print(f"[UserAffinity] {e}")
 
-    def _compute_furniture_weight(self, label: str) -> float:
-        lbl = label.lower().strip()
-        if self._affinity_matrix and lbl in self._affinity_matrix:
-            scores = list(self._affinity_matrix[lbl].values())
-            if scores:
-                sorted_s = sorted(scores, reverse=True)
-                top1     = sorted_s[0]
-                top2     = sorted_s[1] if len(sorted_s) > 1 else 0.0
-                uniqueness = top1 - top2
-                weight     = 1.0 + uniqueness * 10.0
-                return max(1.0, round(weight, 2))
-        try:
-            furn_vec    = self.sbert.encode(
-                label, normalize_embeddings=True
-            ).astype("float32")
-            proto_vecs  = self._get_proto_vecs()
-            sims        = proto_vecs @ furn_vec
-            sorted_sims = np.sort(sims)[::-1]
-            top1        = float(sorted_sims[0])
-            top2        = float(sorted_sims[1]) if len(sorted_sims) > 1 else 0.0
-            uniqueness  = top1 - top2
-            weight      = 1.0 + uniqueness * 10.0
-            return max(1.0, round(weight, 2))
-        except Exception:
-            return 1.0
-
     def _write_habit_snapshot(self, user: str, action: str,
-                               canonical_key: str, zone_name: str,
-                               today: str):
+                               canonical_key: str, zone_name: str, today: str):
         try:
             self.col_habit_snap.update_one(
-                {
-                    "user":         user,
-                    "action":       action,
-                    "canonical_key": canonical_key,
-                    "date":         today,
-                },
+                {"user": user, "action": action,
+                 "canonical_key": canonical_key, "date": today},
                 {
                     "$inc": {"daily_count": 1},
                     "$set": {"zone": zone_name or canonical_key},
