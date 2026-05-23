@@ -24,7 +24,6 @@ from modules.manifold_engine   import ManifoldEngine
 from modules.saycan_engine     import SayCanEngine
 from modules.service_proposal  import ServiceProposalEngine
 from modules.skill_manager     import SkillManager
-from modules.memory            import MemoryManager
 from modules.memory_vector     import VectorMemory
 from modules.interaction       import InteractionEngine
 from modules.temporal_smoother import TemporalSmoother
@@ -126,7 +125,6 @@ proposal_engine = ServiceProposalEngine(
     llm_model  = CONFIG.LLM_MODEL,
 )
 
-memory = MemoryManager(mongo_client, embedding_model=sbert_model)
 
 interaction_engine = InteractionEngine(
     mongo_client  = mongo_client,
@@ -455,6 +453,7 @@ def _process_predict(episode_id, data):
         source_nodes = data.get('source_nodes', [])
         room_name    = data.get('room_name', '')
         virtual_hour = data.get('virtual_hour')
+        virtual_day  = data.get('virtual_day', '')   # 虛擬天 yyyy-mm-dd
         t_capture    = data.get('t_capture', '')
 
         if not room_name and source_nodes:
@@ -542,6 +541,16 @@ def _process_predict(episode_id, data):
                 experiment_mode   = _exp_mode,
             )
 
+            # 更新 affinity_history（使用虛擬天，讓圖 A 能正確顯示收斂曲線）
+            if _zone and _action not in ("none", "", "Unknown"):
+                scene_engine.update_user_affinity(
+                    user_id     = _user_id,
+                    zone_name   = _zone,
+                    action      = _action,
+                    room        = result.get("room", ""),
+                    virtual_day = virtual_day,
+                )
+
         user_id        = result["user"]
         action         = result["action"]
         spatial_action = _action
@@ -560,17 +569,54 @@ def _process_predict(episode_id, data):
         if action == "none":
             return
 
-        final_bound_label = memory.bind_and_update(
-            user_id           = user_id,
-            action            = spatial_action,
-            est_pos           = est_pos,
-            vlm_description   = vlm_desc,
-            detected_items    = detected_items,
-            all_items         = all_items,
-            spatial_relations = spatial_rels,
-            target_label      = vlm_object,
-            room_name         = room_name,
-        )
+        # 直接從 scene_snapshots 解析 bound label（移除舊版 MemoryManager）
+        final_bound_label = vlm_object if (
+            vlm_object and "Unknown" not in str(vlm_object)
+        ) else ""
+
+        if not final_bound_label and est_pos:
+            import math as _math
+            best_doc  = None
+            best_dist = float("inf")
+            query_r   = {"room": {"$regex": room_name, "$options": "i"}} \
+                        if room_name else {}
+            for doc in db.scene_snapshots.find(query_r, {"label": 1, "pos": 1}):
+                pos = doc.get("pos")
+                if not isinstance(pos, list) or len(pos) < 2:
+                    continue
+                dist = _math.sqrt(
+                    (est_pos["x"] - pos[0]) ** 2 +
+                    (est_pos["z"] - pos[1]) ** 2
+                )
+                if dist < best_dist:
+                    best_dist = dist
+                    best_doc  = doc
+            if best_doc and best_dist <= 5.0:
+                final_bound_label = best_doc["label"]
+
+        if not final_bound_label:
+            final_bound_label = "Unknown_Area"
+
+        # 更新 activity_sequences（原 MemoryManager 職責）
+        try:
+            today = datetime.datetime.utcnow().strftime("%Y-%m-%d")
+            db.activity_sequences.update_one(
+                {"user": user_id, "date": today},
+                {
+                    "$push": {
+                        "sequence": {
+                            "action":    spatial_action,
+                            "instance":  final_bound_label,
+                            "timestamp": datetime.datetime.utcnow(),
+                        }
+                    },
+                    "$setOnInsert": {"user": user_id, "date": today},
+                },
+                upsert=True,
+            )
+        except Exception as seq_e:
+            print(f"[Sequence] {seq_e}")
+
         print(f"[Bind] '{vlm_object}' -> '{final_bound_label}'")
 
         furniture_pos = None

@@ -76,8 +76,10 @@ class SceneEngine:
         return self._is_ambiguous_zone(zone)
 
     def update_user_affinity(self, user_id: str, zone_name: str,
-                              action: str, room: str):
-        self._update_user_affinity(user_id, zone_name, action, room)
+                              action: str, room: str,
+                              virtual_day: str = ""):
+        self._update_user_affinity(user_id, action, zone_name, room,
+                                   virtual_day=virtual_day)
 
     def status(self) -> dict:
         return {
@@ -562,7 +564,8 @@ class SceneEngine:
         return (top1 - top2) < 0.25
 
     def _update_user_affinity(self, user: str, action: str,
-                               zone_name: str, instance: str):
+                               zone_name: str, instance: str,
+                               virtual_day: str = ""):
         if not action or not user:
             return
         try:
@@ -578,6 +581,10 @@ class SceneEngine:
             if total == 0:
                 return
 
+            # 使用虛擬天作為 date key，讓圖 A 能正確顯示多天收斂曲線
+            today = virtual_day if virtual_day else \
+                    datetime.datetime.utcnow().strftime("%Y-%m-%d")
+
             for r in results:
                 zone_key = r["_id"] or "Unknown_Zone"
                 personal = r["total_weight"] / total
@@ -589,7 +596,6 @@ class SceneEngine:
                     }},
                     upsert=True,
                 )
-                today = datetime.datetime.utcnow().strftime("%Y-%m-%d")
                 self.col_hist.update_one(
                     {"user_id": user, "action": action,
                      "zone": zone_key, "date": today},

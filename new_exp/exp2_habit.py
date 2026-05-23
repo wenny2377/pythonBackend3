@@ -1,26 +1,13 @@
 """
-thesis_exp2_habit.py
+exp2_habit.py
 Experiment 2, 3, 4: Habit Learning, System Integration, Manifold Engine
 Reads from MongoDB. No Flask needed.
-Run after Unity HabitExp (30 days) is complete.
 
 Usage:
-  python3 thesis_exp2_habit.py
-  python3 thesis_exp2_habit.py --out results/
-  python3 thesis_exp2_habit.py --skip-entropy   # skip MLP-dependent plots
-
-Output:
-  results/figD_habit_learning_curve.png
-  results/figE_spot_discrimination.png
-  results/figF_fat_sensitivity.png
-  results/figG_intent_distribution.png
-  results/figG2_confidence.png
-  results/figH_behavior_zone_heatmap.png
-  results/expA_habit_convergence.png
-  results/expB_entropy_heatmap_User_Mom.png   (requires trained MLP)
-  results/expB_entropy_heatmap_User_Dad.png   (requires trained MLP)
-  results/expC_topology_comparison.png         (requires trained MLP)
-  results/exp2_summary.txt
+  python3 exp2_habit.py
+  python3 exp2_habit.py --out results/
+  python3 exp2_habit.py --skip-entropy
+  python3 exp2_habit.py --saycan
 """
 
 import datetime
@@ -54,18 +41,12 @@ BEHAVIOR_LABELS = [
     "Typing", "PickingUp", "PuttingDown", "Standing", "Walking",
 ]
 
-N_BEHAVIORS   = len(BEHAVIOR_LABELS)
-USERS         = ["User_Mom", "User_Dad"]
+N_BEHAVIORS    = len(BEHAVIOR_LABELS)
+USERS          = ["User_Mom", "User_Dad"]
 FAT_THRESHOLDS = [2, 3, 5, 8, 10]
 CONVERGENCE_ACC  = 0.70
 CONVERGENCE_DAYS = 3
 DEDUP_SIM        = 0.78
-
-SHOWCASE_COMBOS = [
-    {"user": "User_Mom", "action": "Watching", "label": "Mom · Watching"},
-    {"user": "User_Dad", "action": "Typing",   "label": "Dad · Typing"},
-    {"user": "User_Mom", "action": "Opening",  "label": "Mom · Opening"},
-]
 
 NORMALIZE_MAP = {
     "drinking":"Drinking","drink":"Drinking","sittingdrink":"SittingDrink",
@@ -80,9 +61,6 @@ NORMALIZE_MAP = {
 COLORS = {
     "Stage1": "#FF9800",
     "Stage2": "#2196F3",
-    "L2A":    "#4CAF50",
-    "L2B":    "#2196F3",
-    "L3":     "#9C27B0",
 }
 
 
@@ -97,9 +75,34 @@ def connect():
     return MongoClient(MONGO_URI)[DB_NAME]
 
 
-# ═══════════════════════════════════════════════════════════════════════
-# HELPERS
-# ═══════════════════════════════════════════════════════════════════════
+def _get_showcase_combos(db):
+    """自動從 habit_snapshots 選最多資料的 user+action 組合"""
+    pipeline = [
+        {"$group": {"_id": {"user": "$user", "action": "$action"},
+                    "count": {"$sum": 1}}},
+        {"$sort": {"count": -1}},
+    ]
+    results = list(db.habit_snapshots.aggregate(pipeline))
+
+    seen_users  = set()
+    seen_actions = set()
+    combos      = []
+
+    for r in results:
+        user   = r["_id"]["user"]
+        action = r["_id"]["action"]
+        label  = f"{user.replace('User_','').replace('_',' ')} · {action}"
+        if len(combos) < 3:
+            combos.append({"user": user, "action": action, "label": label})
+
+    if not combos:
+        combos = [
+            {"user": "User_Mom", "action": "Watching", "label": "Mom · Watching"},
+            {"user": "User_Dad", "action": "Typing",   "label": "Dad · Typing"},
+            {"user": "User_Mom", "action": "Opening",  "label": "Mom · Opening"},
+        ]
+    return combos
+
 
 def _convergence_day(sm):
     consec = 0
@@ -111,10 +114,6 @@ def _convergence_day(sm):
 
 
 def _learning_curve_for(snaps, user, action):
-    """
-    Uses canonical_key (zone_name) from habit_snapshots.
-    Accuracy = 1.0 when the dominant zone stabilises.
-    """
     daily = defaultdict(lambda: defaultdict(int))
     for d in snaps:
         if d.get("user") != user or norm(d.get("action", "")) != action:
@@ -142,7 +141,6 @@ def _learning_curve_for(snaps, user, action):
 
 
 def _zone_weight_ranking(obs, user, action):
-    """Return sorted list of (zone_name, weight) for a (user, action) pair."""
     agg = defaultdict(int)
     for d in obs:
         if d.get("user") != user or norm(d.get("action", "")) != action:
@@ -151,10 +149,6 @@ def _zone_weight_ranking(obs, user, action):
         agg[zone] += d.get("weight", 0)
     return sorted(agg.items(), key=lambda x: -x[1])
 
-
-# ═══════════════════════════════════════════════════════════════════════
-# CHAPTER 4.2  --dynamic
-# ═══════════════════════════════════════════════════════════════════════
 
 def run_dynamic(db, out):
     print("\n" + "=" * 60)
@@ -172,14 +166,17 @@ def run_dynamic(db, out):
         print("  No dynamic data. Run HabitExp first.")
         return
 
-    _plot_habit_learning_curve(snaps, out)
-    _plot_spot_discrimination(obs, out)
+    showcase = _get_showcase_combos(db)
+    print(f"  showcase combos : {[s['label'] for s in showcase]}")
+
+    _plot_habit_learning_curve(snaps, out, showcase)
+    _plot_spot_discrimination(obs, out, showcase)
     _plot_fat_sensitivity(obs, out)
-    _save_dynamic_summary(snaps, obs, out)
+    _save_dynamic_summary(snaps, obs, out, showcase)
 
 
-def _plot_habit_learning_curve(snaps, out):
-    n = len(SHOWCASE_COMBOS)
+def _plot_habit_learning_curve(snaps, out, showcase):
+    n = len(showcase)
     fig, axes = plt.subplots(1, n, figsize=(6 * n, 5), sharey=True)
     if n == 1:
         axes = [axes]
@@ -189,7 +186,7 @@ def _plot_habit_learning_curve(snaps, out):
         fontsize=12, fontweight="bold")
     colors = ["#2196F3", "#4CAF50", "#E53935"]
 
-    for ax, sc, c in zip(axes, SHOWCASE_COMBOS, colors):
+    for ax, sc, c in zip(axes, showcase, colors):
         days, sm = _learning_curve_for(snaps, sc["user"], sc["action"])
         conv     = _convergence_day(sm)
         if not days:
@@ -220,12 +217,8 @@ def _plot_habit_learning_curve(snaps, out):
     print(f"  Saved: {path}")
 
 
-def _plot_spot_discrimination(obs, out):
-    """
-    Dynamic zone discrimination — no hardcoded strings.
-    Zone 1 = highest cumulative weight = system-learned preferred location.
-    """
-    n = len(SHOWCASE_COMBOS)
+def _plot_spot_discrimination(obs, out, showcase):
+    n = len(showcase)
     fig, axes = plt.subplots(1, n, figsize=(5 * n, 5.5))
     if n == 1:
         axes = [axes]
@@ -234,7 +227,7 @@ def _plot_spot_discrimination(obs, out):
         "(Zone 1 = highest-weight zone = system-learned preferred location)",
         fontsize=12, fontweight="bold")
 
-    for ax, sc in zip(axes, SHOWCASE_COMBOS):
+    for ax, sc in zip(axes, showcase):
         zones = _zone_weight_ranking(obs, sc["user"], sc["action"])
         total = sum(w for _, w in zones) or 1
 
@@ -249,8 +242,8 @@ def _plot_spot_discrimination(obs, out):
         w_other      = sum(w for _, w in zones[2:])
 
         lbls = [
-            f"Zone 1\n({z1_name.replace('_Zone', '')})",
-            f"Zone 2\n({z2_name.replace('_Zone', '')})",
+            f"Zone 1\n({z1_name.replace('_Zone', '').replace('_', ' ')})",
+            f"Zone 2\n({z2_name.replace('_Zone', '').replace('_', ' ')})",
             "Other",
         ]
         vals = [w1, w2, w_other]
@@ -263,8 +256,10 @@ def _plot_spot_discrimination(obs, out):
                     ha="center", fontsize=10, fontweight="bold")
 
         ratio = w1 / (w2 + 1e-9)
+        ratio = min(ratio, 999.0)  # 避免 Zone 2=0 時顯示天文數字
+        ratio_str = f"{ratio:.1f}×" if ratio < 999.0 else "∞ (dominant)"
         ax.set_title(
-            f"{sc['label']}\nZone 1 / Zone 2 ratio = {ratio:.1f}×",
+            f"{sc['label']}\nZone 1 / Zone 2 ratio = {ratio_str}",
             fontsize=11, fontweight="bold")
         ax.set_ylabel("Cumulative Weight")
         ax.grid(axis="y", alpha=0.25)
@@ -374,7 +369,7 @@ def _plot_fat_sensitivity(obs, out):
     print(f"  Saved: {path}")
 
 
-def _save_dynamic_summary(snaps, obs, out):
+def _save_dynamic_summary(snaps, obs, out, showcase):
     lines = [
         "=" * 65,
         "Chapter 4.2: Habit Learning Summary",
@@ -384,7 +379,7 @@ def _save_dynamic_summary(snaps, obs, out):
         f"observation_logs: {len(obs)}", "",
         "── Per-combo Zone Ranking ──",
     ]
-    for sc in SHOWCASE_COMBOS:
+    for sc in showcase:
         days, sm   = _learning_curve_for(snaps, sc["user"], sc["action"])
         conv       = _convergence_day(sm)
         final      = f"{sm[-1] * 100:.1f}%" if sm else "N/A"
@@ -405,10 +400,6 @@ def _save_dynamic_summary(snaps, obs, out):
         f.write("\n".join(lines))
     print(f"  Saved: {path}")
 
-
-# ═══════════════════════════════════════════════════════════════════════
-# CHAPTER 4.3  --system
-# ═══════════════════════════════════════════════════════════════════════
 
 def run_system(db, out):
     print("\n" + "=" * 60)
@@ -480,7 +471,7 @@ def _plot_intent_distribution(proposals, gt_labels, out):
     ax.set_title(
         f"Figure G: Service Proposal Intent vs GT Behaviour Distribution\n"
         f"Triggered={len(proposals)}  "
-        f"Trigger Rate={len(proposals)/300:.1%}  "
+        f"Trigger Rate={len(proposals)/max(len(gt_labels),1):.1%}  "
         f"Bhattacharyya={bc:.3f}",
         fontsize=11, pad=10)
     ax.set_xticks(x)
@@ -594,7 +585,6 @@ def _save_system_summary(proposals, obs, out):
         f"Generated: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}",
         "=" * 65, "",
         f"service_proposals : {len(proposals)}",
-        f"Trigger Rate      : {len(proposals) / 300:.1%}",
         f"Mean Confidence   : {np.mean(confs):.3f}" if confs else "",
         f"observation_logs  : {len(obs)}", "",
     ]
@@ -603,10 +593,6 @@ def _save_system_summary(proposals, obs, out):
         f.write("\n".join(lines))
     print(f"  Saved: {path}")
 
-
-# ═══════════════════════════════════════════════════════════════════════
-# EXPERIMENT A  --convergence
-# ═══════════════════════════════════════════════════════════════════════
 
 def run_convergence(db, out):
     print("\n" + "=" * 60)
@@ -619,14 +605,27 @@ def run_convergence(db, out):
         print("  No affinity_history. Run HabitExp first.")
         return
 
-    SHOW = [
-        {"user": "User_Mom", "action": "PhoneUse",
-         "label": "Mom · PhoneUse @ Sofa"},
-        {"user": "User_Dad", "action": "PhoneUse",
-         "label": "Dad · PhoneUse @ Desk (Control)"},
-    ]
-    L3_PRIOR = 0.10
+    # 自動選最多資料的 user+action 組合
+    combo_counts = defaultdict(int)
+    for d in docs:
+        key = (d.get("user_id", ""), d.get("action", ""))
+        combo_counts[key] += 1
+
+    top_combos = sorted(combo_counts.items(), key=lambda x: -x[1])
+    SHOW = []
+    seen_users = set()
+    for (user, action), cnt in top_combos:
+        if len(SHOW) >= 2:
+            break
+        label = f"{user.replace('User_','')} · {action}"
+        SHOW.append({"user": user, "action": action, "label": label})
+
+    if not SHOW:
+        print("  No valid combos found.")
+        return
+
     FAT_THR  = 5
+    L3_PRIOR = 0.10
 
     fat_days = {}
     for sc in SHOW:
@@ -642,7 +641,7 @@ def run_convergence(db, out):
                 break
 
     fig, ax = plt.subplots(figsize=(10, 5.5))
-    colors = ["#2196F3", "#BDBDBD"]
+    colors = ["#2196F3", "#4CAF50", "#E53935"]
 
     for sc, c in zip(SHOW, colors):
         by_date = {}
@@ -666,7 +665,7 @@ def run_convergence(db, out):
                  if i > 0 else 0.0 for i in range(len(affs))]
 
         ax.plot(days, affs, "o-", color=c, linewidth=2.2,
-                markersize=5, markerfacecolor="white", markeredgewidth=2,
+                markersize=6, markerfacecolor="white", markeredgewidth=2,
                 label=sc["label"])
         ax.fill_between(days,
                         [a - s for a, s in zip(affs, stds)],
@@ -680,7 +679,7 @@ def run_convergence(db, out):
                        linestyle=":", alpha=0.7)
             ax.annotate(f"FAT triggered\nDay {fd}",
                         xy=(fd, affs[fd - 1]),
-                        xytext=(fd + 0.5, affs[fd - 1] + 0.05),
+                        xytext=(fd + 0.3, affs[fd - 1] + 0.05),
                         fontsize=8, color=c,
                         arrowprops=dict(arrowstyle="->", color=c, lw=1))
 
@@ -694,7 +693,7 @@ def run_convergence(db, out):
     ax.set_ylim(-0.05, 1.05)
     ax.set_title(
         "Experiment A: Habit Convergence Curve\n"
-        "Sofa × PhoneUse Affinity Score over 30 Days\n"
+        "Zone × Behaviour Affinity Score over Days\n"
         "(shaded = 3-day rolling std; dotted = FAT trigger)",
         fontsize=12, fontweight="bold")
     ax.legend(fontsize=9)
@@ -705,10 +704,6 @@ def run_convergence(db, out):
     plt.close()
     print(f"  Saved: {path}")
 
-
-# ═══════════════════════════════════════════════════════════════════════
-# EXPERIMENT B  --entropy
-# ═══════════════════════════════════════════════════════════════════════
 
 def run_entropy(db, out):
     print("\n" + "=" * 60)
@@ -739,7 +734,7 @@ def run_entropy(db, out):
             user_id, pos=[cx, cz], prev_action="Standing", n_hours=48)
 
         if matrix.max() < 1e-6:
-            print(f"  {user_id}: no model — run train_manifold.py first")
+            print(f"  {user_id}: no model — run manifold_train first")
             continue
 
         try:
@@ -794,10 +789,6 @@ def run_entropy(db, out):
         print(f"  Saved: {path}")
 
 
-# ═══════════════════════════════════════════════════════════════════════
-# EXPERIMENT C  --topology
-# ═══════════════════════════════════════════════════════════════════════
-
 def run_topology(db, out):
     print("\n" + "=" * 60)
     print("Experiment C — User Topology Comparison (--topology)")
@@ -832,10 +823,10 @@ def run_topology(db, out):
         }
     else:
         zone_centers = {
-            "Sofa_Zone":    [0.25, -0.15],
-            "Typing_Zone":  [-0.85, -0.48],
-            "Kitchen_Zone": [0.34,  0.01],
-            "Bed_Zone":     [-0.70, 0.30],
+            "SittingDrink_Zone": [0.25, -0.15],
+            "Typing_Zone":       [-0.85, -0.48],
+            "Cooking_Zone_2":    [0.34,  0.01],
+            "Laying_Zone":       [-0.70, 0.30],
         }
         print("  Using default zone centres")
 
@@ -863,7 +854,7 @@ def run_topology(db, out):
         matrix_show = matrix_ord[:, col_idx]
 
         if matrix_show.max() < 1e-6:
-            ax.set_title(f"{ulabel}\n(no model — run train_manifold.py)")
+            ax.set_title(f"{ulabel}\n(no model)")
             continue
 
         vmax_val = max(float(matrix_show.max()), 0.8)
@@ -896,11 +887,6 @@ def run_topology(db, out):
     print(f"  Saved: {path}")
 
 
-
-# ═══════════════════════════════════════════════════════════════════════
-# EXPERIMENT D  --saycan   Say × Can 融合閘門分析
-# ═══════════════════════════════════════════════════════════════════════
-
 def run_saycan(db, out):
     print("\n" + "=" * 60)
     print("Experiment D — Say × Can Gate Analysis (--saycan)")
@@ -915,8 +901,17 @@ def run_saycan(db, out):
 
     if not logs:
         print("  No saycan_logs found.")
-        print("  Call POST /saycan with some queries first.")
-        return
+        print("  Generating test queries...")
+        _generate_test_saycan_queries()
+        logs = list(db.saycan_logs.find(
+            {}, {"query": 1, "best_action": 1, "best_score": 1,
+                 "say_scores": 1, "habit_probs": 1,
+                 "env_scores": 1, "skill_scores": 1,
+                 "final_scores": 1, "user_id": 1}
+        ).sort("timestamp", 1))
+        if not logs:
+            print("  Still no logs. Call POST /interact with some queries first.")
+            return
 
     print(f"  saycan_logs: {len(logs)}")
     _plot_saycan_scores(logs, out)
@@ -924,14 +919,37 @@ def run_saycan(db, out):
     _save_saycan_summary(logs, out)
 
 
+def _generate_test_saycan_queries():
+    import requests
+    queries = [
+        ("I am hungry", "User_Mom"),
+        ("I want something to drink", "User_Dad"),
+        ("I am tired", "User_Mom"),
+        ("I want to watch TV", "User_Dad"),
+        ("I feel like reading", "User_Mom"),
+        ("bring me water", "User_Dad"),
+        ("I need to cook dinner", "User_Mom"),
+        ("I want to use my phone", "User_Dad"),
+    ]
+    base_url = "http://localhost:5000"
+    for query, user_id in queries:
+        try:
+            resp = requests.post(
+                f"{base_url}/interact",
+                json={"query": query, "userID": user_id},
+                timeout=30,
+            )
+            if resp.status_code == 200:
+                print(f"  [SayCan] '{query}' → ok")
+            import time
+            time.sleep(1)
+        except Exception as e:
+            print(f"  [SayCan] failed: {e}")
+
+
 def _plot_saycan_scores(logs, out):
-    """
-    Bar chart: final Say × Can scores for each query.
-    Shows top-3 behaviours per query.
-    """
     n_queries = min(len(logs), 6)
-    fig, axes = plt.subplots(
-        1, n_queries, figsize=(5 * n_queries, 5.5))
+    fig, axes = plt.subplots(1, n_queries, figsize=(5 * n_queries, 5.5))
     if n_queries == 1:
         axes = [axes]
 
@@ -945,14 +963,10 @@ def _plot_saycan_scores(logs, out):
 
     for ax, log, c in zip(axes, logs[:n_queries], colors):
         final = log.get("final_scores", {})
-        say   = log.get("say_scores", {})
-        habit = log.get("habit_probs", {})
-
         if not final:
             ax.set_title("No scores")
             continue
 
-        # Top 5 behaviours by final score
         top5 = sorted(final.items(), key=lambda x: -x[1])[:5]
         lbls = [b for b, _ in top5]
         vals = [v for _, v in top5]
@@ -972,9 +986,7 @@ def _plot_saycan_scores(logs, out):
 
         query_short = log.get("query", "")[:30]
         best = log.get("best_action", "")
-        ax.set_title(
-            f'"{query_short}"\n→ {best}',
-            fontsize=9, fontweight="bold")
+        ax.set_title(f'"{query_short}"\n→ {best}', fontsize=9, fontweight="bold")
         ax.grid(axis="y", alpha=0.25)
 
     plt.tight_layout()
@@ -985,11 +997,6 @@ def _plot_saycan_scores(logs, out):
 
 
 def _plot_saycan_component_breakdown(logs, out):
-    """
-    Stacked bar: contribution of each component (Say, Habit, Env, Skill)
-    to the final score for the best action.
-    Visualises where each point of the score comes from.
-    """
     if not logs:
         return
 
@@ -1021,16 +1028,13 @@ def _plot_saycan_component_breakdown(logs, out):
     ax.bar(x, say_vals,   w, label="Say (LLM semantic)",
            color="#2196F3", alpha=0.85)
     ax.bar(x, habit_vals, w, bottom=say_vals,
-           label="Can_habit (MLP prior)",
-           color="#FF9800", alpha=0.85)
+           label="Can_habit (MLP prior)", color="#FF9800", alpha=0.85)
     env_bottom = [s + h for s, h in zip(say_vals, habit_vals)]
     ax.bar(x, env_vals,   w, bottom=env_bottom,
-           label="Can_env (object feasibility)",
-           color="#4CAF50", alpha=0.85)
+           label="Can_env (object feasibility)", color="#4CAF50", alpha=0.85)
     skl_bottom = [e + b for e, b in zip(env_bottom, env_vals)]
     ax.bar(x, skill_vals, w, bottom=skl_bottom,
-           label="Can_skill (preference filter)",
-           color="#9C27B0", alpha=0.85)
+           label="Can_skill (preference filter)", color="#9C27B0", alpha=0.85)
 
     for i, (q, b) in enumerate(zip(queries, best_actions)):
         ax.text(i, -0.08, f"→{b}", ha="center",
@@ -1038,9 +1042,8 @@ def _plot_saycan_component_breakdown(logs, out):
                 transform=ax.get_xaxis_transform())
 
     ax.set_xticks(x)
-    ax.set_xticklabels(
-        [f'"{q}"' for q in queries],
-        rotation=20, ha="right", fontsize=8)
+    ax.set_xticklabels([f'"{q}"' for q in queries],
+                       rotation=20, ha="right", fontsize=8)
     ax.set_ylabel("Component Score (raw, before product)")
     ax.set_title(
         "Experiment D: Say × Can Component Breakdown\n"
@@ -1048,7 +1051,6 @@ def _plot_saycan_component_breakdown(logs, out):
         fontsize=12, fontweight="bold")
     ax.legend(fontsize=9, loc="upper right")
     ax.grid(axis="y", alpha=0.25)
-
     plt.tight_layout()
     path = os.path.join(out, "expD_saycan_breakdown.png")
     plt.savefig(path, dpi=180, bbox_inches="tight")
@@ -1069,35 +1071,20 @@ def _save_saycan_summary(logs, out):
         f"Total queries resolved: {len(logs)}", "",
         "Action distribution:",
         *[f"  {a:15}: {c} times"
-          for a, c in sorted(
-              action_counts.items(), key=lambda x: -x[1])], "",
-        "Per-query breakdown:",
+          for a, c in sorted(action_counts.items(), key=lambda x: -x[1])], "",
     ]
-    for log in logs:
-        best  = log.get("best_action", "")
-        score = log.get("best_score", 0.0)
-        query = log.get("query", "")
-        lines.append(
-            f'  "{query[:40]:40}" -> {best:15} (score={score:.4f})')
-
     path = os.path.join(out, "expD_saycan_summary.txt")
     with open(path, "w", encoding="utf-8") as f:
         f.write("\n".join(lines))
     print(f"  Saved: {path}")
 
-# ═══════════════════════════════════════════════════════════════════════
-# MAIN
-# ═══════════════════════════════════════════════════════════════════════
 
 if __name__ == "__main__":
     import argparse as _ap
-    parser = _ap.ArgumentParser(
-        description="Experiment 2/3/4: Habit + System + Manifold (no Flask needed)")
+    parser = _ap.ArgumentParser()
     parser.add_argument("--out", default="results")
-    parser.add_argument("--skip-entropy", action="store_true",
-                        help="Skip expB and expC (require trained MLP)")
-    parser.add_argument("--saycan", action="store_true",
-                        help="Run Experiment D: Say x Can gate analysis")
+    parser.add_argument("--skip-entropy", action="store_true")
+    parser.add_argument("--saycan", action="store_true")
     args = parser.parse_args()
 
     os.makedirs(args.out, exist_ok=True)
@@ -1112,8 +1099,7 @@ if __name__ == "__main__":
         run_entropy(db, args.out)
         run_topology(db, args.out)
     else:
-        print("\n[Skipped] expB + expC"
-              " — run without --skip-entropy after training MLP")
+        print("\n[Skipped] expB + expC — run without --skip-entropy after training MLP")
 
     if args.saycan:
         run_saycan(db, args.out)

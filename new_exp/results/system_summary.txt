@@ -1,9 +1,8 @@
 =================================================================
 Chapter 4.3: System Integration Summary
-Generated: 2026-05-23 12:21
+Generated: 2026-05-23 16:52
 =================================================================
 
-service_proposals : 58
-Trigger Rate      : 19.3%
-Mean Confidence   : 0.995
-observation_logs  : 44
+service_proposals : 41
+Mean Confidence   : 0.954
+observation_logs  : 41
