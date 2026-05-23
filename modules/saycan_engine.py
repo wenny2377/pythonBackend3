@@ -25,25 +25,21 @@ _FALLBACK_BEHAVIOR_TO_OBJECTS = {
     "Laying":       [],
 }
 
-WEIGHT_SAY   = 0.40
-WEIGHT_HABIT = 0.35
-WEIGHT_ENV   = 0.15
-WEIGHT_SKILL = 0.10
-
-MIN_GATE_SCORE = 0.05
 ENV_FALLBACK   = 0.30
+MIN_GATE_SCORE = 0.05
 
 
 class SayCanEngine:
 
     def __init__(self, db, manifold_engine,
                  ollama_url: str, llm_model: str,
-                 sbert_model=None):
+                 sbert_model=None, vector_memory=None):
         self.db              = db
         self.manifold_engine = manifold_engine
         self.ollama_url      = ollama_url
         self.llm_model       = llm_model
         self.sbert           = sbert_model
+        self.vector_memory   = vector_memory
         self._lock           = threading.Lock()
 
         self._behavior_objects: dict    = {}
@@ -73,6 +69,28 @@ class SayCanEngine:
             best_sim = float(sims[best_i])
             if best_sim >= 0.35:
                 best_obj = all_objs[best_i]
+
+            if best_obj is None and self.vector_memory:
+                dyn_results = self.vector_memory.search_dynamic(query, top_k=1)
+                if dyn_results:
+                    label    = dyn_results[0].get("label", "")
+                    location = dyn_results[0].get("last_seen_on", "unknown")
+                    room     = dyn_results[0].get("room", "")
+                    nav      = dyn_results[0].get("furniture_pos")
+                    answer   = (
+                        f"The {label} was last seen near {location}"
+                        f"{' in the ' + room if room else ''}."
+                    )
+                    return {
+                        "intent":       "LOCATE",
+                        "best_action":  "LOCATE",
+                        "explanation":  answer,
+                        "nav_target":   nav,
+                        "nav_label":    location,
+                        "final_scores": {},
+                        "say_scores":   {},
+                        "habit_probs":  {},
+                    }
         else:
             q_lower = query.lower()
             for d in all_objs:
@@ -111,7 +129,7 @@ class SayCanEngine:
                 prev_action: str = "Standing") -> dict:
         say_scores   = self._compute_say(query)
         habit_probs  = self._compute_can_habit(user_id, virtual_hour, user_pos, prev_action)
-        env_scores   = self._compute_can_env()
+        env_scores   = self._compute_can_env(user_id)
         skill_scores = self._compute_can_skill(user_id)
 
         eps          = 1e-3
@@ -177,7 +195,7 @@ class SayCanEngine:
         prompt = (
             f"You are a home robot intent classifier.\n"
             f"User said: \"{query}\"\n\n"
-            f"Rate how relevant each behaviour is (0.0 = irrelevant, 1.0 = perfect match).\n"
+            f"Rate how relevant each behaviour is (0.0=irrelevant, 1.0=perfect).\n"
             f"Behaviours: {behavior_list}\n\n"
             f"Output ONLY valid JSON. No explanation.\n"
             f"Example: {{\"Eating\": 0.9, \"Drinking\": 0.3}}"
@@ -204,28 +222,42 @@ class SayCanEngine:
                 return result
         except Exception as e:
             print(f"[SayCan-Say] LLM failed: {e}")
-
         return {b: 1.0 / len(BEHAVIOR_LABELS) for b in BEHAVIOR_LABELS}
 
-    def _compute_can_habit(self, user_id, virtual_hour, user_pos, prev_action) -> dict:
-        if self.manifold_engine is None:
-            return {b: 1.0 / len(BEHAVIOR_LABELS) for b in BEHAVIOR_LABELS}
-        try:
-            result = self.manifold_engine.predict_intent(
-                user_id      = user_id,
-                virtual_hour = virtual_hour,
-                user_pos     = user_pos,
-                prev_action  = prev_action or "Standing",
-            )
-            probs = result.get("probs", {})
-            out   = {b: float(probs.get(b, 0.0)) for b in BEHAVIOR_LABELS}
-            total = sum(out.values()) or 1.0
-            return {b: v / total for b, v in out.items()}
-        except Exception as e:
-            print(f"[SayCan-Habit] failed: {e}")
-            return {b: 1.0 / len(BEHAVIOR_LABELS) for b in BEHAVIOR_LABELS}
+    def _compute_can_habit(self, user_id, virtual_hour,
+                            user_pos, prev_action) -> dict:
+        scores = {b: 0.0 for b in BEHAVIOR_LABELS}
 
-    def _compute_can_env(self) -> dict:
+        if self.vector_memory:
+            try:
+                query    = f"{user_id} behavior pattern"
+                memories = self.vector_memory.search_habit(
+                    query, user_id=user_id, top_k=10)
+                for m in memories:
+                    action = m.get("action", "")
+                    if action in scores:
+                        scores[action] += float(m.get("similarity", 0.0))
+            except Exception as e:
+                print(f"[SayCan-Habit] FAISS failed: {e}")
+
+        if self.manifold_engine is not None:
+            try:
+                result = self.manifold_engine.predict_intent(
+                    user_id      = user_id,
+                    virtual_hour = virtual_hour,
+                    user_pos     = user_pos,
+                    prev_action  = prev_action or "Standing",
+                )
+                probs = result.get("probs", {})
+                for b in BEHAVIOR_LABELS:
+                    scores[b] += float(probs.get(b, 0.0)) * 2.0
+            except Exception as e:
+                print(f"[SayCan-Habit] ManifoldEngine failed: {e}")
+
+        total = sum(scores.values()) or 1.0
+        return {b: v / total for b, v in scores.items()}
+
+    def _compute_can_env(self, user_id: str = None) -> dict:
         import numpy as np
 
         try:
@@ -234,38 +266,64 @@ class SayCanEngine:
         except Exception:
             dyn_labels = []
 
-        if not dyn_labels:
-            return {b: ENV_FALLBACK for b in BEHAVIOR_LABELS}
+        direct_scores = {b: ENV_FALLBACK for b in BEHAVIOR_LABELS}
 
-        if self._behavior_proto_vecs and self.sbert is not None:
-            obj_vecs = self.sbert.encode(dyn_labels, normalize_embeddings=True)
-            result   = {}
-            for b in BEHAVIOR_LABELS:
-                proto = self._behavior_proto_vecs.get(b)
-                if proto is None:
-                    result[b] = ENV_FALLBACK
-                    continue
-                sims    = obj_vecs @ proto
-                max_sim = float(sims.max())
-                if max_sim >= 0.60:
-                    result[b] = 1.0
-                elif max_sim >= 0.40:
-                    result[b] = 0.60
-                else:
-                    result[b] = ENV_FALLBACK
-            return result
+        if dyn_labels:
+            if self._behavior_proto_vecs and self.sbert is not None:
+                obj_vecs = self.sbert.encode(dyn_labels, normalize_embeddings=True)
+                for b in BEHAVIOR_LABELS:
+                    proto = self._behavior_proto_vecs.get(b)
+                    if proto is None:
+                        continue
+                    sims    = obj_vecs @ proto
+                    max_sim = float(sims.max())
+                    if max_sim >= 0.60:
+                        direct_scores[b] = 1.0
+                    elif max_sim >= 0.40:
+                        direct_scores[b] = 0.60
+            else:
+                dyn_set = set(dyn_labels)
+                obj_map = self._get_behavior_objects()
+                for b in BEHAVIOR_LABELS:
+                    needed = obj_map.get(b, [])
+                    if not needed:
+                        direct_scores[b] = 0.5
+                        continue
+                    found = any(any(kw in lbl for lbl in dyn_set) for kw in needed)
+                    direct_scores[b] = 1.0 if found else ENV_FALLBACK
 
-        dyn_set = set(dyn_labels)
-        obj_map = self._get_behavior_objects()
-        result  = {}
+        cooccur_scores = self._compute_cooccurrence(user_id)
+
+        final = {}
         for b in BEHAVIOR_LABELS:
-            needed = obj_map.get(b, [])
-            if not needed:
-                result[b] = 0.5
-                continue
-            found      = any(any(kw in lbl for lbl in dyn_set) for kw in needed)
-            result[b]  = 1.0 if found else ENV_FALLBACK
-        return result
+            final[b] = 0.6 * direct_scores[b] + 0.4 * cooccur_scores[b]
+
+        return final
+
+    def _compute_cooccurrence(self, user_id: str = None) -> dict:
+        scores = {b: ENV_FALLBACK for b in BEHAVIOR_LABELS}
+
+        try:
+            query = {"action": {"$in": BEHAVIOR_LABELS}}
+            if user_id:
+                query["user"] = user_id
+
+            logs = list(self.db.observation_logs.find(
+                query,
+                {"action": 1, "interacting_items": 1, "weight": 1}
+            ).sort("weight", -1).limit(100))
+
+            for log in logs:
+                action = log.get("action", "")
+                weight = int(log.get("weight", 1))
+                if action in scores:
+                    boost = min(weight * 0.03, 0.4)
+                    scores[action] = min(1.0, scores[action] + boost)
+
+        except Exception as e:
+            print(f"[SayCan-Cooccur] {e}")
+
+        return scores
 
     def _compute_can_skill(self, user_id: str) -> dict:
         try:
@@ -292,12 +350,12 @@ class SayCanEngine:
         obj_map = self._get_behavior_objects()
         result  = {}
         for b in BEHAVIOR_LABELS:
-            needed     = obj_map.get(b, [])
+            needed    = obj_map.get(b, [])
             if not needed:
                 result[b] = 1.0
                 continue
-            penalised  = any(any(item in rej for rej in rejected) for item in needed)
-            result[b]  = 0.1 if penalised else 1.0
+            penalised = any(any(item in rej for rej in rejected) for item in needed)
+            result[b] = 0.1 if penalised else 1.0
         return result
 
     def _resolve_nav(self, action: str):
@@ -359,8 +417,10 @@ class SayCanEngine:
             else:
                 proto = self.sbert.encode(behavior, normalize_embeddings=True)
             norm = float(np.linalg.norm(proto))
-            self._behavior_proto_vecs[behavior] = (proto / (norm + 1e-8)).astype("float32")
-        print(f"[SayCan] Behavior prototypes built ({len(self._behavior_proto_vecs)} behaviours)")
+            self._behavior_proto_vecs[behavior] = (
+                proto / (norm + 1e-8)).astype("float32")
+        print(f"[SayCan] Behavior prototypes built "
+              f"({len(self._behavior_proto_vecs)} behaviours)")
 
     def _distill_behavior_objects(self):
         cached = list(self.db.saycan_behavior_objects.find({}))
@@ -370,15 +430,17 @@ class SayCanEngine:
                 o = doc.get("objects", [])
                 if b:
                     self._behavior_objects[b] = o
-            print(f"[SayCan] Loaded behavior-object map ({len(self._behavior_objects)} entries)")
+            print(f"[SayCan] Loaded behavior-object map "
+                  f"({len(self._behavior_objects)} entries)")
             return
 
         print("[SayCan] Distilling behavior-object map via LLM...")
 
-        scene_objects = list(self.db.dynamic_objects.distinct("label"))
-        object_vocab  = list(self.db.scene_snapshots.distinct("label"))
-        all_objects   = list(dict.fromkeys(
-            [o.lower().strip() for o in scene_objects + object_vocab if o and len(o) > 1]
+        scene_objects   = list(self.db.dynamic_objects.distinct("label"))
+        object_vocab    = list(self.db.scene_snapshots.distinct("label"))
+        all_objects     = list(dict.fromkeys(
+            [o.lower().strip() for o in scene_objects + object_vocab
+             if o and len(o) > 1]
         ))
         object_list_str = ", ".join(all_objects) if all_objects else \
                           "remote, book, cup, broom, phone, laptop, fork, pan"
@@ -388,7 +450,7 @@ class SayCanEngine:
             f"You are an AI robotics ontologist.\n"
             f"For each action, list the most relevant physical objects required.\n\n"
             f"Allowed Actions: [{behavior_list}]\n"
-            f"STRICT CONSTRAINT: Only use objects from this list: [{object_list_str}]\n\n"
+            f"STRICT CONSTRAINT: Only use objects from: [{object_list_str}]\n\n"
             f"Output ONLY valid JSON. No explanations.\n"
             f"Example: {{\"Eating\": [\"bowl\", \"fork\"], \"Watching\": [\"remote\"]}}"
         )

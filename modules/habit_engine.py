@@ -1,37 +1,22 @@
-"""
-habit_engine.py
-HabitEngine — Long-term Habit Learning Module.
-
-Replaces habit_learner.py and the habit-related functions in perception.py.
-
-Responsibilities:
-  - observation_logs write and weight update
-  - habit_snapshots daily tracking
-  - activity_sequences context tracking
-  - FAISS habit memory indexing
-  - SKILL.md auto-update (via SkillManager)
-  - Rejection / acceptance feedback handling
-
-Dependencies: MongoDB, SkillManager, ManifoldEngine (injected)
-"""
-
 import threading
 import datetime
-from collections import defaultdict
-from pymongo import ReturnDocument, UpdateOne
+from pymongo import ReturnDocument
 
-HABIT_THRESHOLD   = 5     # FAT — Fast Adaptation Threshold
+HABIT_THRESHOLD   = 5
 REJECTION_PENALTY = -3
 DEDUP_THRESHOLD   = 0.78
+
+NO_WEIGHT_ACTIONS = {"PickingUp", "PuttingDown", "Walking", "Standing"}
 
 
 class HabitEngine:
 
     def __init__(self, db, skill_manager, manifold_engine=None,
-                 fat_threshold: int = HABIT_THRESHOLD):
+                 vector_memory=None, fat_threshold: int = HABIT_THRESHOLD):
         self.db              = db
         self.skill_manager   = skill_manager
         self.manifold_engine = manifold_engine
+        self.vector_memory   = vector_memory
         self.fat_threshold   = fat_threshold
 
         self.col_obs    = db.observation_logs
@@ -39,31 +24,21 @@ class HabitEngine:
         self.col_seq    = db.activity_sequences
         self.col_skills = db.user_skills
 
-        # Bulk write buffer
-        self._buf       = []
-        self._buf_lock  = threading.Lock()
-
-    # ── Public API ────────────────────────────────────────────────────
-
     def record(self, user_id: str, action: str, zone_name: str,
                pos: list, virtual_hour: float, time_slot: str,
                interacting_items: list, raw_desc: str,
                room: str, instance: str, spatial_relations: dict,
                experiment_mode: str = "habit"):
-        """
-        Main entry point. Called by app.py after PerceptionEngine.analyze().
-        Writes observation_logs, habit_snapshots, activity_sequences.
-        Triggers SKILL.md update if FAT threshold reached.
-        Does NOT write if zone_name is empty (cold-start guard).
-        """
         if not zone_name:
-            print(f"[HabitEngine] Skipping — zone_name empty (Zone Graph not ready)")
+            print(f"[HabitEngine] Skipping — zone_name empty")
             return
 
-        today     = datetime.datetime.utcnow().strftime("%Y-%m-%d")
-        pos_xy    = [pos[0] / 10.0, pos[1] / 10.0] if pos else [0.0, 0.0]
+        if action in NO_WEIGHT_ACTIONS:
+            return
 
-        # ── observation_logs ─────────────────────────────────────────
+        today  = datetime.datetime.utcnow().strftime("%Y-%m-%d")
+        pos_xy = [pos[0] / 10.0, pos[1] / 10.0] if pos else [0.0, 0.0]
+
         self._update_observation_log(
             user=user_id, action=action, zone_name=zone_name,
             instance=instance, time_slot=time_slot,
@@ -71,44 +46,55 @@ class HabitEngine:
             spatial_relations=spatial_relations,
             pos_xy=pos_xy, room=room,
             raw_desc=raw_desc, today=today,
-            experiment_mode=experiment_mode,
         )
 
-        # ── habit_snapshots ──────────────────────────────────────────
         self._write_habit_snapshot(
             user=user_id, action=action, zone_name=zone_name,
             time_slot=time_slot, today=today,
         )
 
-        # ── activity_sequences ───────────────────────────────────────
         self._update_activity_sequence(
             user=user_id, action=action,
             instance=zone_name, today=today,
         )
 
-        # ── ManifoldEngine training sample ───────────────────────────
-        if (self.manifold_engine is not None
-                and experiment_mode != "recognition"):
+        if self.vector_memory and action not in NO_WEIGHT_ACTIONS:
+            try:
+                memory_text = (
+                    f"{user_id} {time_slot} {room} "
+                    f"{action} near {zone_name} "
+                    f"with {' '.join(interacting_items)}"
+                ).strip()
+                self.vector_memory.add_memory(
+                    user_id         = user_id,
+                    action          = action,
+                    furniture_label = zone_name,
+                    vlm_description = memory_text,
+                    detected_items  = interacting_items,
+                    all_items       = interacting_items,
+                )
+            except Exception as e:
+                print(f"[HabitEngine] FAISS write error: {e}")
+
+        if self.manifold_engine is not None and experiment_mode != "recognition":
             try:
                 self.manifold_engine.record_training_sample(
                     user_id        = user_id,
                     current_action = action,
                     virtual_hour   = virtual_hour,
-                    user_pos       = {"x": pos[0]*10, "z": pos[1]*10}
+                    user_pos       = {"x": pos[0] * 10, "z": pos[1] * 10}
                                      if pos else {},
                     prev_action    = action,
                 )
-            except Exception as me_err:
-                print(f"[Manifold] {me_err}")
+            except Exception as e:
+                print(f"[Manifold] {e}")
 
-        # ── SKILL.md update (background) ─────────────────────────────
         threading.Thread(
             target=self._check_and_update_skill,
             args=(user_id,), daemon=True,
         ).start()
 
     def handle_rejection(self, user_id: str, intent: str, item: str):
-        """User rejected a service proposal involving item."""
         if not item:
             return
         result = self.col_obs.update_many(
@@ -121,7 +107,6 @@ class HabitEngine:
         self._insert_if_new(user_id, "## What NOT to do", bullet)
 
     def handle_acceptance(self, user_id: str, intent: str, item: str):
-        """User accepted a service proposal involving item."""
         if not item:
             return
         self.col_obs.update_many(
@@ -130,31 +115,26 @@ class HabitEngine:
         )
         print(f"[HabitEngine] Acceptance: '{item}' for {user_id}")
 
-    # ── Internal: observation_logs ────────────────────────────────────
-
     def _update_observation_log(self, user, action, zone_name,
                                  instance, time_slot, interacting_items,
                                  spatial_relations, pos_xy, room,
-                                 raw_desc, today, experiment_mode):
-        from modules.perception_engine import NO_WEIGHT_ACTIONS
-        add_weight = 0 if action in NO_WEIGHT_ACTIONS else 1
-
+                                 raw_desc, today):
         try:
             self.col_obs.find_one_and_update(
                 {"user": user, "zone_name": zone_name,
                  "action": action, "time_slot": time_slot},
                 {
-                    "$inc":      {"weight": add_weight},
+                    "$inc":      {"weight": 1},
                     "$addToSet": {"interacting_items":
                                   {"$each": interacting_items}},
                     "$set": {
                         "observed_relations": spatial_relations,
-                        "pos":       pos_xy,
-                        "room":      room,
-                        "instance":  instance,
-                        "last_seen": datetime.datetime.utcnow(),
-                        "last_date": today,
-                        "raw_vlm_desc": raw_desc,
+                        "pos":               pos_xy,
+                        "room":              room,
+                        "instance":          instance,
+                        "last_seen":         datetime.datetime.utcnow(),
+                        "last_date":         today,
+                        "raw_vlm_desc":      raw_desc,
                     },
                     "$setOnInsert": {
                         "user":      user,
@@ -169,21 +149,18 @@ class HabitEngine:
         except Exception as e:
             print(f"[HabitEngine] obs_log write error: {e}")
 
-    # ── Internal: habit_snapshots ─────────────────────────────────────
-
     def _write_habit_snapshot(self, user, action, zone_name,
                                time_slot, today):
-        canonical_key = zone_name
         try:
-            self.db.habit_snapshots.update_one(
+            self.col_snap.update_one(
                 {"user": user, "action": action,
-                 "canonical_key": canonical_key, "date": today},
+                 "canonical_key": zone_name, "date": today},
                 {
                     "$inc": {"daily_count": 1},
                     "$setOnInsert": {
                         "user":          user,
                         "action":        action,
-                        "canonical_key": canonical_key,
+                        "canonical_key": zone_name,
                         "date":          today,
                         "time_slot":     time_slot,
                     },
@@ -193,11 +170,9 @@ class HabitEngine:
         except Exception as e:
             print(f"[HabitEngine] habit_snapshot write error: {e}")
 
-    # ── Internal: activity_sequences ──────────────────────────────────
-
     def _update_activity_sequence(self, user, action, instance, today):
         try:
-            self.db.activity_sequences.update_one(
+            self.col_seq.update_one(
                 {"user": user, "date": today},
                 {
                     "$push": {
@@ -214,10 +189,7 @@ class HabitEngine:
         except Exception as e:
             print(f"[HabitEngine] activity_seq write error: {e}")
 
-    # ── Internal: SKILL.md update ─────────────────────────────────────
-
     def _check_and_update_skill(self, user_id: str):
-        """Background: check observation_logs, update SKILL.md if FAT reached."""
         try:
             habits = list(self.col_obs.find({
                 "user":   user_id,
@@ -237,9 +209,9 @@ class HabitEngine:
                 if not action or not instance:
                     continue
 
-                item_str = f" with {', '.join(items)}" if items else ""
-                slot_str = (f" in {time_slot}"
-                            if time_slot and time_slot != "Unknown" else "")
+                item_str  = f" with {', '.join(items)}" if items else ""
+                slot_str  = (f" in {time_slot}"
+                             if time_slot and time_slot != "Unknown" else "")
                 bp_bullet = (f"- {action} near {instance}"
                              f"{item_str}{slot_str} ({weight} times)")
 
@@ -305,9 +277,9 @@ class HabitEngine:
                        if l.strip().startswith('-')]
             if not bullets:
                 return False
-            model   = SentenceTransformer("paraphrase-MiniLM-L6-v2")
-            new_v   = model.encode([new_bullet], normalize_embeddings=True)[0]
-            old_v   = model.encode(bullets, normalize_embeddings=True)
+            model = SentenceTransformer("paraphrase-MiniLM-L6-v2")
+            new_v = model.encode([new_bullet], normalize_embeddings=True)[0]
+            old_v = model.encode(bullets, normalize_embeddings=True)
             return float((old_v @ new_v).max()) >= DEDUP_THRESHOLD
         except Exception:
             return new_bullet.lower() in skill_md.lower()

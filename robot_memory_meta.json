@@ -1,0 +1,19 @@
+[
+  {
+    "faiss_idx": 0,
+    "user": "User_Mom",
+    "action": "Standing",
+    "instance": "sofa side 2",
+    "interacting_items": [],
+    "all_items": [],
+    "spatial_relations": [],
+    "furniture_pos": [
+      3.746,
+      1.096
+    ],
+    "mongo_id": "6a11120f7c5e9d3902dd829d",
+    "description": "User_Mom Standing near Unknown_Area",
+    "memory_text": "User_Mom Standing near sofa side 2 with nothing. User_Mom Standing near Unknown_Area",
+    "timestamp": "2026-05-23T10:36:49.438418"
+  }
+]

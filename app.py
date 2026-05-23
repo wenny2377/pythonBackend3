@@ -1,20 +1,4 @@
 import re
-"""
-app.py — RobotBrain Server
-Clean architecture with decoupled modules.
-
-Startup sequence:
-  Phase 1: Infrastructure (MongoDB, SBERT, configs)
-  Phase 2: SceneEngine (Zone Graph — /scene triggers build)
-  Phase 3: PerceptionEngine, HabitEngine, ManifoldEngine
-  Phase 4: SayCanEngine, ServiceProposalEngine
-  Phase 5: Flask serves all endpoints
-
-/ready endpoint: returns SceneEngine.is_ready()
-/scene endpoint: triggers SceneEngine.build()
-/predict: requires SceneEngine.is_ready()
-"""
-
 import os
 import json
 import math
@@ -34,7 +18,7 @@ from sentence_transformers import SentenceTransformer
 from config import Config
 
 from modules.scene_engine      import SceneEngine
-from modules.perception_engine import PerceptionEngine, PerceptionResult
+from modules.perception_engine import PerceptionEngine
 from modules.habit_engine      import HabitEngine
 from modules.manifold_engine   import ManifoldEngine
 from modules.saycan_engine     import SayCanEngine
@@ -42,6 +26,9 @@ from modules.service_proposal  import ServiceProposalEngine
 from modules.skill_manager     import SkillManager
 from modules.memory            import MemoryManager
 from modules.memory_vector     import VectorMemory
+from modules.interaction       import InteractionEngine
+from modules.temporal_smoother import TemporalSmoother
+from modules.entropy_monitor   import EntropyMonitor
 from modules.classifier        import (ObjectClassifier,
                                         BASE_FURNITURE_KEYWORDS,
                                         OBJECT_CATEGORIES)
@@ -63,14 +50,10 @@ def _load_yaml(path: str) -> dict:
 app    = Flask(__name__)
 CONFIG = Config
 
-# ═══════════════════════════════════════════════════════════════════════
-# Phase 1: Infrastructure
-# ═══════════════════════════════════════════════════════════════════════
 print(f"System init: device={CONFIG.DEVICE} "
       f"| LLM={CONFIG.LLM_MODEL} | VLM={CONFIG.VLM_MODEL}")
 
-sbert_model = SentenceTransformer('all-MiniLM-L6-v2',
-                                   device=CONFIG.DEVICE)
+sbert_model = SentenceTransformer('all-MiniLM-L6-v2', device=CONFIG.DEVICE)
 print("SBERT loaded on", CONFIG.DEVICE)
 
 mongo_client = MongoClient(CONFIG.MONGO_URI)
@@ -86,22 +69,16 @@ try:
 except Exception as e:
     print(f"[MongoDB] index notice: {e}")
 
-# Load ontology configs
 _ontology  = _load_yaml("config/robot_ontology.yaml")
 _beh_cfg   = _load_yaml("config/behavior_config.yaml")
 _sys_cfg   = _load_yaml("config/system_config.yaml")
 
 behavior_labels = _beh_cfg.get("behavior_labels", [
-    "Drinking","SittingDrink","Eating","Cooking","Opening",
-    "Laying","Watching","Reading","Cleaning","PhoneUse",
-    "Typing","PickingUp","PuttingDown","Standing","Walking",
+    "Drinking", "SittingDrink", "Eating", "Cooking", "Opening",
+    "Laying", "Watching", "Reading", "Cleaning", "PhoneUse",
+    "Typing", "PickingUp", "PuttingDown", "Standing", "Walking",
 ])
 
-# ═══════════════════════════════════════════════════════════════════════
-# Phase 2: SceneEngine
-# Zone Graph is built here. /scene endpoint triggers rebuild.
-# /ready returns is_ready() status.
-# ═══════════════════════════════════════════════════════════════════════
 scene_engine = SceneEngine(
     db              = db,
     ollama_url      = CONFIG.OLLAMA_URL,
@@ -111,10 +88,10 @@ scene_engine = SceneEngine(
     behavior_labels = behavior_labels,
 )
 
-# ═══════════════════════════════════════════════════════════════════════
-# Phase 3: PerceptionEngine + HabitEngine + ManifoldEngine
-# ═══════════════════════════════════════════════════════════════════════
 manifold_engine = ManifoldEngine(db=db, sbert_model=sbert_model)
+
+vector_memory = VectorMemory(device=CONFIG.DEVICE)
+vector_memory.sync_from_mongo(db.dynamic_objects)
 
 perception = PerceptionEngine(
     db           = db,
@@ -123,6 +100,7 @@ perception = PerceptionEngine(
     sbert_model  = sbert_model,
     scene_engine = scene_engine,
 )
+perception.manifold_engine = manifold_engine
 
 skill_manager = SkillManager(mongo_client, CONFIG.DB_NAME)
 
@@ -130,17 +108,16 @@ habit_engine = HabitEngine(
     db              = db,
     skill_manager   = skill_manager,
     manifold_engine = manifold_engine,
+    vector_memory   = vector_memory,
 )
 
-# ═══════════════════════════════════════════════════════════════════════
-# Phase 4: SayCanEngine + ServiceProposalEngine
-# ═══════════════════════════════════════════════════════════════════════
 saycan_engine = SayCanEngine(
     db              = db,
     manifold_engine = manifold_engine,
     ollama_url      = CONFIG.OLLAMA_URL,
     llm_model       = CONFIG.LLM_MODEL,
     sbert_model     = sbert_model,
+    vector_memory   = vector_memory,
 )
 
 proposal_engine = ServiceProposalEngine(
@@ -149,24 +126,31 @@ proposal_engine = ServiceProposalEngine(
     llm_model  = CONFIG.LLM_MODEL,
 )
 
-memory        = MemoryManager(mongo_client, embedding_model=sbert_model)
-vector_memory = VectorMemory(device=CONFIG.DEVICE)
-classifier    = ObjectClassifier(db)
+memory = MemoryManager(mongo_client, embedding_model=sbert_model)
+
+interaction_engine = InteractionEngine(
+    mongo_client  = mongo_client,
+    vector_memory = vector_memory,
+    ollama_url    = CONFIG.OLLAMA_URL,
+    model_name    = CONFIG.LLM_MODEL,
+    saycan_engine = saycan_engine,
+)
+
+temporal_smoother = TemporalSmoother()
+entropy_monitor   = EntropyMonitor()
+
+classifier = ObjectClassifier(db)
 classifier.start()
-vector_memory.sync_from_mongo(db.dynamic_objects)
 
 atexit.register(perception.shutdown)
 
-# VLM lock — one VLM request at a time
 _vlm_lock      = threading.Lock()
 _predict_queue = _queue.Queue()
 
-
-
-# LLM queue
-_llm_task_queue   = _queue.Queue()
-_llm_task_results = {}
-_llm_task_lock    = threading.Lock()
+# Ground truth cache: t_capture -> ground_truth
+# Used for precise eval_logs alignment
+_gt_cache      = {}
+_gt_cache_lock = threading.Lock()
 
 _robot_state = {
     "nav_target":  None,
@@ -174,36 +158,6 @@ _robot_state = {
     "last_answer": "",
     "highlight":   "",
 }
-
-def _llm_worker():
-    while True:
-        try:
-            task_id, fn, args, kwargs = _llm_task_queue.get(timeout=1)
-            try:
-                result = fn(*args, **kwargs)
-            except Exception as e:
-                result = None
-                print(f"[LLM Worker] task {task_id} failed: {e}")
-            with _llm_task_lock:
-                _llm_task_results[task_id] = result
-            _llm_task_queue.task_done()
-        except _queue.Empty:
-            continue
-
-
-_llm_worker_thread = threading.Thread(target=_llm_worker, daemon=True)
-_llm_worker_thread.start()
-print("[LLM Queue] worker started")
-
-
-
-def submit_llm_task(fn, *args, **kwargs):
-    import uuid
-    task_id = str(uuid.uuid4())
-    _llm_task_queue.put((task_id, fn, args, kwargs))
-    _llm_task_queue.join()
-    with _llm_task_lock:
-        return _llm_task_results.pop(task_id, None)
 
 
 def preview_images(image_list, source_nodes, hint_user_id, activity):
@@ -240,11 +194,9 @@ def _find_nearest_furniture(x: float, z: float,
     query = {}
     if room:
         query["room"] = {"$regex": room, "$options": "i"}
-    furniture_docs = list(
-        db.scene_snapshots.find(query, {"label": 1, "pos": 1}))
+    furniture_docs = list(db.scene_snapshots.find(query, {"label": 1, "pos": 1}))
     if not furniture_docs:
-        furniture_docs = list(
-            db.scene_snapshots.find({}, {"label": 1, "pos": 1}))
+        furniture_docs = list(db.scene_snapshots.find({}, {"label": 1, "pos": 1}))
 
     best_label = "floor"
     best_dist  = float("inf")
@@ -267,35 +219,6 @@ def _get_category_for_label(label: str) -> str:
         if label_l in keywords or any(kw in label_l for kw in keywords):
             return cat
     return "other"
-
-
-def nightly_maintenance():
-    print("[Maintenance] running nightly tasks...")
-    try:
-        db.observation_logs.update_many(
-            {},
-            {"$mul": {"weight": getattr(CONFIG, 'HABIT_DECAY_FACTOR', 0.95)}}
-        )
-        db.observation_logs.delete_many(
-            {"weight": {"$lt": getattr(CONFIG, 'HABIT_MIN_WEIGHT', 1.0)}}
-        )
-        print("[Maintenance] habit decay done")
-
-        if hasattr(interaction_engine, '_has_skill_manager') and \
-                interaction_engine._has_skill_manager:
-            sm = interaction_engine.skill_manager
-            for doc in db.user_skills.find({}, {"user_id": 1}):
-                try:
-                    submit_llm_task(sm.nightly_refactor, doc["user_id"])
-                except Exception as e:
-                    print(f"[Maintenance] refactor failed for "
-                          f"{doc['user_id']}: {e}")
-
-        print("[Maintenance] done")
-    except Exception as e:
-        print(f"[Maintenance] error: {e}")
-
-    threading.Timer(86400, nightly_maintenance).start()
 
 
 def _stream_ollama(system: str, user_prompt: str):
@@ -326,41 +249,42 @@ def _stream_ollama(system: str, user_prompt: str):
                 chunk = json.loads(line)
                 token = chunk.get("message", {}).get("content", "")
                 if token:
-                    yield (f"data: "
-                           f"{json.dumps({'type': 'token', 'content': token})}"
-                           f"\n\n")
+                    yield f"data: {json.dumps({'type': 'token', 'content': token})}\n\n"
                 if chunk.get("done"):
                     break
             except json.JSONDecodeError:
                 continue
     except Exception as e:
         print(f"[Stream Ollama] error: {e}")
-        yield (f"data: "
-               f"{json.dumps({'type': 'token', 'content': 'Sorry, an error occurred.'})}"
-               f"\n\n")
+        yield f"data: {json.dumps({'type': 'token', 'content': 'Sorry, an error occurred.'})}\n\n"
 
 
-_robot_state = {
-    "nav_target":  None,
-    "nav_label":   "",
-    "last_answer": "",
-    "highlight":   "",
-}
+def nightly_maintenance():
+    print("[Maintenance] running nightly tasks...")
+    try:
+        db.observation_logs.update_many(
+            {}, {"$mul": {"weight": getattr(CONFIG, 'HABIT_DECAY_FACTOR', 0.95)}})
+        db.observation_logs.delete_many(
+            {"weight": {"$lt": getattr(CONFIG, 'HABIT_MIN_WEIGHT', 1.0)}})
+        print("[Maintenance] habit decay done")
 
+        if interaction_engine._has_skill_manager:
+            sm = interaction_engine.skill_manager
+            for doc in db.user_skills.find({}, {"user_id": 1}):
+                try:
+                    sm.nightly_refactor(doc["user_id"])
+                except Exception as e:
+                    print(f"[Maintenance] refactor failed: {e}")
 
+        print("[Maintenance] done")
+    except Exception as e:
+        print(f"[Maintenance] error: {e}")
 
+    threading.Timer(86400, nightly_maintenance).start()
 
-# ═══════════════════════════════════════════════════════════════════════
-# ENDPOINTS
-# ═══════════════════════════════════════════════════════════════════════
 
 @app.route("/ready", methods=["GET"])
 def ready():
-    """
-    SceneEngine readiness probe.
-    Unity ExperimentRunner polls this before starting experiments.
-    Returns ready=True only when Zone Graph + affinity are built.
-    """
     status = scene_engine.status()
     return jsonify({
         "ready":          status["ready"],
@@ -372,10 +296,6 @@ def ready():
 
 @app.route("/experiment_done", methods=["POST"])
 def experiment_done():
-    """
-    Called by Unity ExperimentRunner when all episodes are complete.
-    Triggers final MLP training pass for any remaining samples.
-    """
     def _final_train():
         for uid in ["User_Mom", "User_Dad"]:
             n = db.manifold_training_data.count_documents({"user_id": uid})
@@ -384,7 +304,6 @@ def experiment_done():
                 manifold_engine.train_model(uid)
     threading.Thread(target=_final_train, daemon=True).start()
     return jsonify({"status": "ok", "message": "Final training triggered"}), 200
-
 
 
 @app.route('/nav_target', methods=['GET'])
@@ -416,12 +335,8 @@ def interact_stream():
         return jsonify({"error": "Empty query"}), 400
 
     def generate():
-        intent        = interaction_engine._classify_intent(query)
-        need_category = interaction_engine._extract_need_category(query)
-
-        yield (f"data: "
-               f"{json.dumps({'type': 'intent', 'intent': intent})}"
-               f"\n\n")
+        intent = interaction_engine._classify_intent(query)
+        yield f"data: {json.dumps({'type': 'intent', 'intent': intent})}\n\n"
 
         if intent == "interrupt":
             answer = "Understood, stopping now."
@@ -429,28 +344,17 @@ def interact_stream():
             _robot_state["nav_target"]  = None
             _robot_state["nav_label"]   = ""
             _robot_state["highlight"]   = ""
-            yield (f"data: "
-                   f"{json.dumps({'type': 'token', 'content': answer})}"
-                   f"\n\n")
-            yield (f"data: "
-                   f"{json.dumps({'type': 'done', 'nav_target': None, 'nav_label': None, 'confidence': 1.0, 'intent_type': 'interrupt', 'options': [], 'is_personalized': False})}"
-                   f"\n\n")
+            yield f"data: {json.dumps({'type': 'token', 'content': answer})}\n\n"
+            yield f"data: {json.dumps({'type': 'done', 'nav_target': None, 'nav_label': None, 'confidence': 1.0, 'intent_type': 'interrupt', 'options': [], 'is_personalized': False})}\n\n"
             return
 
         if intent == "chat":
-            system = (
-                "You are a friendly home robot companion. "
-                "Reply warmly and briefly in English. "
-                "1-2 sentences max. Do NOT wrap in quotes. "
-                "Do NOT suggest navigation."
-            )
+            from modules.interaction import CHAT_SYSTEM
             chat_buf = ""
-            for ev in _stream_ollama(
-                    system, f'{user_id} said: "{query}"'):
+            for ev in _stream_ollama(CHAT_SYSTEM, f'{user_id} said: "{query}"'):
                 yield ev
                 try:
-                    parsed = json.loads(
-                        ev.replace("data: ", "").strip())
+                    parsed = json.loads(ev.replace("data: ", "").strip())
                     if parsed.get("type") == "token":
                         chat_buf += parsed.get("content", "")
                 except Exception:
@@ -462,115 +366,43 @@ def interact_stream():
             _robot_state["highlight"]   = ""
             interaction_engine._schedule_skill_update(
                 user_id=user_id, query=query,
-                answer=chat_answer, env_snapshot="", rec_items=[],
-            )
-            yield (f"data: "
-                   f"{json.dumps({'type': 'done', 'nav_target': None, 'nav_label': None, 'confidence': 1.0, 'intent_type': 'chat', 'options': [], 'is_personalized': False})}"
-                   f"\n\n")
+                answer=chat_answer, env_snapshot="", rec_items=[])
+            yield f"data: {json.dumps({'type': 'done', 'nav_target': None, 'nav_label': None, 'confidence': 1.0, 'intent_type': 'chat', 'options': [], 'is_personalized': False})}\n\n"
             return
 
-        if intent == "query":
-            result = interaction_engine._query_response(
-                query, user_id, room)
+        if intent == "locate":
+            result = interaction_engine._query_response(query, user_id, room)
             answer = result.get("answer", "")
             for char in answer:
-                yield (f"data: "
-                       f"{json.dumps({'type': 'token', 'content': char})}"
-                       f"\n\n")
+                yield f"data: {json.dumps({'type': 'token', 'content': char})}\n\n"
             _robot_state["last_answer"] = answer
             _robot_state["nav_target"]  = result.get("nav_target")
             _robot_state["nav_label"]   = result.get("nav_label", "")
             _robot_state["highlight"]   = result.get("nav_label", "")
-            yield (f"data: "
-                   f"{json.dumps({'type': 'done', 'nav_target': result.get('nav_target'), 'nav_label': result.get('nav_label'), 'confidence': result.get('confidence', 0.85), 'intent_type': 'query', 'options': result.get('options', []), 'is_personalized': False})}"
-                   f"\n\n")
+            yield f"data: {json.dumps({'type': 'done', 'nav_target': result.get('nav_target'), 'nav_label': result.get('nav_label'), 'confidence': result.get('confidence', 0.85), 'intent_type': 'query', 'options': result.get('options', []), 'is_personalized': False})}\n\n"
             return
 
-        env_snapshot = interaction_engine._build_env_snapshot(need_category)
+        result = interaction_engine.process(
+            query=query, user_id=user_id, room=room)
 
-        skill_md = ""
-        if interaction_engine._has_skill_manager:
-            sm       = interaction_engine.skill_manager
-            skill_md = (sm.get_skill_chunks(user_id, query)
-                        or sm.get_skill(user_id) or "")
+        answer     = result.get("answer", "")
+        nav_target = result.get("nav_target")
+        nav_label  = result.get("nav_label", "unknown")
 
-        from modules.interaction import ONE_SHOT_SYSTEM
-        system = ONE_SHOT_SYSTEM.format(
-            env_snapshot=env_snapshot,
-            skill_md=skill_md or "(No skill profile yet.)",
-        )
+        for char in answer:
+            yield f"data: {json.dumps({'type': 'token', 'content': char})}\n\n"
 
-        furniture_labels = [
-            d["label"]
-            for d in db.scene_snapshots.find({}, {"label": 1})
-            if "label" in d
-        ]
-        user_prompt = (
-            f"User ID: {user_id}\n"
-            f"User said: \"{query}\"\n"
-            f"Robot current room: {room}\n"
-            f"Known furniture: "
-            f"{', '.join(furniture_labels) or 'unknown'}\n"
-            f"Time: {datetime.datetime.now().strftime('%H:%M')}\n\n"
-            f"Reply with the JSON format specified."
-        )
-
-        buffer = ""
-        for event_line in _stream_ollama(system, user_prompt):
-            yield event_line
-            try:
-                ev = json.loads(
-                    event_line.replace("data: ", "").strip())
-                if ev.get("type") == "token":
-                    buffer += ev.get("content", "")
-            except Exception:
-                pass
-
-        nav_target      = None
-        nav_label       = "unknown"
-        plain_answer    = ""
-        options         = []
-        is_personalized = bool(
-            skill_md and "(No skill profile" not in skill_md)
-
-        try:
-            m = re.search(r'\{.*\}', buffer, re.DOTALL)
-            if m:
-                rj           = json.loads(m.group(0))
-                plain_answer = (rj.get("answer", "")
-                                .strip().strip('"').strip("'"))
-                raw_nav      = rj.get("nav_target", "unknown")
-                nav_label    = rj.get("nav_label", raw_nav)
-                nav_target   = (
-                    interaction_engine._resolve_pos(raw_nav)
-                    if raw_nav and raw_nav != "unknown" else None
-                )
-                options = interaction_engine._build_options(
-                    nav_target, nav_label, query)
-        except Exception as e:
-            print(f"[Stream] JSON parse error: {e}")
-
-        _robot_state["last_answer"] = plain_answer or buffer.strip()
+        _robot_state["last_answer"] = answer
         _robot_state["nav_target"]  = nav_target
-        _robot_state["nav_label"]   = (
-            nav_label if nav_label != "unknown" else "")
-        _robot_state["highlight"]   = (
-            nav_label if nav_label != "unknown" else "")
+        _robot_state["nav_label"]   = nav_label if nav_label != "unknown" else ""
+        _robot_state["highlight"]   = nav_label if nav_label != "unknown" else ""
 
-        interaction_engine._schedule_skill_update(
-            user_id=user_id, query=query,
-            answer=buffer, env_snapshot=env_snapshot, rec_items=[],
-        )
-
-        yield (f"data: "
-               f"{json.dumps({'type': 'done', 'nav_target': nav_target, 'nav_label': nav_label, 'confidence': 0.85, 'intent_type': 'oneshot', 'options': options, 'is_personalized': is_personalized})}"
-               f"\n\n")
+        yield f"data: {json.dumps({'type': 'done', 'nav_target': nav_target, 'nav_label': nav_label, 'confidence': result.get('confidence', 0.85), 'intent_type': result.get('intent_type', 'need'), 'options': result.get('options', []), 'is_personalized': result.get('is_personalized', False)})}\n\n"
 
     return Response(
         stream_with_context(generate()),
         mimetype='text/event-stream',
-        headers={'Cache-Control': 'no-cache',
-                 'X-Accel-Buffering': 'no'},
+        headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'},
     )
 
 
@@ -584,18 +416,17 @@ def predict():
 
     existing = db.eval_logs.find_one({"episode_id": episode_id})
     if existing:
-        return jsonify({
-            "status":     "ok",
-            "episode_id": episode_id,
-            "cached":     True,
-        }), 200
+        return jsonify({"status": "ok", "episode_id": episode_id, "cached": True}), 200
+
+    # 立刻剝離 ground truth，存入暫存區
+    t_capture    = data.get("t_capture", "")
+    ground_truth = data.get("activity", "")
+    if t_capture and ground_truth:
+        with _gt_cache_lock:
+            _gt_cache[t_capture] = ground_truth
 
     _predict_queue.put((episode_id, data))
-
-    return jsonify({
-        "status":     "queued",
-        "episode_id": episode_id,
-    }), 200
+    return jsonify({"status": "queued", "episode_id": episode_id}), 200
 
 
 def _predict_worker():
@@ -616,7 +447,6 @@ def _predict_worker():
 def _process_predict(episode_id, data):
     import time
     try:
-
         image_list   = data.get('image_list', [])
         hint_user_id = data.get('userID', 'Unknown_User')
         activity     = data.get('activity', '')
@@ -625,18 +455,17 @@ def _process_predict(episode_id, data):
         source_nodes = data.get('source_nodes', [])
         room_name    = data.get('room_name', '')
         virtual_hour = data.get('virtual_hour')
+        t_capture    = data.get('t_capture', '')
 
         if not room_name and source_nodes:
-            first_node = source_nodes[0]
-            room_name  = (first_node.rsplit('_Cam', 1)[0]
-                          if '_Cam' in first_node else first_node)
+            first_node = source_nodes[0].split('_b')[0]
+            camIdx     = first_node.rfind('_Cam')
+            room_name  = first_node[:camIdx] if camIdx > 0 else first_node
 
         if not image_list:
-            print(f"[PredictWorker] image_list empty for {episode_id}")
             return
 
-        preview_images(
-            image_list, source_nodes, hint_user_id, activity)
+        preview_images(image_list, source_nodes, hint_user_id, activity)
 
         est_pos = None
         if user_pos_raw:
@@ -672,27 +501,37 @@ def _process_predict(episode_id, data):
         _wait_for_scene(max_wait=12.0)
 
         with _vlm_lock:
-            t0 = time.time()
+            t0     = time.time()
             result = perception.analyze_action_burst(data)
-            perception_res = result
             vlm_ms = int((time.time() - t0) * 1000)
 
-        _action    = result.get("spatial_action") or result.get("action", "Unknown")
-        _zone      = (result.get("zone_label") or
-                      result.get("zone_name") or "")
-        _user_id   = result.get("user", "") or result.get("user_id", "")
-        _user_pos  = result.get("user_pos") or {}
-        _exp_mode  = result.get("experiment_mode", "habit")
+        _user_id  = result.get("user", "") or result.get("user_id", "")
+        _user_pos = result.get("user_pos") or {}
+        _exp_mode = result.get("experiment_mode", "habit")
+
+        # 分析 VLM 投票熵
+        _activity_votes = [result.get("action", "")] if result.get("action") else []
+        _body_votes     = [result["result"].get("_body_position", "")]
+        _held_votes     = [result["result"].get("_held_object", "none")]
+        _entropy_info   = entropy_monitor.analyze(
+            _user_id, _activity_votes, _body_votes, _held_votes)
+
+        # 時序平滑
+        _raw_action = result.get("spatial_action") or result.get("action", "Unknown")
+        _confidence = result.get("sbert_sim", 0.5)
+        _action, _smooth_reason = temporal_smoother.smooth(
+            _user_id, _raw_action, _confidence)
+        if _smooth_reason:
+            print(f"[Temporal] {_user_id}: {_raw_action}→{_action} ({_smooth_reason})")
+
+        _zone = result.get("zone_label") or result.get("zone_name") or ""
 
         if _action and _action not in ("none", "", "Unknown") and _zone:
             habit_engine.record(
                 user_id           = _user_id,
                 action            = _action,
                 zone_name         = _zone,
-                pos               = [
-                    _user_pos.get("x", 0),
-                    _user_pos.get("z", 0),
-                ],
+                pos               = [_user_pos.get("x", 0), _user_pos.get("z", 0)],
                 virtual_hour      = result.get("virtual_hour", 12.0),
                 time_slot         = result.get("time_slot", ""),
                 interacting_items = result.get("items", []),
@@ -703,42 +542,22 @@ def _process_predict(episode_id, data):
                 experiment_mode   = _exp_mode,
             )
 
-        _spatial = result.get("spatial_action", "")
-        _manifold_action = (_spatial if _spatial and _spatial != "Unknown"
-                            else _action)
-        if (_manifold_action and
-                _manifold_action not in ("none", "", "Unknown") and
-                _exp_mode != "recognition"):
-            try:
-                manifold_engine.record_training_sample(
-                    user_id        = _user_id,
-                    current_action = _manifold_action,
-                    virtual_hour   = result.get("virtual_hour", 12.0),
-                    user_pos       = _user_pos,
-                    prev_action    = _manifold_action,
-                )
-                print(f"[Manifold] recorded: {_user_id} | {_manifold_action}")
-            except Exception as manifold_err:
-                print(f"[Manifold] error: {manifold_err}")
-
-        user_id         = perception_res["user"]
-        action          = perception_res["action"]
-        spatial_action  = perception_res.get("spatial_action", action)
-        upgrade_reason  = perception_res.get("upgrade_reason", "")
-        zone_label      = perception_res.get("zone_label", "")
-        detected_items  = perception_res.get("items", [])
-        all_items       = perception_res.get("all_items", [])
-        spatial_rels    = perception_res.get("spatial_relations",
-                          perception_res.get("spatial", []))
-        vlm_desc        = perception_res["result"].get(
-            "context", "Observed behavior.")
-        vlm_object      = perception_res["bound_instance"]
+        user_id        = result["user"]
+        action         = result["action"]
+        spatial_action = _action
+        upgrade_reason = result.get("upgrade_reason", "")
+        zone_label     = result.get("zone_label", "")
+        detected_items = result.get("items", [])
+        all_items      = result.get("all_items", [])
+        spatial_rels   = result.get("spatial_relations", [])
+        vlm_desc       = result["result"].get("context", "Observed behavior.")
+        vlm_object     = result["bound_instance"]
 
         print(f"[VLM] vlm={action} spatial={spatial_action} "
-              f"reason='{upgrade_reason}' | {vlm_ms}ms")
+              f"smooth={_smooth_reason or 'none'} "
+              f"entropy={_entropy_info['overall_entropy']:.2f} | {vlm_ms}ms")
 
         if action == "none":
-            print(f"[PredictWorker] no_action for {episode_id} | {user_id}")
             return
 
         final_bound_label = memory.bind_and_update(
@@ -758,23 +577,20 @@ def _process_predict(episode_id, data):
         mongo_id      = None
 
         if final_bound_label and "Unknown" not in final_bound_label:
-            furniture_doc = db.scene_snapshots.find_one(
-                {"label": final_bound_label})
+            furniture_doc = db.scene_snapshots.find_one({"label": final_bound_label})
             if furniture_doc:
                 furniture_pos = furniture_doc.get('pos')
                 mongo_id      = furniture_doc.get('_id')
 
             spatial_text = " ".join(
                 [f"{r['subject']} {r['relation']} {r['object']}"
-                 for r in spatial_rels]
-            ) if spatial_rels else ""
+                 for r in spatial_rels]) if spatial_rels else ""
 
             vector_memory.add_memory(
                 user_id           = user_id,
                 action            = spatial_action,
                 furniture_label   = final_bound_label,
-                vlm_description   = (
-                    f"{vlm_desc} {spatial_text}").strip(),
+                vlm_description   = f"{vlm_desc} {spatial_text}".strip(),
                 detected_items    = detected_items,
                 all_items         = all_items,
                 spatial_relations = spatial_rels,
@@ -782,31 +598,19 @@ def _process_predict(episode_id, data):
                 mongo_id          = mongo_id,
             )
 
-            scene_items       = [
-                i for i in all_items if i not in detected_items]
-            all_dynamic_items = list(set(detected_items + scene_items))
-            for item_label in all_dynamic_items:
-                dyn_doc = db.dynamic_objects.find_one(
-                    {"label": item_label.lower()})
+            for item_label in list(set(detected_items + all_items)):
+                dyn_doc = db.dynamic_objects.find_one({"label": item_label.lower()})
                 if dyn_doc:
                     vector_memory.upsert_dynamic_object(
                         label          = dyn_doc["label"],
                         room           = dyn_doc.get("room", room_name),
-                        last_seen_on   = dyn_doc.get(
-                            "last_seen_on", final_bound_label),
+                        last_seen_on   = dyn_doc.get("last_seen_on", final_bound_label),
                         spatial_rel    = dyn_doc.get("spatial_rel", "near"),
-                        furniture_pos  = dyn_doc.get(
-                            "furniture_pos", furniture_pos),
+                        furniture_pos  = dyn_doc.get("furniture_pos", furniture_pos),
                         seen_count     = dyn_doc.get("seen_count", 1),
                         interact_count = dyn_doc.get("interact_count", 0),
                         interacted_by  = dyn_doc.get("interacted_by", []),
                     )
-        else:
-            print("[Skip FAISS] bind failed")
-
-        intent_prediction = {
-            "trigger": False, "intent": "unknown", "confidence": 0.0}
-        has_proposal = False
 
         try:
             prev_doc = db.activity_sequences.find_one(
@@ -827,39 +631,44 @@ def _process_predict(episode_id, data):
             if intent_prediction.get("trigger"):
                 dynamic_results = vector_memory.search_dynamic(
                     spatial_action, top_k=5, user_filter=user_id)
-                proposal_result = proposal_engine.evaluate(
+                proposal_engine.evaluate(
                     user_id           = user_id,
                     intent_prediction = intent_prediction,
                     manifold_point_id = "",
                     user_pos          = est_pos,
                     dynamic_results   = dynamic_results,
                 )
-                has_proposal = proposal_result.get("has_proposal", False)
 
             habit_engine._check_and_update_skill(user_id)
 
-        except Exception as manifold_err:
-            print(f"[Manifold] non-critical error: {manifold_err}")
+        except Exception as e:
+            print(f"[Manifold] non-critical error: {e}")
+
+        # 用 t_capture 回溯真值，確保 eval_logs 對齊
+        with _gt_cache_lock:
+            actual_gt = _gt_cache.pop(t_capture, activity)
 
         db.eval_logs.update_one(
             {"episode_id": episode_id},
             {"$set": {
-                "episode_id":     episode_id,
-                "status":         "done",
-                "user":           result.get("user", ""),
-                "vlm_output":     result.get("action", "Unknown"),
-                "spatial_action": result.get("spatial_action", "Unknown"),
-                "ground_truth":   data.get("activity", ""),
-                "upgrade_reason": result.get("upgrade_reason", ""),
-                "zone_label":     result.get("zone_label", ""),
-                "sbert_sim":      result.get("sbert_sim", 0.0),
-                "vlm_ms":         vlm_ms,
-                "timestamp":      datetime.datetime.utcnow(),
+                "episode_id":      episode_id,
+                "status":          "done",
+                "user":            result.get("user", ""),
+                "vlm_output":      result.get("action", "Unknown"),
+                "spatial_action":  spatial_action,
+                "ground_truth":    actual_gt,
+                "upgrade_reason":  result.get("upgrade_reason", ""),
+                "zone_label":      result.get("zone_label", ""),
+                "sbert_sim":       result.get("sbert_sim", 0.0),
+                "entropy":         _entropy_info["overall_entropy"],
+                "smooth_reason":   _smooth_reason,
+                "t_capture":       t_capture,
+                "vlm_ms":          vlm_ms,
+                "timestamp":       datetime.datetime.utcnow(),
             }},
             upsert=True,
         )
-
-        print(f"[Predict] done | {user_id} | {action} → {spatial_action} | {vlm_ms}ms")
+        print(f"[Predict] done | {user_id} | {action} -> {spatial_action} | {vlm_ms}ms")
 
     except Exception as e:
         import traceback
@@ -882,9 +691,7 @@ def handle_scene():
             if not label:
                 continue
 
-            is_furniture = any(
-                kw in label for kw in BASE_FURNITURE_KEYWORDS)
-            if is_furniture:
+            if any(kw in label for kw in BASE_FURNITURE_KEYWORDS):
                 db.scene_snapshots.update_one(
                     {"label": label},
                     {"$set": {
@@ -917,6 +724,7 @@ def handle_scene():
         if docs:
             db.raw_objects.insert_many(docs)
 
+        scene_engine.build()
         print(f"[Scene] received {len(docs)} objects")
         return jsonify({"status": "Success", "received": len(docs)}), 200
 
@@ -981,10 +789,7 @@ def dynamic_sync():
                         "category":     category,
                     },
                     "$inc":         {"seen_count": 1},
-                    "$setOnInsert": {
-                        "first_seen":  now,
-                        "spatial_rel": "on",
-                    },
+                    "$setOnInsert": {"first_seen": now, "spatial_rel": "on"},
                 },
                 upsert=True,
             )
@@ -1006,8 +811,7 @@ def dynamic_sync():
         unity_labels = [
             obj.get('label', '').lower().strip()
             for obj in objects
-            if obj.get('source') == 'unity'
-            and obj.get('label', '').strip()
+            if obj.get('source') == 'unity' and obj.get('label', '').strip()
         ]
         if unity_labels:
             stale = db.dynamic_objects.delete_many({
@@ -1015,8 +819,7 @@ def dynamic_sync():
                 "label":  {"$nin": unity_labels},
             })
             if stale.deleted_count > 0:
-                print(f"[DynamicSync] Removed "
-                      f"{stale.deleted_count} stale objects")
+                print(f"[DynamicSync] Removed {stale.deleted_count} stale objects")
 
         print(f"[DynamicSync] {count} objects updated")
         return jsonify({"status": "Success", "updated": count}), 200
@@ -1033,6 +836,10 @@ def set_virtual_hour():
         data = request.get_json(force=True, silent=True) or {}
         hour = data.get('virtual_hour', -1)
         app.config['VIRTUAL_HOUR'] = float(hour)
+        db.system_config.update_one(
+            {"key": "virtual_hour"},
+            {"$set": {"value": float(hour)}},
+            upsert=True)
         return jsonify({"status": "ok", "virtual_hour": hour}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -1053,11 +860,9 @@ def exp_checkpoint():
             user_id    = request.args.get('user', 'User_Mom')
             action     = request.args.get('action', 'Drink')
 
-        obs = db.observation_logs.find_one(
-            {"user": user_id,
-             "action": {"$regex": action, "$options": "i"}},
-            sort=[("weight", -1)],
-        )
+        obs    = db.observation_logs.find_one(
+            {"user": user_id, "action": {"$regex": action, "$options": "i"}},
+            sort=[("weight", -1)])
         weight = obs["weight"] if obs else 0
 
         similarity = 0.0
@@ -1069,7 +874,7 @@ def exp_checkpoint():
         except Exception as fe:
             print(f"[Checkpoint] FAISS query skipped: {fe}")
 
-        checkpoint_doc = {
+        db["exp_checkpoint_logs"].insert_one({
             "experiment": experiment,
             "episode":    episode,
             "user_id":    user_id,
@@ -1077,8 +882,7 @@ def exp_checkpoint():
             "weight":     weight,
             "similarity": round(similarity, 4),
             "timestamp":  datetime.datetime.utcnow(),
-        }
-        db["exp_checkpoint_logs"].insert_one(checkpoint_doc)
+        })
 
         return jsonify({
             "status":     "ok",
@@ -1104,35 +908,16 @@ def query_habit():
         if not user_query:
             return jsonify({"error": "Empty query"}), 400
 
-        results = vector_memory.search_habit(
-            user_query, user_id=user_id, top_k=5)
+        results   = vector_memory.search_habit(user_query, user_id=user_id, top_k=5)
+        top_habit = vector_memory.get_top_habit(user_query, user_id=user_id, top_k=1)
 
-        for r in results:
-            if r.get('instance') and r['instance'] != 'Unknown_Area':
-                fresh = db.scene_snapshots.find_one(
-                    {"label": r['instance']})
-                if fresh:
-                    r['furniture_pos']     = fresh.get('pos')
-                    r['all_items']         = fresh.get('items', [])
-                    r['spatial_relations'] = fresh.get(
-                        'spatial_relations', [])
-
-        top_habit  = vector_memory.get_top_habit(
-            user_query, user_id=user_id, top_k=1)
         nav_target = None
         answer     = "I don't remember."
 
         if top_habit:
-            fresh_doc = db.scene_snapshots.find_one(
-                {"label": top_habit['instance']})
-            if fresh_doc:
-                nav_target = fresh_doc.get('pos')
-            else:
-                nav_target = top_habit.get('furniture_pos')
-
-            interact_str = (
-                ", ".join(top_habit.get('interacting_items', []))
-                or "nothing specific")
+            fresh_doc  = db.scene_snapshots.find_one({"label": top_habit['instance']})
+            nav_target = fresh_doc.get('pos') if fresh_doc else top_habit.get('furniture_pos')
+            interact_str = ", ".join(top_habit.get('interacting_items', [])) or "nothing specific"
             answer = (
                 f"Based on observations, "
                 f"{user_id or 'the user'} usually "
@@ -1144,8 +929,7 @@ def query_habit():
         elif results:
             best       = results[0]
             nav_target = best.get('furniture_pos')
-            answer = (f"I remember {best['user']} {best['action']} "
-                      f"near {best['instance']}.")
+            answer     = f"I remember {best['user']} {best['action']} near {best['instance']}."
 
         return jsonify({
             "status":           "Success",
@@ -1158,30 +942,6 @@ def query_habit():
     except Exception as e:
         import traceback
         print(f"[Query Error] {e}\n{traceback.format_exc()}")
-        return jsonify({"error": str(e)}), 500
-
-
-@app.route('/log_navigation', methods=['POST'])
-def log_navigation():
-    try:
-        data = request.get_json()
-        if not data:
-            return jsonify({"error": "No data"}), 400
-        db["navigation_logs"].insert_one({
-            "user_id":        data.get("user_id"),
-            "intent":         data.get("intent"),
-            "start_pos":      data.get("start_pos"),
-            "goal_pos":       data.get("goal_pos"),
-            "waypoints":      data.get("waypoints", []),
-            "waypoint_count": data.get("waypoint_count", 0),
-            "success":        data.get("success", False),
-            "fail_reason":    data.get("fail_reason", ""),
-            "total_time":     data.get("total_time", 0),
-            "total_distance": data.get("total_distance", 0),
-            "timestamp":      datetime.datetime.utcnow(),
-        })
-        return jsonify({"status": "Success"}), 200
-    except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 
@@ -1199,17 +959,32 @@ def interact():
             return jsonify({"error": "Empty query"}), 400
 
         result = interaction_engine.process(
-            query     = query,
-            user_id   = user_id,
-            robot_pos = robot_pos,
-            user_pos  = user_pos,
-            room      = room,
-        )
+            query=query, user_id=user_id,
+            robot_pos=robot_pos, user_pos=user_pos, room=room)
         return jsonify(result), 200
 
     except Exception as e:
         import traceback
         print(f"[Interact Error] {e}\n{traceback.format_exc()}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/interact/confirm', methods=['POST'])
+def interact_confirm():
+    try:
+        data       = request.get_json()
+        choice     = int(data.get('choice', 3))
+        nav_target = data.get('nav_target')
+        nav_label  = data.get('nav_label', '')
+        user_id    = data.get('userID', 'Unknown')
+        query      = data.get('query', '')
+        result     = interaction_engine.confirm(
+            choice=choice, nav_target=nav_target,
+            nav_label=nav_label, user_id=user_id, query=query)
+        return jsonify(result), 200
+    except Exception as e:
+        import traceback
+        print(f"[Confirm Error] {e}\n{traceback.format_exc()}")
         return jsonify({"error": str(e)}), 500
 
 
@@ -1236,11 +1011,8 @@ def service_response():
             return jsonify({"error": "proposal_id required"}), 400
 
         response = proposal_engine.handle_response(
-            proposal_id     = proposal_id,
-            user_id         = user_id,
-            result          = result,
-            manifold_engine = manifold_engine,
-        )
+            proposal_id=proposal_id, user_id=user_id,
+            result=result, manifold_engine=manifold_engine)
         return jsonify(response), 200
     except Exception as e:
         import traceback
@@ -1255,182 +1027,69 @@ def service_history():
         query     = {"user_id": user_id} if user_id else {}
         proposals = list(
             db.service_proposals.find(query, {"_id": 0})
-            .sort("created_at", -1).limit(50)
-        )
+            .sort("created_at", -1).limit(50))
         for p in proposals:
             for k in ["created_at", "responded_at"]:
                 if k in p and hasattr(p[k], "isoformat"):
                     p[k] = p[k].isoformat()
         stats = list(db.intent_stats.find(query, {"_id": 0}))
-        return jsonify({
-            "proposals":    proposals,
-            "intent_stats": stats,
-            "total":        len(proposals),
-        }), 200
+        return jsonify({"proposals": proposals, "intent_stats": stats,
+                        "total": len(proposals)}), 200
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-
-@app.route('/interact/confirm', methods=['POST'])
-def interact_confirm():
-    try:
-        data       = request.get_json()
-        choice     = int(data.get('choice', 3))
-        nav_target = data.get('nav_target')
-        nav_label  = data.get('nav_label', '')
-        user_id    = data.get('userID', 'Unknown')
-        query      = data.get('query', '')
-
-        result = interaction_engine.confirm(
-            choice     = choice,
-            nav_target = nav_target,
-            nav_label  = nav_label,
-            user_id    = user_id,
-            query      = query,
-        )
-        return jsonify(result), 200
-
-    except Exception as e:
-        import traceback
-        print(f"[Confirm Error] {e}\n{traceback.format_exc()}")
         return jsonify({"error": str(e)}), 500
 
 
 @app.route('/track_position', methods=['POST'])
 def track_position():
     try:
-        data = request.get_json()
-        if not data:
-            return jsonify({"error": "No data"}), 400
-
+        data      = request.get_json()
         user_id   = data.get("userID", "Unknown")
         x         = float(data.get("x", 0))
         z         = float(data.get("z", 0))
         room_name = data.get("room_name", "")
-
-        virtual_hour = app.config.get("VIRTUAL_HOUR", None)
-        if virtual_hour is not None and float(virtual_hour) < 0:
-            virtual_hour = None
-
-        est_pos = {"x": x, "z": z}
-
         db.user_positions.update_one(
             {"user_id": user_id},
-            {"$set": {
-                "user_id":    user_id,
-                "x":          x,
-                "z":          z,
-                "room":       room_name,
-                "updated_at": datetime.datetime.utcnow(),
-            }},
-            upsert=True,
-        )
-
+            {"$set": {"user_id": user_id, "x": x, "z": z,
+                      "room": room_name,
+                      "updated_at": datetime.datetime.utcnow()}},
+            upsert=True)
         return jsonify({"status": "ok"}), 200
-
     except Exception as e:
         import traceback
         print(f"[TrackPosition Error] {e}\n{traceback.format_exc()}")
         return jsonify({"error": str(e)}), 500
 
 
-@app.route('/saycan', methods=['POST'])
-def saycan():
-    """
-    Value-Mapped SayCan endpoint.
-    Say × Can_habit × Can_env × Can_skill → best_action + response.
-
-    Body:
-      query        : str   (user's natural language request)
-      userID       : str
-      virtual_hour : float (optional)
-      user_pos     : dict  {"x": ..., "z": ...} (optional)
-      prev_action  : str   (optional)
-    """
+@app.route('/log_navigation', methods=['POST'])
+def log_navigation():
     try:
-        data         = request.get_json()
-        query        = data.get("query", "")
-        user_id      = data.get("userID", "Unknown")
-        virtual_hour = data.get("virtual_hour", None)
-        user_pos_raw = data.get("user_pos", None)
-        prev_action  = data.get("prev_action", "Standing")
-
-        if not query:
-            return jsonify({"error": "query is required"}), 400
-
-        est_pos = None
-        if user_pos_raw:
-            est_pos = {
-                "x": float(user_pos_raw.get("x", 0)),
-                "z": float(user_pos_raw.get("z", 0)),
-            }
-
-        # Fallback: read latest user position from DB
-        if est_pos is None:
-            pos_doc = db.user_positions.find_one({"user_id": user_id})
-            if pos_doc:
-                est_pos = {
-                    "x": float(pos_doc.get("x", 0)),
-                    "z": float(pos_doc.get("z", 0)),
-                }
-
-        # Fallback: read virtual_hour from app config
-        if virtual_hour is None:
-            virtual_hour = app.config.get("VIRTUAL_HOUR", None)
-            if virtual_hour is not None and float(virtual_hour) < 0:
-                virtual_hour = None
-
-        result = saycan_engine.resolve_with_intent(
-            query        = query,
-            user_id      = user_id,
-            virtual_hour = virtual_hour,
-            user_pos     = est_pos,
-            prev_action  = prev_action,
-        )
-
-        intent = result.get("intent", "NEED")
-
-        # CHAT: delegate to standard LLM stream (caller should use
-        # /interact/stream instead)
-        if intent == "CHAT":
-            return jsonify({
-                "status":      "ok",
-                "intent":      "CHAT",
-                "best_action": None,
-                "explanation": "This is a chat message. "
-                               "Use /interact/stream for conversation.",
-            }), 200
-
-        return jsonify({
-            "status":       "ok",
-            "intent":       intent,
-            "best_action":  result.get("best_action"),
-            "best_score":   result.get("best_score", 0.0),
-            "explanation":  result.get("explanation"),
-            "nav_target":   result.get("nav_target"),
-            "nav_label":    result.get("nav_label"),
-            "final_scores": result.get("final_scores", {}),
-            "say_scores":   result.get("say_scores", {}),
-            "habit_probs":  result.get("habit_probs", {}),
-        }), 200
-
+        data = request.get_json()
+        if not data:
+            return jsonify({"error": "No data"}), 400
+        db["navigation_logs"].insert_one({
+            "user_id":        data.get("user_id"),
+            "intent":         data.get("intent"),
+            "start_pos":      data.get("start_pos"),
+            "goal_pos":       data.get("goal_pos"),
+            "waypoints":      data.get("waypoints", []),
+            "success":        data.get("success", False),
+            "total_time":     data.get("total_time", 0),
+            "total_distance": data.get("total_distance", 0),
+            "timestamp":      datetime.datetime.utcnow(),
+        })
+        return jsonify({"status": "Success"}), 200
     except Exception as e:
-        import traceback
-        print(f"[SayCan Error] {e}\n{traceback.format_exc()}")
         return jsonify({"error": str(e)}), 500
 
 
 @app.route('/manifold_status', methods=['GET'])
 def manifold_status():
     try:
-        users  = ["User_Mom", "User_Dad"]
         status = {}
-        for uid in users:
-            n_samples = manifold_engine.get_training_count(uid)
-            has_model = manifold_engine._get_model(uid) is not None
+        for uid in ["User_Mom", "User_Dad"]:
             status[uid] = {
-                "training_samples": n_samples,
-                "model_ready":      has_model,
+                "training_samples": manifold_engine.get_training_count(uid),
+                "model_ready":      manifold_engine._get_model(uid) is not None,
             }
         return jsonify({"status": "ok", "manifold": status}), 200
     except Exception as e:
@@ -1456,21 +1115,6 @@ def manifold_train():
         return jsonify({"error": str(e)}), 500
 
 
-from modules.interaction import InteractionEngine
-from modules.training_exporter import TrainingExporter
-# HabitLearner replaced by HabitEngine
-
-interaction_engine = InteractionEngine(
-    mongo_client  = mongo_client,
-    vector_memory = vector_memory,
-    ollama_url    = CONFIG.OLLAMA_URL,
-    model_name    = CONFIG.LLM_MODEL,
-)
-training_exporter = TrainingExporter(mongo_client)
-
-# habit_learner removed — using habit_engine
-
-
 @app.route('/habit_feedback', methods=['POST'])
 def habit_feedback():
     try:
@@ -1479,12 +1123,10 @@ def habit_feedback():
         result  = data.get("result", "")
         intent  = data.get("intent", "")
         item    = data.get("item", "")
-
         if result == "rejected":
             habit_engine.handle_rejection(user_id, intent, item)
         elif result == "accepted":
             habit_engine.handle_acceptance(user_id, intent, item)
-
         return jsonify({"status": "ok"}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -1503,8 +1145,50 @@ def habit_check():
         return jsonify({"error": str(e)}), 500
 
 
-_predict_worker_thread = threading.Thread(
-    target=_predict_worker, daemon=True)
+@app.route('/saycan', methods=['POST'])
+def saycan():
+    try:
+        data         = request.get_json()
+        query        = data.get("query", "")
+        user_id      = data.get("userID", "Unknown")
+        user_pos_raw = data.get("user_pos", None)
+
+        if not query:
+            return jsonify({"error": "query is required"}), 400
+
+        est_pos = None
+        if user_pos_raw:
+            est_pos = {"x": float(user_pos_raw.get("x", 0)),
+                       "z": float(user_pos_raw.get("z", 0))}
+
+        if est_pos is None:
+            pos_doc = db.user_positions.find_one({"user_id": user_id})
+            if pos_doc:
+                est_pos = {"x": float(pos_doc.get("x", 0)),
+                           "z": float(pos_doc.get("z", 0))}
+
+        result = interaction_engine.process(
+            query=query, user_id=user_id,
+            user_pos=est_pos, room="")
+
+        return jsonify({
+            "status":        "ok",
+            "intent":        result.get("intent_type", "need"),
+            "best_action":   result.get("recommendations", [{}])[0].get("label", ""),
+            "best_score":    result.get("confidence", 0.0),
+            "explanation":   result.get("answer", ""),
+            "nav_target":    result.get("nav_target"),
+            "nav_label":     result.get("nav_label"),
+            "saycan_scores": result.get("saycan_scores", {}),
+        }), 200
+
+    except Exception as e:
+        import traceback
+        print(f"[SayCan Error] {e}\n{traceback.format_exc()}")
+        return jsonify({"error": str(e)}), 500
+
+
+_predict_worker_thread = threading.Thread(target=_predict_worker, daemon=True)
 _predict_worker_thread.start()
 print("[Predict Queue] worker started")
 

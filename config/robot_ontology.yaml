@@ -24,6 +24,7 @@ exclusive_behaviours:
   - "Opening"
   - "Typing"
   - "Cleaning"
+  - "Watching"
 
 static_fixtures:
   - "sofa"
@@ -38,6 +39,9 @@ static_fixtures:
   - "toilet"
   - "shower"
   - "cabinet"
+  - "tv"
+  - "television"
+  - "monitor"
 
 high_affordance_furniture:
   - "tv"
@@ -89,19 +93,11 @@ label_normalize_map:
   water bottle:   "bottle"
   sofa:           "couch"
   settee:         "couch"
-  table:          "dining table"
-  kitchen table:  "dining table"
-  coffee table:   "dining table"
-  desk:           "dining table"
   frying pan:     "pan"
   cooking pan:    "pan"
   skillet:        "pan"
   broom:          "broom"
   sweep:          "broom"
-  table2:         "dining table"
-  chair1:         "chair"
-  chair2:         "chair"
-  chair3:         "chair"
   sofa side:      "couch"
   sofa side 2:    "couch"
   dad's bed:      "bed"
@@ -131,6 +127,7 @@ item_to_action:
   pan:        "Cooking"
   spatula:    "Cooking"
   remote:     "Watching"
+  tv:         "Watching"
 
 object_vocab:
   - "remote"
