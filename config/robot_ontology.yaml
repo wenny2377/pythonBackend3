@@ -142,6 +142,7 @@ object_vocab:
   - "glass"
   - "bottle"
   - "bowl"
+  - "saladbowl"
   - "fork"
   - "spoon"
   - "chopsticks"

@@ -1,0 +1,23 @@
+=================================================================
+Activity Recognition Accuracy Summary
+Generated: 2026-05-24 17:15
+=================================================================
+
+Total eval samples : 78
+VLM Only accuracy  : 23.1%
+Full System accuracy: 25.6%
+Improvement        : +2.6%
+
+Per-class accuracy (Full System):
+  Eating         :   0.0%  (0/14)
+  Drinking       :  50.0%  (8/16)
+  Cooking        :   0.0%  (0/12)
+  Opening        :   0.0%  (0/4)
+  Laying         :   0.0%  (0/8)
+  Watching       :   0.0%  (0/8)
+  Reading        :  33.3%  (2/6)
+  PhoneUse       : 100.0%  (10/10)
+
+Reasoning layer distribution:
+  VLM Direct          :   68 (87.2%)
+  Zone (L3c)          :   10 (12.8%)

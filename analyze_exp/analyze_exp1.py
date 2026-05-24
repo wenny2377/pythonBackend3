@@ -50,7 +50,7 @@ KEYWORD_HINTS = [
     ("pan", "Cooking"), ("stove", "Cooking"), ("spatula", "Cooking"),
     ("broom", "Cleaning"), ("sweeping", "Cleaning"),
     ("fridge", "Opening"), ("refrigerator", "Opening"),
-    ("bowl", "Eating"), ("fork", "Eating"), ("spoon", "Eating"),
+    ("bowl", "Eating"), ("fork", "Eating"), ("spoon", "Eating"),("saladbowl", "Eating"),
 ]
 
 SKIP_FIRST = {

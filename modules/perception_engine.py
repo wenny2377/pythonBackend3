@@ -13,7 +13,7 @@ import numpy as np
 import faiss
 
 from dataclasses import dataclass, field
-from collections import defaultdict
+from collections import defaultdict, Counter
 from pymongo import MongoClient, UpdateOne, ReturnDocument
 from sentence_transformers import SentenceTransformer
 
@@ -48,7 +48,7 @@ YOUR_OBJECTS = (
     set(_ontology.get("scene_objects", [])) |
     set(str(k).lower() for k in _ontology.get("item_to_action", {}).keys()) |
     {"remote", "remote control", "tv remote", "juice", "cola", "pan",
-     "broom", "mop", "spatula", "bowl", "cup", "bottle", "phone",
+     "broom", "mop", "spatula", "bowl", "saladbowl""cup", "bottle", "phone",
      "book", "laptop", "keyboard", "fork", "spoon", "plate", "food"}
 )
 
@@ -102,14 +102,18 @@ BULK_WRITE_INTERVAL   = float(_hp.get("bulk_write_interval", 30.0))
 L3_STANDARD_THRESHOLD = float(_hp.get("l3_standard_threshold", 0.40))
 HIGH_AFFORDANCE_L3_THRESHOLD = float(_hp.get("high_affordance_l3_threshold", 0.30))
 
+# held_object 補全的置信度閾值
+# 低於此值時，使用 zone prior 補全
+VLM_CONFIDENCE_THRESHOLD = float(_hp.get("vlm_confidence_threshold", 0.50))
+
 HIGH_AFFORDANCE_FURNITURE = set(_ontology.get("high_affordance_furniture", [
     "tv", "television", "stove", "oven", "refrigerator", "fridge",
     "keyboard", "monitor", "cabinet"
 ]))
 
-HELD_WEIGHT   = 0.7
-NEARBY_WEIGHT = 0.3
-SAYCАН_MIN_SCORE = 0.05
+HELD_WEIGHT      = 0.7
+NEARBY_WEIGHT    = 0.3
+SAYCАН_MIN_SCORE = 0.15
 
 
 def _get_time_slot(virtual_hour) -> str:
@@ -396,6 +400,7 @@ class PerceptionEngine:
         self.scene_sync      = None
         self.manifold_engine = None
 
+
     def _build_prototype_vecs(self):
         labels = list(VISION_PROTOTYPES.keys())
         texts  = [VISION_PROTOTYPES[l] for l in labels]
@@ -404,22 +409,36 @@ class PerceptionEngine:
                 texts, normalize_embeddings=True).astype("float32")
             self._proto_behavior_labels = labels
 
+    # ──────────────────────────────────────────────────────────
+    # 改動 1：_build_prompt
+    # 加入 scene context + body_orientation + confidence
+    # ──────────────────────────────────────────────────────────
     def _build_prompt(self, room_name, room_furniture, coord_label, coord_dist):
+        furniture_str = ", ".join(room_furniture[:5]) if room_furniture else "unknown"
+        nearby_str    = coord_label if coord_label else "unknown"
+
         return (
-            "You are a home robot camera. Observe the human carefully.\n"
-            "Output ONLY valid JSON. No markdown. No explanation.\n\n"
-            "{\n"
-            '  "activity": "Choose ONE: Eating/Drinking/SittingDrink/Cooking/Opening/'
-            'Laying/Watching/Reading/Cleaning/PhoneUse/Typing/PickingUp/PuttingDown/Standing/Walking",\n'
-            '  "body_position": "Choose ONE: standing/sitting/lying",\n'
-            '  "held_object": "Name ONE object held in hands or none"\n'
-            "}\n\n"
+            f"Scene: {room_name} room. "
+            f"Person is near {nearby_str}. "
+            f"Furniture visible: {furniture_str}.\n\n"
+            "Output ONLY valid JSON with these exact fields:\n"
+            '{"activity":"...","body_position":"...","body_orientation":"...","held_object":"...","confidence":0.0}\n\n'
             "Rules:\n"
-            "- held_object must be a single noun (cup/fork/phone/book/remote/broom/pan/bottle/none)\n"
-            "- If hands are empty output none\n"
-            "- Output ONLY the JSON object"
+            "- activity: ONE of Eating/Drinking/SittingDrink/Cooking/Opening/"
+            "Laying/Watching/Reading/Cleaning/PhoneUse/Typing/PickingUp/PuttingDown/Standing/Walking\n"
+            "- body_position: standing/sitting/lying\n"
+            "- body_orientation: facing_toward/facing_away/side\n"
+            "- held_object: name of object in hand, "
+            "or 'none' if hands clearly empty, "
+            "or 'unknown' if hands not visible\n"
+            "- confidence: 0.0=unsure, 1.0=certain\n"
+            "Output ONLY the JSON. No markdown."
         )
 
+    # ──────────────────────────────────────────────────────────
+    # 改動 2：_parse_vlm_output
+    # 解析 body_orientation + confidence + unknown
+    # ──────────────────────────────────────────────────────────
     def _parse_vlm_output(self, raw: str) -> dict:
         try:
             cleaned = re.sub(r'```(?:json)?\s*', '', raw).strip().rstrip('`')
@@ -430,21 +449,33 @@ class PerceptionEngine:
         except Exception:
             return {}
 
-        activity     = data.get("activity", "").strip()
-        body_position = data.get("body_position", "standing").strip().lower()
-        held_object  = data.get("held_object", "none").strip().lower()
+        activity         = data.get("activity", "").strip()
+        body_position    = data.get("body_position", "standing").strip().lower()
+        body_orientation = data.get("body_orientation", "facing_toward").strip().lower()
+        held_object      = data.get("held_object", "none").strip().lower()
+        confidence       = float(data.get("confidence", 0.5))
 
         if held_object in ("", "null", "nothing", "empty", "n/a"):
             held_object = "none"
 
+        # 標準化 body_orientation
+        if "away" in body_orientation:
+            body_orientation = "facing_away"
+        elif "side" in body_orientation or "lateral" in body_orientation:
+            body_orientation = "side"
+        else:
+            body_orientation = "facing_toward"
+
         return {
-            "activity":     activity,
-            "body_position": body_position,
-            "held_object":  held_object,
+            "activity":         activity,
+            "body_position":    body_position,
+            "body_orientation": body_orientation,
+            "held_object":      held_object,
+            "confidence":       min(max(confidence, 0.0), 1.0),
         }
 
     def _normalize_object(self, raw_obj: str) -> str:
-        if not raw_obj or raw_obj.lower() in ("none", "empty", ""):
+        if not raw_obj or raw_obj.lower() in ("none", "empty", "", "unknown"):
             return "none"
         raw_lower = raw_obj.lower().strip()
         for vocab_word in OBJECT_VOCAB:
@@ -462,16 +493,22 @@ class PerceptionEngine:
         return "none"
 
     def _get_nearby_objects(self, user_pos: dict, room_name: str) -> list:
+        """
+        查詢人附近的動態物件。
+        冷啟動時 dynamic_objects 為空，fallback 到 scene_snapshots（靜態家具）。
+        """
         if not user_pos:
             return []
         ux = float(user_pos.get("x", 0))
         uz = float(user_pos.get("z", 0))
+        nearby = []
+
+        # 方法 1：從 dynamic_objects 查詢（動態物件，即時更新）
         try:
             docs = list(self.col_dynamic.find(
                 {"room": {"$regex": room_name, "$options": "i"}} if room_name else {},
                 {"label": 1, "sensor_pos": 1, "furniture_pos": 1}
             ))
-            nearby = []
             for doc in docs:
                 pos = doc.get("sensor_pos") or doc.get("furniture_pos")
                 if not isinstance(pos, list) or len(pos) < 2:
@@ -481,9 +518,237 @@ class PerceptionEngine:
                     label = doc.get("label", "").lower().strip()
                     if label and label not in STRUCTURAL_BLACKLIST:
                         nearby.append(label)
-            return nearby
         except Exception:
-            return []
+            pass
+
+        # 方法 2：冷啟動 fallback → 從 scene_snapshots 查靜態家具
+        # 適用於實驗初期 dynamic_objects 尚未填充的情況
+        if not nearby:
+            try:
+                scene_docs = list(self.col_scene.find(
+                    {"room": {"$regex": room_name, "$options": "i"}}
+                    if room_name else {},
+                    {"label": 1, "pos": 1}
+                ))
+                for doc in scene_docs:
+                    pos = doc.get("pos")
+                    if not isinstance(pos, list) or len(pos) < 2:
+                        continue
+                    dist = math.sqrt((ux - pos[0]) ** 2 + (uz - pos[1]) ** 2)
+                    # 稍微放寬半徑，因為家具通常比動態物件大
+                    if dist <= NEARBY_OBJECT_RADIUS * 1.5:
+                        label = doc.get("label", "").lower().strip()
+                        if label and label not in STRUCTURAL_BLACKLIST:
+                            nearby.append(label)
+            except Exception:
+                pass
+
+        return nearby
+
+    # ──────────────────────────────────────────────────────────
+    # 改動 3：新增 _get_zone_prior()
+    # 從 observation_logs 動態計算行為先驗
+    # 學術依據：MLE from accumulated observations
+    # 冷啟動參考：Charades Dataset (Sigurdsson et al., ECCV 2016)
+    # ───────────────────────────────────────────────────────────
+
+    def _infer_held_from_disappeared_objects(
+            self, user_pos: dict, room_name: str,
+            disappeared_threshold_sec: float = 60.0,
+            user_id: str = "") -> str:
+        """
+        Layer 0：時序推理（物件消失推論）
+
+        當動態物件從最後已知位置消失超過 threshold 秒，
+        且使用者正好在那個家具附近，
+        推論使用者把它拿走了。
+
+        原理：Object Permanence — 物件不會憑空消失，
+        必定是被人移動了。
+
+        學術說明：
+        "Layer 0 applies object permanence reasoning:
+         when a dynamic object disappears from its last known
+         location within a temporal window, and the user is
+         spatially proximate to that location, the system
+         infers the user has picked up the object.
+         This provides held object estimation without
+         requiring direct visual detection."
+        """
+        if not user_pos:
+            return "none"
+
+        ux  = float(user_pos.get("x", 0))
+        uz  = float(user_pos.get("z", 0))
+        now = datetime.datetime.utcnow()
+
+        try:
+            held_doc = self.col_dynamic.find_one(
+                {"held_by": user_id} if user_id else {},
+                sort=[("interact_count", -1)]
+            ) if user_id else None
+            if held_doc:
+                label = held_doc.get("label", "")
+                if label and label not in STRUCTURAL_BLACKLIST:
+                    print(f"[Layer0] held_by: {label}")
+                    return label
+        except Exception:
+            pass
+
+        try:
+            cutoff = now - datetime.timedelta(
+                seconds=disappeared_threshold_sec)
+
+            query = {
+                "last_seen":    {"$lt": cutoff},
+                "last_seen_on": {
+                    "$exists": True,
+                    "$nin":    ["", "Unknown_Area"],
+                },
+            }
+            if room_name:
+                query["room"] = {
+                    "$regex": room_name, "$options": "i"}
+
+            candidates = list(self.col_dynamic.find(
+                query,
+                {"label": 1, "last_seen_on": 1,
+                 "interact_count": 1, "last_seen": 1}
+            ).sort("interact_count", -1).limit(10))
+
+            for obj in candidates:
+                furniture_label = obj.get("last_seen_on", "")
+                if not furniture_label:
+                    continue
+
+                # 查這個家具的座標
+                furniture_doc = self.col_scene.find_one(
+                    {"label": furniture_label}, {"pos": 1})
+                if not furniture_doc:
+                    continue
+
+                pos = furniture_doc.get("pos")
+                if not isinstance(pos, list) or len(pos) < 2:
+                    continue
+
+                # 人在這個家具附近嗎？
+                dist = math.sqrt(
+                    (ux - pos[0])**2 + (uz - pos[1])**2)
+
+                if dist <= 2.0:
+                    label = obj.get("label", "")
+                    if label and label not in STRUCTURAL_BLACKLIST:
+                        secs = (now - obj["last_seen"]).total_seconds()
+                        print(f"[Layer0] disappeared: {label} "
+                              f"({secs:.0f}s ago on {furniture_label},"
+                              f" person dist={dist:.2f}m)")
+                        return label
+
+        except Exception as e:
+            print(f"[Layer0] error: {e}")
+
+        return "none"
+
+    def _infer_held_object(self, nearest_furniture: str,
+                            zone_name: str,
+                            room_name: str,
+                            user_pos: dict = None,
+                            user_id: str = "") -> str:
+        """
+        四層防線動態物件推斷。
+        用於 VLM 輸出 held=none 或 held=unknown 時的補全。
+
+        Layer 0：時序推理（Object Permanence）
+            查 dynamic_objects.last_seen < threshold
+            → 物件消失 + 人在附近 → 推論人拿走了
+            → 學術說法：Temporal-spatial object permanence reasoning
+
+        Layer 1：動態環境快取（Dynamic Object Vocabulary）
+            查 dynamic_objects.last_seen_on = nearest_furniture
+            → 反映「此時此刻」家具旁邊有什麼物件
+            → 學術說法：Situation-aware real-time object inference
+
+        Layer 2：長時序觀測日誌（Empirical Observation Logs）
+            查 observation_logs 的 MLE
+            → 用戶歷史上在這個 Zone 最常拿什麼
+            → 學術說法：Long-term temporal memory with MLE
+
+        Layer 3：本體論常識反轉（Ontology-Driven Common Sense）
+            affinity_matrix(furniture→behavior) ×
+            item_to_action 反轉(behavior→objects)
+            → 冷啟動零樣本推理
+            → 學術說法：Zero-shot commonsense reasoning via ontology
+
+        參考：Charades Dataset (Sigurdsson et al., ECCV 2016)
+        """
+        # ── Layer 0：時序推理（物件消失推論）────────────────
+        if user_pos:
+            _disappeared = self._infer_held_from_disappeared_objects(
+                user_pos, room_name, user_id=user_id)
+            if _disappeared and _disappeared != "none":
+                return _disappeared
+
+        # ── Layer 1：動態環境快取 ─────────────────────────────
+        if nearest_furniture and nearest_furniture != "Unknown_Area":
+            try:
+                docs = list(self.col_dynamic.find(
+                    {"last_seen_on": nearest_furniture},
+                    {"label": 1, "interact_count": 1}
+                ).sort("interact_count", -1).limit(3))
+
+                if docs:
+                    label = docs[0].get("label", "")
+                    if label and label not in STRUCTURAL_BLACKLIST:
+                        print(f"[Layer1] dynamic: {nearest_furniture} → {label}")
+                        return label
+            except Exception as e:
+                print(f"[Layer1] error: {e}")
+
+        # ── Layer 2：長時序觀測日誌 MLE ──────────────────────
+        if zone_name:
+            try:
+                docs = list(self.col_obs.find(
+                    {"zone_name":         zone_name,
+                     "interacting_items": {"$exists": True, "$ne": []}},
+                    {"interacting_items": 1, "weight": 1}
+                ).sort("weight", -1).limit(10))
+
+                if docs:
+                    from collections import Counter
+                    item_counts = Counter()
+                    for doc in docs:
+                        for item in doc.get("interacting_items", []):
+                            item_counts[item] += doc.get("weight", 1)
+                    if item_counts:
+                        top1, top1_count = item_counts.most_common(1)[0]
+                        if top1_count >= 3:
+                            print(f"[Layer2] obs_log: {zone_name} → {top1}")
+                            return top1
+            except Exception as e:
+                print(f"[Layer2] error: {e}")
+
+        # ── Layer 3：本體論常識反轉（零樣本冷啟動）─────────
+        if nearest_furniture and nearest_furniture != "Unknown_Area":
+            try:
+                furn_key = nearest_furniture.lower().strip()
+                # 查這個家具的 affinity_matrix（最強行為）
+                action_scores = self._affinity_matrix.get(furn_key, {})
+                if action_scores:
+                    top_action = max(action_scores, key=action_scores.get)
+                    # 反轉 item_to_action：找這個行為對應的物件
+                    matched_items = [
+                        item for item, action in ITEM_TO_ACTION.items()
+                        if action == top_action
+                    ]
+                    if matched_items:
+                        result = matched_items[0]
+                        print(f"[Layer3] ontology: {furn_key}"
+                              f" → {top_action} → {result}")
+                        return result
+            except Exception as e:
+                print(f"[Layer3] error: {e}")
+
+        return "none"
 
     def _compute_p_l(self, obj_label: str, behavior: str) -> float:
         if not obj_label or obj_label == "none":
@@ -598,6 +863,82 @@ class PerceptionEngine:
         )
         return action_label, reason
 
+    def _layer3b5_proximity(self, user_pos: dict,
+                             room_name: str,
+                             body_position: str) -> tuple:
+        """
+        Layer 3b.5：家具距離推斷（Proximity-based Affordance）
+
+        當人在某個家具 INTERACTION_RADIUS 內，
+        直接用家具 affinity 推斷行為。
+        不依賴 Zone Graph，不依賴 VLM 看到物件。
+
+        典型案例：
+        - 人站在冰箱前 1m → Opening (affinity=0.85)
+        - 人站在爐灶前 1m → Cooking (affinity=0.90)
+        - 人站在電視前 1m → Watching (affinity=0.90)
+
+        學術說明：
+        "Proximity-based affordance inference: when the user
+         position is within the interaction radius of a furniture
+         item, the system infers behavior directly from the
+         furniture-behavior affinity score, bypassing visual
+         object detection entirely."
+        """
+        if not user_pos:
+            return None, ""
+
+        ux = float(user_pos.get("x", 0))
+        uz = float(user_pos.get("z", 0))
+
+        INTERACTION_RADIUS = 1.5  # Unity 單位
+        MIN_AFFINITY       = 0.40  # 最低 affinity 門檻
+
+        query = {"room": {"$regex": room_name, "$options": "i"}}                 if room_name else {}
+        docs = list(self.col_scene.find(
+            query, {"label": 1, "pos": 1}))
+        if not docs:
+            docs = list(self.col_scene.find(
+                {}, {"label": 1, "pos": 1}))
+
+        best_behavior = None
+        best_score    = MIN_AFFINITY
+        best_label    = ""
+        best_dist     = float("inf")
+
+        for doc in docs:
+            pos = doc.get("pos")
+            if not isinstance(pos, list) or len(pos) < 2:
+                continue
+            dist = math.sqrt(
+                (ux - pos[0])**2 + (uz - pos[1])**2)
+            if dist > INTERACTION_RADIUS:
+                continue
+
+            furn_label    = doc.get("label", "").lower().strip()
+            action_scores = self._affinity_matrix.get(furn_label, {})
+
+            for behavior, score in action_scores.items():
+                if behavior in NO_WEIGHT_ACTIONS:
+                    continue
+                if (body_position.lower(), behavior) in BODY_IMPOSSIBLE:
+                    continue
+                # 同距離時取 affinity 最高的
+                if score > best_score or (
+                        score == best_score and dist < best_dist):
+                    best_score    = score
+                    best_behavior = behavior
+                    best_label    = furn_label
+                    best_dist     = dist
+
+        if best_behavior:
+            reason = (f"L3b5_proximity:{best_label}"
+                      f"->{best_behavior}"
+                      f"(aff={best_score:.2f},dist={best_dist:.2f}m)")
+            return best_behavior, reason
+
+        return None, ""
+
     def _layer3c_zone_affinity(self, nearest_zone: dict,
                                 body_position: str) -> tuple:
         if not nearest_zone:
@@ -632,8 +973,8 @@ class PerceptionEngine:
     def _minimum_prior_defense(self, body_position: str) -> tuple:
         pos = body_position.lower().strip() if body_position else "standing"
         mapping = {
-            "lying":   "Laying",
-            "sitting": "SittingDrink",
+            "lying":    "Laying",
+            "sitting":  "SittingDrink",
             "standing": "Standing",
         }
         action = mapping.get(pos, "Standing")
@@ -651,6 +992,14 @@ class PerceptionEngine:
         nearby_objs = self._get_nearby_objects(user_pos, room_name)
         norm_held   = self._normalize_object(held_obj)
 
+        # Layer 3b5 first: proximity beats everything for fixed-function furniture
+        # Person within 1.5m of fridge -> Opening, stove -> Cooking, tv -> Watching
+        action, reason = self._layer3b5_proximity(
+            user_pos, room_name, body_position)
+        if action:
+            return action, reason, zone_label
+
+        # Layer 3a: SayCan (held_obj x affordance)
         action, reason, score = self._layer3a_saycан(
             norm_held, nearby_objs, body_position, nearest_zone)
 
@@ -788,6 +1137,10 @@ class PerceptionEngine:
                         continue
             return text
 
+    # ──────────────────────────────────────────────────────────
+    # 改動 5：analyze_action_burst
+    # 整合 body_orientation + confidence + held_object 補全邏輯
+    # ──────────────────────────────────────────────────────────
     def analyze_action_burst(self, payload: dict) -> dict:
         image_list   = payload.get("image_list", [])
         hint_user_id = payload.get("userID", "Unknown_User")
@@ -813,19 +1166,21 @@ class PerceptionEngine:
         prompt         = self._build_prompt(room_name, room_furniture, coord_label, coord_dist)
         sample_indices = self._select_sample_indices(image_list, node_scores)
 
-        user_votes   = []
-        parsed_list  = []
-        activity_votes = []
-        body_votes   = []
-        held_votes   = []
-        used_scores_list = []
+        user_votes        = []
+        parsed_list       = []
+        activity_votes    = []
+        body_votes        = []
+        held_votes        = []
+        orientation_votes = []
+        confidence_list   = []
+        used_scores_list  = []
 
         for idx in sample_indices:
             try:
-                img_b64    = image_list[idx]
-                uid        = self._get_user_id(img_b64, hint_user_id)
+                img_b64   = image_list[idx]
+                uid       = self._get_user_id(img_b64, hint_user_id)
                 user_votes.append(uid)
-                img_clean  = img_b64.split(',')[1] if ',' in img_b64 else img_b64
+                img_clean = img_b64.split(',')[1] if ',' in img_b64 else img_b64
                 resp = requests.post(
                     f"{self.url}/api/chat",
                     json={
@@ -840,21 +1195,23 @@ class PerceptionEngine:
                 parsed = self._parse_vlm_output(raw)
                 if parsed:
                     parsed_list.append(parsed)
-                    used_scores_list.append(node_scores[idx] if idx < len(node_scores) else 0.5)
+                    used_scores_list.append(
+                        node_scores[idx] if idx < len(node_scores) else 0.5)
                     if parsed.get("activity"):
                         activity_votes.append(parsed["activity"])
                     if parsed.get("body_position"):
                         body_votes.append(parsed["body_position"])
                     if parsed.get("held_object"):
                         held_votes.append(parsed["held_object"])
+                    if parsed.get("body_orientation"):
+                        orientation_votes.append(parsed["body_orientation"])
+                    confidence_list.append(parsed.get("confidence", 0.5))
             except Exception as e:
                 print(f"[Frame {idx}] error: {e}")
 
         if not parsed_list:
             return self._empty_result(
                 max(set(user_votes), key=user_votes.count) if user_votes else hint_user_id)
-
-        from collections import Counter, defaultdict
 
         def _weighted_vote(votes: list, scores: list, default: str = "") -> str:
             if not votes:
@@ -864,15 +1221,58 @@ class PerceptionEngine:
                 weights[v] += max(float(s), 0.1)
             return max(weights, key=weights.get)
 
-        final_user    = max(set(user_votes), key=user_votes.count) if user_votes else hint_user_id
-        activity_hint = _weighted_vote(activity_votes, used_scores_list, default="")
-        body_position = _weighted_vote(body_votes,     used_scores_list, default="standing")
-        held_object   = _weighted_vote(held_votes,     used_scores_list, default="none")
+        final_user       = max(set(user_votes), key=user_votes.count) \
+                           if user_votes else hint_user_id
+        activity_hint    = _weighted_vote(activity_votes, used_scores_list, default="")
+        body_position    = _weighted_vote(body_votes,     used_scores_list, default="standing")
+        held_object      = _weighted_vote(held_votes,     used_scores_list, default="none")
+        body_orientation = _weighted_vote(orientation_votes, used_scores_list,
+                                          default="facing_toward")
+        vlm_confidence   = float(sum(confidence_list) / max(len(confidence_list), 1))
 
         if held_object in ("", "null", "nothing", "empty", "n/a"):
             held_object = "none"
 
-        print(f"[VLM] activity={activity_hint} body={body_position} held={held_object}")
+        # ── held_object 補全邏輯 ──────────────────────────────
+        # 取得當前 zone（用於先驗查詢）
+        _nearest_zone_tmp = self.scene_engine.find_nearest_zone(user_pos, room_name)
+        _zone_name_tmp    = _nearest_zone_tmp["zone_name"] if _nearest_zone_tmp else ""
+
+        _infer_source = "vlm"
+
+        if body_orientation == "facing_away":
+            # 背對相機：降低 VLM 置信度
+            # 只有 VLM 說 none 或 unknown 時才啟動三層防線補全
+            vlm_confidence = vlm_confidence * 0.3
+            _infer_source  = "low_conf_facing_away"
+            if held_object in ("none", "unknown"):
+                _inferred = self._infer_held_object(
+                    nearest_furniture = coord_label,
+                    zone_name         = _zone_name_tmp,
+                    room_name         = room_name,
+                    user_pos          = user_pos,
+                    user_id           = final_user,
+                )
+                if _inferred and _inferred != "none":
+                    held_object   = _inferred
+                    _infer_source = "three_layer_facing_away"
+
+        elif held_object in ("none", "unknown") and                 vlm_confidence < VLM_CONFIDENCE_THRESHOLD:
+            # VLM 不確定（none 或 unknown）：啟動三層防線
+            _inferred = self._infer_held_object(
+                nearest_furniture = coord_label,
+                zone_name         = _zone_name_tmp,
+                room_name         = room_name,
+                user_pos          = user_pos,
+                user_id           = final_user,
+            )
+            if _inferred and _inferred != "none":
+                held_object   = _inferred
+                _infer_source = "three_layer_low_conf"
+
+        print(f"[VLM] activity={activity_hint} body={body_position} "
+              f"orient={body_orientation} held={held_object} "
+              f"conf={vlm_confidence:.2f} src={_infer_source}")
 
         spatial_action, upgrade_reason, zone_label = self._spatial_reasoning(
             activity_hint = activity_hint,
@@ -909,6 +1309,9 @@ class PerceptionEngine:
             "_coord_label":      coord_label,
             "_coord_dist":       round(coord_dist, 2) if coord_dist != float('inf') else None,
             "_confidence":       confidence,
+            "_vlm_confidence":   round(vlm_confidence, 3),
+            "_body_orientation": body_orientation,
+            "_infer_source":     _infer_source,
         }
 
         self._update_scene_snapshot(bound_doc, interacting_items, nearby_objs, [])
@@ -928,13 +1331,17 @@ class PerceptionEngine:
         log_action = spatial_action if spatial_action not in ("Unknown", "none", "") \
                      else activity_hint or "Unknown"
 
-        self._update_observation_log(
-            final_user, log_action, bound_doc,
-            interacting_items, [],
-            result["context"], virtual_hour, virtual_day,
-            ground_truth_activity=ground_truth_activity,
-            user_pos=user_pos,
-            room_name=room_name)
+        MIN_WRITE_CONFIDENCE = 0.40
+        if vlm_confidence >= MIN_WRITE_CONFIDENCE:
+            self._update_observation_log(
+                final_user, log_action, bound_doc,
+                interacting_items, [],
+                result["context"], virtual_hour, virtual_day,
+                ground_truth_activity=ground_truth_activity,
+                user_pos=user_pos,
+                room_name=room_name)
+        else:
+            print(f"[Gate] conf={vlm_confidence:.2f} < {MIN_WRITE_CONFIDENCE} skip obs_log")
 
         mem_doc  = self.col_memory.find_one(
             {"user": final_user, "action": log_action},
@@ -951,7 +1358,10 @@ class PerceptionEngine:
                 "upgrade_reason":    upgrade_reason,
                 "zone_label":        zone_label,
                 "body_position":     body_position,
+                "body_orientation":  body_orientation,
                 "held_object":       held_object,
+                "vlm_confidence":    round(vlm_confidence, 3),
+                "infer_source":      _infer_source,
                 "room_name":         room_name,
                 "user_pos":          user_pos,
                 "interacting_items": interacting_items,
@@ -966,7 +1376,8 @@ class PerceptionEngine:
                 _record_action not in NO_WEIGHT_ACTIONS and
                 _record_action != "Unknown" and
                 self.manifold_engine is not None and
-                _exp_mode != "recognition"):
+                _exp_mode != "recognition" and
+                vlm_confidence >= MIN_WRITE_CONFIDENCE):
             try:
                 self.manifold_engine.record_training_sample(
                     user_id        = final_user,
@@ -1038,7 +1449,7 @@ class PerceptionEngine:
             }
             if bound_pos:
                 base_set["furniture_pos"] = bound_pos
-            inc_ops   = {"seen_count": 1}
+            inc_ops = {"seen_count": 1}
             if is_interacting: inc_ops["interact_count"] = 1
             update_op = {
                 "$inc":         inc_ops,

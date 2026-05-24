@@ -12,7 +12,7 @@ BEHAVIOR_LABELS = [
 ]
 
 _FALLBACK_BEHAVIOR_TO_OBJECTS = {
-    "Eating":       ["food", "apple", "banana", "bowl", "plate", "fork", "spoon"],
+    "Eating":       ["food", "apple", "banana", "bowl", "plate", "fork", "spoon" ,"saladbowl"],
     "Drinking":     ["cup", "bottle", "juice", "cola", "water", "mug", "glass"],
     "SittingDrink": ["cup", "mug", "tea", "coffee", "bottle"],
     "Cooking":      ["pan", "pot", "stove", "spatula", "oven"],
@@ -452,7 +452,7 @@ class SayCanEngine:
             f"Allowed Actions: [{behavior_list}]\n"
             f"STRICT CONSTRAINT: Only use objects from: [{object_list_str}]\n\n"
             f"Output ONLY valid JSON. No explanations.\n"
-            f"Example: {{\"Eating\": [\"bowl\", \"fork\"], \"Watching\": [\"remote\"]}}"
+            f"Example: {{\"Eating\": [\"bowl\", \"fork\" ,\"saladbowl\"], \"Watching\": [\"remote\"]}}"
         )
         try:
             resp = requests.post(

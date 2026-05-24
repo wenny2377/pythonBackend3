@@ -17,7 +17,7 @@ OBJECT_CATEGORIES = {
     "food": {
         "banana", "apple", "sandwich", "orange", "broccoli",
         "carrot", "hot dog", "pizza", "donut", "cake",
-        "bowl", "plate",
+        "bowl","saladbowl", "plate",
     },
     "drink": {
         "bottle", "wine glass", "cup", "juice", "cola",

@@ -187,8 +187,14 @@ def _wait_for_scene(max_wait: float = 12.0, poll: float = 1.0):
         waited += poll
 
 
+_FURNITURE_BLACKLIST = {
+    "floor", "ceiling", "wall", "ground", "wooden floor",
+    "tile floor", "carpet", "concrete floor", "baseboard",
+    "white wall", "window", "door",
+}
+
 def _find_nearest_furniture(x: float, z: float,
-                             room: str, max_dist: float = 1.5) -> str:
+                             room: str, max_dist: float = 3.0) -> str:
     query = {}
     if room:
         query["room"] = {"$regex": room, "$options": "i"}
@@ -196,10 +202,13 @@ def _find_nearest_furniture(x: float, z: float,
     if not furniture_docs:
         furniture_docs = list(db.scene_snapshots.find({}, {"label": 1, "pos": 1}))
 
-    best_label = "floor"
+    best_label = "Unknown_Area"
     best_dist  = float("inf")
 
     for doc in furniture_docs:
+        label = doc.get("label", "").lower().strip()
+        if label in _FURNITURE_BLACKLIST:
+            continue
         pos = doc.get("pos")
         if not isinstance(pos, list) or len(pos) < 2:
             continue
@@ -208,7 +217,7 @@ def _find_nearest_furniture(x: float, z: float,
             best_dist  = dist
             best_label = doc["label"]
 
-    return best_label if best_dist <= max_dist else "floor"
+    return best_label if best_dist <= max_dist else "Unknown_Area"
 
 
 def _get_category_for_label(label: str) -> str:
@@ -820,20 +829,27 @@ def dynamic_sync():
             x        = float(position[0])
             z        = float(position[1])
 
+            held_by      = obj.get('held_by', '')
             last_seen_on = _find_nearest_furniture(x, z, room)
             category     = _get_category_for_label(label)
+
+            set_fields = {
+                "room":         room,
+                "sensor_pos":   position,
+                "last_seen":    now,
+                "source":       source,
+                "category":     category,
+            }
+            if held_by:
+                set_fields["held_by"]  = held_by
+            else:
+                set_fields["held_by"]  = ""
+                set_fields["last_seen_on"] = last_seen_on
 
             db.dynamic_objects.update_one(
                 {"label": label},
                 {
-                    "$set": {
-                        "room":         room,
-                        "sensor_pos":   position,
-                        "last_seen":    now,
-                        "last_seen_on": last_seen_on,
-                        "source":       source,
-                        "category":     category,
-                    },
+                    "$set": set_fields,
                     "$inc":         {"seen_count": 1},
                     "$setOnInsert": {"first_seen": now, "spatial_rel": "on"},
                 },
