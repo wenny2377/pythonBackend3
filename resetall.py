@@ -1,14 +1,3 @@
-"""
-resetall.py
-Complete reset for RobotBrain experiments.
-
-Usage:
-  python3 resetall.py                        # full reset
-  python3 resetall.py --keep-scene           # keep furniture positions
-  python3 resetall.py --keep-affinity        # keep affinity matrix
-  python3 resetall.py --keep-scene --keep-affinity
-"""
-
 import os
 import shutil
 import argparse
@@ -22,10 +11,8 @@ CLEAN_SKILL_TEMPLATE = """# {user_id} Skill Profile
 *Version 1 | Updated: {date}*
 
 ## Behavior Patterns
-<!-- Observed: action + location + frequency only -->
 
 ## Preferences
-<!-- No confirmed preferences yet -->
 
 ## How to Handle Requests
 - Check object availability before recommending
@@ -39,45 +26,32 @@ CLEAN_SKILL_TEMPLATE = """# {user_id} Skill Profile
 SKILL_USERS = ["User_Mom", "User_Dad"]
 
 COLLECTIONS_TO_CLEAR = [
-    # 舊版資料（必須清除）
     "robot_memory",
-    # Evaluation
     "eval_logs",
     "exp_checkpoint_logs",
     "exp_checkpoints",
-    # Habit learning（新版）
     "observation_logs",
     "habit_snapshots",
     "activity_sequences",
-    # Manifold
     "manifold_training_data",
     "manifold_points",
-    # Affinity（動態部分）
     "affinity_history",
     "user_spatial_affinity",
-    # Scene
     "dynamic_objects",
     "raw_objects",
     "scene_snapshots",
-    # Memory
     "semantic_memories",
     "conversation_logs",
     "behavior_clusters",
-    # Service
     "service_proposals",
     "service_results",
     "intent_stats",
-    # Skill chunks
     "skill_chunks",
     "episodic_summaries",
-    # SayCan
     "saycan_logs",
     "saycan_behavior_objects",
-    # Navigation
     "navigation_logs",
     "user_positions",
-    # SayCan behavior objects（讓系統重新蒸餾）
-    "saycan_behavior_objects",
 ]
 
 AFFINITY_COLLECTIONS = ["affinity_matrix"]
@@ -86,7 +60,6 @@ FAISS_FILES = [
     "robot_memory.index",   "robot_memory_meta.json",
     "dynamic_memory.index", "dynamic_memory_meta.json",
     "skill_chunks.index",   "skill_chunks_meta.json",
-    # 新版 FAISS 路徑
     "faiss_habit.index",    "faiss_habit_meta.json",
     "faiss_dynamic.index",  "faiss_dynamic_meta.json",
 ]
@@ -96,10 +69,8 @@ MANIFOLD_MODEL_DIR = "manifold_models"
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--keep-scene",    action="store_true",
-                        help="Keep scene_snapshots (furniture positions)")
-    parser.add_argument("--keep-affinity", action="store_true",
-                        help="Keep affinity_matrix (saves ~60s rebuild)")
+    parser.add_argument("--keep-scene",    action="store_true")
+    parser.add_argument("--keep-affinity", action="store_true")
     args = parser.parse_args()
 
     client = MongoClient(MONGO_URI)
@@ -157,7 +128,6 @@ def main():
             os.remove(path)
             print(f"  removed {path}")
         else:
-            # 也檢查 data/ 子目錄
             alt = os.path.join("data", path)
             if os.path.exists(alt):
                 os.remove(alt)

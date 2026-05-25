@@ -1,0 +1,165 @@
+[
+  {
+    "faiss_idx": 0,
+    "user": "User_Mom",
+    "action": "Cooking",
+    "instance": "Cooking_Zone",
+    "interacting_items": [],
+    "all_items": [],
+    "spatial_relations": [],
+    "furniture_pos": null,
+    "mongo_id": null,
+    "description": "User_Mom Morning Kitchen Cooking near Cooking_Zone with",
+    "memory_text": "User_Mom Cooking near Cooking_Zone with nothing. User_Mom Morning Kitchen Cooking near Cooking_Zone with",
+    "timestamp": "2026-05-25T17:25:23.823937"
+  },
+  {
+    "faiss_idx": 1,
+    "user": "User_Mom",
+    "action": "Cooking",
+    "instance": "stove",
+    "interacting_items": [],
+    "all_items": [],
+    "spatial_relations": [],
+    "furniture_pos": [
+      6.161,
+      3.553
+    ],
+    "mongo_id": "6a141572ecdf3019a2c3045f",
+    "description": "User_Mom Cooking near Unknown_Area",
+    "memory_text": "User_Mom Cooking near stove with nothing. User_Mom Cooking near Unknown_Area",
+    "timestamp": "2026-05-25T17:25:23.832423"
+  },
+  {
+    "faiss_idx": 2,
+    "user": "User_Dad",
+    "action": "Watching",
+    "instance": "Watching_Zone_3",
+    "interacting_items": [],
+    "all_items": [],
+    "spatial_relations": [],
+    "furniture_pos": null,
+    "mongo_id": null,
+    "description": "User_Dad Morning LivingRoom Watching near Watching_Zone_3 with",
+    "memory_text": "User_Dad Watching near Watching_Zone_3 with nothing. User_Dad Morning LivingRoom Watching near Watching_Zone_3 with",
+    "timestamp": "2026-05-25T17:25:49.684793"
+  },
+  {
+    "faiss_idx": 3,
+    "user": "User_Dad",
+    "action": "Watching",
+    "instance": "sofa side 2",
+    "interacting_items": [],
+    "all_items": [],
+    "spatial_relations": [],
+    "furniture_pos": [
+      3.746,
+      1.096
+    ],
+    "mongo_id": "6a141572ecdf3019a2c30467",
+    "description": "User_Dad Watching near Unknown_Area",
+    "memory_text": "User_Dad Watching near sofa side 2 with nothing. User_Dad Watching near Unknown_Area",
+    "timestamp": "2026-05-25T17:25:49.693243"
+  },
+  {
+    "faiss_idx": 4,
+    "user": "User_Dad",
+    "action": "SittingDrink",
+    "instance": "Cooking_Zone",
+    "interacting_items": [
+      "cup"
+    ],
+    "all_items": [
+      "cup"
+    ],
+    "spatial_relations": [],
+    "furniture_pos": null,
+    "mongo_id": null,
+    "description": "User_Dad Morning Kitchen SittingDrink near Cooking_Zone with cup",
+    "memory_text": "User_Dad SittingDrink near Cooking_Zone with cup. User_Dad Morning Kitchen SittingDrink near Cooking_Zone with cup",
+    "timestamp": "2026-05-25T17:25:57.574265"
+  },
+  {
+    "faiss_idx": 5,
+    "user": "User_Dad",
+    "action": "SittingDrink",
+    "instance": "stove",
+    "interacting_items": [
+      "cup"
+    ],
+    "all_items": [
+      "cup"
+    ],
+    "spatial_relations": [],
+    "furniture_pos": [
+      6.161,
+      3.553
+    ],
+    "mongo_id": "6a141572ecdf3019a2c3045f",
+    "description": "User_Dad SittingDrink near Unknown_Area",
+    "memory_text": "User_Dad SittingDrink near stove with cup. User_Dad SittingDrink near Unknown_Area",
+    "timestamp": "2026-05-25T17:25:57.581947"
+  },
+  {
+    "faiss_idx": 6,
+    "user": "User_Dad",
+    "action": "Cooking",
+    "instance": "Cooking_Zone",
+    "interacting_items": [],
+    "all_items": [],
+    "spatial_relations": [],
+    "furniture_pos": null,
+    "mongo_id": null,
+    "description": "User_Dad Morning Kitchen Cooking near Cooking_Zone with",
+    "memory_text": "User_Dad Cooking near Cooking_Zone with nothing. User_Dad Morning Kitchen Cooking near Cooking_Zone with",
+    "timestamp": "2026-05-25T17:26:01.023148"
+  },
+  {
+    "faiss_idx": 7,
+    "user": "User_Dad",
+    "action": "Cooking",
+    "instance": "stove",
+    "interacting_items": [],
+    "all_items": [],
+    "spatial_relations": [],
+    "furniture_pos": [
+      6.161,
+      3.553
+    ],
+    "mongo_id": "6a141572ecdf3019a2c3045f",
+    "description": "User_Dad Cooking near Unknown_Area",
+    "memory_text": "User_Dad Cooking near stove with nothing. User_Dad Cooking near Unknown_Area",
+    "timestamp": "2026-05-25T17:26:01.031256"
+  },
+  {
+    "faiss_idx": 8,
+    "user": "User_Mom",
+    "action": "Watching",
+    "instance": "Watching_Zone_3",
+    "interacting_items": [],
+    "all_items": [],
+    "spatial_relations": [],
+    "furniture_pos": null,
+    "mongo_id": null,
+    "description": "User_Mom Morning LivingRoom Watching near Watching_Zone_3 with",
+    "memory_text": "User_Mom Watching near Watching_Zone_3 with nothing. User_Mom Morning LivingRoom Watching near Watching_Zone_3 with",
+    "timestamp": "2026-05-25T17:26:18.763149"
+  },
+  {
+    "faiss_idx": 9,
+    "user": "User_Mom",
+    "action": "Watching",
+    "instance": "sofa side 2",
+    "interacting_items": [],
+    "all_items": [],
+    "spatial_relations": [],
+    "furniture_pos": [
+      3.746,
+      1.096
+    ],
+    "mongo_id": "6a141572ecdf3019a2c30467",
+    "description": "User_Mom Watching near Unknown_Area",
+    "memory_text": "User_Mom Watching near sofa side 2 with nothing. User_Mom Watching near Unknown_Area",
+    "timestamp": "2026-05-25T17:26:18.770299"
+  }
+]

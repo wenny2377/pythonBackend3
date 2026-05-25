@@ -10,6 +10,25 @@ import numpy as np
 from pymongo import MongoClient
 
 
+AFFORDANCE_DESCRIPTIONS = {
+    "Eating":       "dining table or chair where person eats food with fork spoon or chopsticks",
+    "Drinking":     "sink or table where person drinks water juice or beverage from cup or bottle",
+    "SittingDrink": "sofa or couch where person sits relaxing and drinks coffee tea or beverage",
+    "Cooking":      "stove or oven where person cooks food using pan pot or spatula",
+    "Opening":      "refrigerator fridge or cabinet door that person opens to get items",
+    "Laying":       "bed or sofa where person lies down to sleep or rest horizontally",
+    "Watching":     "television sofa or couch where person watches screen or tv",
+    "Reading":      "bed desk or sofa where person reads book magazine or document",
+    "Cleaning":     "floor sink or surface where person cleans using broom mop or cloth",
+    "PhoneUse":     "sofa bed or chair where person uses smartphone or makes phone call",
+    "Typing":       "desk keyboard or monitor where person types on computer or laptop",
+    "PickingUp":    "floor or table where person bends down to pick up an object",
+    "PuttingDown":  "table shelf or surface where person sets down or places an object",
+    "Standing":     "open area hallway or room where person stands still doing nothing",
+    "Walking":      "hallway corridor or open floor where person walks or moves around",
+}
+
+
 class SceneEngine:
 
     def __init__(self, db, ollama_url: str, sbert_model,
@@ -42,13 +61,15 @@ class SceneEngine:
         self._retry_interval   = hp.get("scene_retry_interval", 5.0)
         self._retry_max        = hp.get("scene_retry_max",   60)
 
-        self.zone_graph       = []
-        self._affinity_matrix = {}
-        self._ready           = False
-        self._lock            = threading.Lock()
+        self.zone_graph         = []
+        self._affinity_matrix   = {}
+        self._ready             = False
+        self._lock              = threading.Lock()
 
-        self._proto_vecs   = None
-        self._proto_labels = None
+        self._proto_vecs        = None
+        self._proto_labels      = None
+        self._affordance_vecs   = None
+        self._affordance_labels = None
         self._build_proto_vecs()
 
         self._load_affinity_matrix()
@@ -62,8 +83,7 @@ class SceneEngine:
         return self._ready
 
     def build(self):
-        if not self._affinity_matrix:
-            self._distill_affinity_matrix()
+        self._distill_affinity_matrix()
         self._discover_zones()
 
     def find_nearest_zone(self, user_pos: dict, room_name: str = "") -> dict | None:
@@ -95,8 +115,25 @@ class SceneEngine:
             self._proto_labels,
             normalize_embeddings=True).astype("float32")
 
+        aff_labels = []
+        aff_texts  = []
+        for b in self.behavior_labels:
+            desc = AFFORDANCE_DESCRIPTIONS.get(b, b)
+            aff_labels.append(b)
+            aff_texts.append(desc)
+
+        self._affordance_labels = aff_labels
+        self._affordance_vecs   = self.sbert.encode(
+            aff_texts,
+            normalize_embeddings=True).astype("float32")
+
+        print(f"[SceneEngine] Built affordance vecs for {len(aff_labels)} behaviors")
+
     def _get_proto_vecs(self):
         return self._proto_vecs
+
+    def _get_affordance_vecs(self):
+        return self._affordance_vecs
 
     def _retry_loop(self):
         print(f"[SceneEngine] Retry loop started ({self._retry_interval}s interval)")
@@ -106,8 +143,7 @@ class SceneEngine:
             if count > 0:
                 print(f"[SceneEngine] Retry {attempt+1}: "
                       f"{count} docs found, building...")
-                if not self._affinity_matrix:
-                    self._distill_affinity_matrix()
+                self._distill_affinity_matrix()
                 self._discover_zones()
                 if self._ready:
                     return
@@ -117,7 +153,7 @@ class SceneEngine:
         docs = list(self.col_affinity.find({}))
         if docs:
             for doc in docs:
-                furn   = doc.get("furniture", "")
+                furn   = doc.get("furniture", "").lower().strip()
                 action = doc.get("behavior") or doc.get("action", "")
                 score  = doc.get("score") or doc.get("affinity", 0.0)
                 if not furn or not action:
@@ -127,7 +163,8 @@ class SceneEngine:
                 self._affinity_matrix[furn][action] = float(score)
             print(f"[Affinity] Loaded {len(docs)} entries from MongoDB")
         else:
-            print("[Affinity] No affinity_matrix found, will distill after zones ready")
+            print("[Affinity] No affinity_matrix found, building from scratch")
+            self._distill_affinity_matrix()
 
     def _builtin_affinity_fallback(self, furniture_list: list) -> dict:
         BASE = {
@@ -136,45 +173,45 @@ class SceneEngine:
             "monitor":      {"Typing":0.90,   "Reading":0.07, "PhoneUse":0.03},
             "keyboard":     {"Typing":0.95,   "Reading":0.05},
             "desk":         {"Typing":0.70,   "Reading":0.20, "PhoneUse":0.10},
-            "stove":        {"Cooking":0.90,  "Cleaning":0.05, "Eating":0.05},
+            "stove":        {"Cooking":0.95,  "Cleaning":0.03, "Eating":0.02},
             "refrigerator": {"Opening":0.85,  "Cooking":0.10, "Drinking":0.05},
             "fridge":       {"Opening":0.85,  "Cooking":0.10, "Drinking":0.05},
             "cabinet":      {"Opening":0.60,  "Cleaning":0.20, "Cooking":0.10, "Eating":0.10},
             "cabinet2":     {"Opening":0.60,  "Cleaning":0.20, "Cooking":0.10, "Eating":0.10},
-            "sofa":         {"Watching":0.40, "Laying":0.30, "Reading":0.15,
+            "sofa":         {"Watching":0.90, "Laying":0.30, "Reading":0.15,
                              "SittingDrink":0.10, "PhoneUse":0.05},
-            "couch":        {"Watching":0.40, "Laying":0.30, "Reading":0.15,
+            "couch":        {"Watching":0.90, "Laying":0.30, "Reading":0.15,
                              "SittingDrink":0.10, "PhoneUse":0.05},
-            "sofa side":    {"Watching":0.40, "Laying":0.30,
+            "sofa side":    {"Watching":0.70, "Laying":0.30,
                              "SittingDrink":0.20, "PhoneUse":0.10},
-            "sofa side 2":  {"Watching":0.40, "Laying":0.30,
+            "sofa side 2":  {"Watching":0.70, "Laying":0.30,
                              "SittingDrink":0.20, "PhoneUse":0.10},
             "bed":          {"Laying":0.60,   "Reading":0.30, "PhoneUse":0.10},
             "dad's bed":    {"Laying":0.60,   "Reading":0.30, "PhoneUse":0.10},
-            "dining table": {"Eating":0.40,   "SittingDrink":0.35,
-                             "Cooking":0.15,  "Drinking":0.10},
-            "table":        {"Eating":0.40,   "SittingDrink":0.35,
-                             "Cooking":0.15,  "Drinking":0.10},
-            "table2":       {"Eating":0.40,   "SittingDrink":0.35,
-                             "Cooking":0.15,  "Drinking":0.10},
+            "dining table": {"Eating":0.70,   "SittingDrink":0.20,
+                             "Cooking":0.05,  "Drinking":0.05},
+            "table":        {"Eating":0.70,   "SittingDrink":0.20,
+                             "Cooking":0.05,  "Drinking":0.05},
+            "table2":       {"Eating":0.70,   "SittingDrink":0.20,
+                             "Cooking":0.05,  "Drinking":0.05},
             "sink":         {"Drinking":0.40, "Cooking":0.35, "Cleaning":0.25},
             "toilet":       {"Cleaning":0.60, "Standing":0.40},
-            "chair":        {"Eating":0.35,   "SittingDrink":0.35,
+            "chair":        {"Eating":0.55,   "SittingDrink":0.35,
                              "Typing":0.20,   "Reading":0.10},
-            "chair1":       {"Eating":0.35,   "SittingDrink":0.35,
+            "chair1":       {"Eating":0.55,   "SittingDrink":0.35,
                              "Typing":0.20,   "Reading":0.10},
-            "chair2":       {"Eating":0.35,   "SittingDrink":0.35,
+            "chair2":       {"Eating":0.55,   "SittingDrink":0.35,
                              "Typing":0.20,   "Reading":0.10},
-            "chair3":       {"Eating":0.35,   "SittingDrink":0.35,
+            "chair3":       {"Eating":0.55,   "SittingDrink":0.35,
                              "Typing":0.20,   "Reading":0.10},
         }
         result = {}
         for furn in furniture_list:
             key = furn.lower().strip()
             if key in BASE:
-                result[furn] = BASE[key]
+                result[key] = BASE[key]
             else:
-                result[furn] = {
+                result[key] = {
                     "Eating":0.15, "Watching":0.15, "Laying":0.15,
                     "Typing":0.10, "Reading":0.10,  "Cleaning":0.10,
                     "Drinking":0.10, "Cooking":0.10, "SittingDrink":0.05,
@@ -187,41 +224,43 @@ class SceneEngine:
         furniture_list = list({
             doc["label"] for doc in all_docs if doc.get("label")
         })
-        behavior_list = self.behavior_labels
+        if not furniture_list:
+            print("[Affinity] No furniture in scene_snapshots, using empty matrix")
+            return
 
-        print(f"[Affinity] Computing via SBERT "
+        behavior_list    = self.behavior_labels
+        affordance_vecs  = self._get_affordance_vecs()
+
+        print(f"[Affinity] Computing via SBERT affordance descriptions "
               f"({len(furniture_list)} furniture x {len(behavior_list)} behaviors)...")
 
-        proto_vecs = self._get_proto_vecs()
         all_matrix = {}
 
         for furn in furniture_list:
+            key      = furn.lower().strip()
             furn_vec = self.sbert.encode(
                 [furn], normalize_embeddings=True)[0].astype("float32")
-            sims   = proto_vecs @ furn_vec
+            sims   = affordance_vecs @ furn_vec
             scores = {}
             for i, beh in enumerate(behavior_list):
                 scores[beh] = round(float(max(0.0, sims[i])), 3)
-            all_matrix[furn] = scores
+            all_matrix[key] = scores
 
-        if not all_matrix:
-            print("[Affinity] SBERT produced no data — using built-in fallback")
-            all_matrix = self._builtin_affinity_fallback(furniture_list)
-        else:
-            fallback = self._builtin_affinity_fallback(furniture_list)
-            for furn in furniture_list:
-                key = furn.lower().strip()
-                if key in fallback:
-                    for beh, score in fallback[furn].items():
-                        all_matrix[furn][beh] = score
-            print(f"[Affinity] Merged SBERT + cold-start prior")
+        fallback = self._builtin_affinity_fallback(furniture_list)
+        for key, beh_scores in fallback.items():
+            if key not in all_matrix:
+                all_matrix[key] = beh_scores
+            else:
+                for beh, score in beh_scores.items():
+                    all_matrix[key][beh] = score
+        print(f"[Affinity] Merged SBERT affordance + cold-start prior")
 
         bulk = []
-        for furn, action_scores in all_matrix.items():
+        for furn_key, action_scores in all_matrix.items():
             for action, score in action_scores.items():
                 if action in self.behavior_labels:
                     bulk.append({
-                        "furniture": furn,
+                        "furniture": furn_key,
                         "behavior":  action,
                         "score":     float(score),
                     })
@@ -239,6 +278,7 @@ class SceneEngine:
             furn_count = len(set(d["furniture"] for d in bulk))
             print(f"[Affinity] Distilled {len(bulk)} entries "
                   f"({furn_count} furniture x {len(behavior_list)} behaviors)")
+            print(f"[Affinity] Sample keys: {list(aff.keys())[:5]}")
         else:
             print("[Affinity] No valid entries")
 
@@ -260,8 +300,8 @@ class SceneEngine:
         try:
             furn_vec    = self.sbert.encode(
                 label, normalize_embeddings=True).astype("float32")
-            proto_vecs  = self._get_proto_vecs()
-            sims        = proto_vecs @ furn_vec
+            aff_vecs    = self._get_affordance_vecs()
+            sims        = aff_vecs @ furn_vec
             sorted_sims = np.sort(sims)[::-1]
             top1        = float(sorted_sims[0])
             top2        = float(sorted_sims[1]) if len(sorted_sims) > 1 else 0.0
@@ -289,8 +329,8 @@ class SceneEngine:
                 self.zone_graph = []
                 return
 
-            proto_vecs   = self._get_proto_vecs()
-            proto_labels = self._proto_labels
+            affordance_vecs   = self._get_affordance_vecs()
+            affordance_labels = self._affordance_labels
 
             furniture_all = []
             for doc in all_docs:
@@ -302,7 +342,7 @@ class SceneEngine:
 
                 vec  = self.sbert.encode(
                     [label], normalize_embeddings=True)[0].astype("float32")
-                sims = proto_vecs @ vec
+                sims = affordance_vecs @ vec
 
                 sorted_idx = np.argsort(sims)[::-1]
                 top1_i     = int(sorted_idx[0])
@@ -310,7 +350,16 @@ class SceneEngine:
                 top1_score = float(sims[top1_i])
                 top2_score = float(sims[top2_i])
                 delta      = top1_score - top2_score
-                top1_label = proto_labels[top1_i]
+                top1_label = affordance_labels[top1_i]
+
+                lbl_lower = label.lower().strip()
+                if lbl_lower in self._affinity_matrix:
+                    aff_scores = self._affinity_matrix[lbl_lower]
+                    best_beh   = max(aff_scores, key=aff_scores.get)
+                    best_score = aff_scores[best_beh]
+                    if best_score > top1_score:
+                        top1_label = best_beh
+                        top1_score = best_score
 
                 furniture_all.append({
                     "label":      label,
@@ -398,8 +447,8 @@ class SceneEngine:
             zone_members = {i: [a] for i, a in enumerate(anchors)}
 
             for dep in dependents:
-                dx, dz   = dep["pos"][0], dep["pos"][1]
-                dep_room = dep["room"]
+                dx, dz    = dep["pos"][0], dep["pos"][1]
+                dep_room  = dep["room"]
                 best_zone = None
                 best_cost = float("inf")
 
@@ -581,7 +630,6 @@ class SceneEngine:
             if total == 0:
                 return
 
-            # 使用虛擬天作為 date key，讓圖 A 能正確顯示多天收斂曲線
             today = virtual_day if virtual_day else \
                     datetime.datetime.utcnow().strftime("%Y-%m-%d")
 

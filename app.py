@@ -26,7 +26,6 @@ from modules.service_proposal  import ServiceProposalEngine
 from modules.skill_manager     import SkillManager
 from modules.memory_vector     import VectorMemory
 from modules.interaction       import InteractionEngine
-from modules.temporal_smoother import TemporalSmoother
 from modules.entropy_monitor   import EntropyMonitor
 from modules.classifier        import (ObjectClassifier,
                                         BASE_FURNITURE_KEYWORDS,
@@ -134,7 +133,6 @@ interaction_engine = InteractionEngine(
     saycan_engine = saycan_engine,
 )
 
-temporal_smoother = TemporalSmoother()
 entropy_monitor   = EntropyMonitor()
 
 classifier = ObjectClassifier(db)
@@ -524,13 +522,9 @@ def _process_predict(episode_id, data):
         _entropy_info   = entropy_monitor.analyze(
             _user_id, _activity_votes, _body_votes, _held_votes)
 
-        # 時序平滑
-        _raw_action = result.get("spatial_action") or result.get("action", "Unknown")
-        _confidence = result.get("sbert_sim", 0.5)
-        _action, _smooth_reason = temporal_smoother.smooth(
-            _user_id, _raw_action, _confidence)
-        if _smooth_reason:
-            print(f"[Temporal] {_user_id}: {_raw_action}→{_action} ({_smooth_reason})")
+        _raw_action   = result.get("spatial_action") or result.get("action", "Unknown")
+        _action       = _raw_action
+        _smooth_reason = ""
 
         _zone = result.get("zone_label") or result.get("zone_name") or ""
 
@@ -572,7 +566,6 @@ def _process_predict(episode_id, data):
         vlm_object     = result["bound_instance"]
 
         print(f"[VLM] vlm={action} spatial={spatial_action} "
-              f"smooth={_smooth_reason or 'none'} "
               f"entropy={_entropy_info['overall_entropy']:.2f} | {vlm_ms}ms")
 
         if action == "none":
@@ -716,7 +709,7 @@ def _process_predict(episode_id, data):
                 "zone_label":      result.get("zone_label", ""),
                 "sbert_sim":       result.get("sbert_sim", 0.0),
                 "entropy":         _entropy_info["overall_entropy"],
-                "smooth_reason":   _smooth_reason,
+
                 "t_capture":       t_capture,
                 "vlm_ms":          vlm_ms,
                 "timestamp":       datetime.datetime.utcnow(),

@@ -1,13 +1,3 @@
-"""
-exp_recognition.py
-Activity Recognition Accuracy Analysis
-Reads from eval_logs in MongoDB.
-
-Usage:
-  python3 exp_recognition.py
-  python3 exp_recognition.py --out results/
-"""
-
 import os
 import datetime
 import argparse
@@ -28,14 +18,16 @@ BEHAVIOR_ORDER = [
 ]
 
 UPGRADE_LABELS = {
-    "VLM_hint":   "VLM Direct",
-    "L3a":        "SayCan (L3a)",
-    "L3b_heading":"Heading (L3b)",
-    "L3b5":       "Proximity (L3b5)",
-    "L3c_zone":   "Zone (L3c)",
-    "MinPrior":   "Body Prior",
+    "VLM_hint":       "VLM Direct",
+    "L3a":            "SayCan (L3a)",
+    "L3b_heading":    "Heading (L3b)",
+    "L3b5":           "Proximity (L3b5)",
+    "L3c_zone":       "Zone (L3c)",
+    "MinPrior":       "Body Prior",
     "zone_not_ready": "Zone Not Ready",
 }
+
+CANONICAL = {v.lower(): v for v in BEHAVIOR_ORDER}
 
 
 def connect():
@@ -46,12 +38,12 @@ def load_eval_logs(db):
     docs = list(db.eval_logs.find(
         {"ground_truth": {"$exists": True, "$ne": ""}},
         {
-            "ground_truth":   1,
-            "vlm_output":     1,
-            "spatial_action": 1,
-            "upgrade_reason": 1,
-            "vlm_confidence": 1,
-            "infer_source":   1,
+            "ground_truth":     1,
+            "vlm_output":       1,
+            "spatial_action":   1,
+            "upgrade_reason":   1,
+            "vlm_confidence":   1,
+            "infer_source":     1,
             "body_orientation": 1,
         }
     ))
@@ -60,7 +52,8 @@ def load_eval_logs(db):
 
 
 def norm(s):
-    return (s or "").strip()
+    s = (s or "").strip()
+    return CANONICAL.get(s.lower(), s)
 
 
 def get_layer(reason):
@@ -73,11 +66,33 @@ def get_layer(reason):
     return "VLM Direct"
 
 
+def diagnose(docs):
+    print("\n" + "=" * 60)
+    print("DIAGNOSIS")
+    print("=" * 60)
+
+    print("\nVLM output top-10:")
+    for val, cnt in Counter(d.get("vlm_output", "") for d in docs).most_common(10):
+        print(f"  {repr(val)}: {cnt}")
+
+    print("\nSpatial action top-10:")
+    for val, cnt in Counter(d.get("spatial_action", "") for d in docs).most_common(10):
+        print(f"  {repr(val)}: {cnt}")
+
+    for target in ["Eating", "Cooking", "Watching", "Opening"]:
+        sub = [d for d in docs if norm(d.get("ground_truth", "")) == target]
+        if not sub:
+            continue
+        vlm_dist = Counter(repr(d.get("vlm_output", "")) for d in sub)
+        spa_dist = Counter(repr(d.get("spatial_action", "")) for d in sub)
+        print(f"\n  gt={target} (n={len(sub)})")
+        print(f"    VLM said:     {dict(vlm_dist.most_common(5))}")
+        print(f"    spatial said: {dict(spa_dist.most_common(5))}")
+
+    print()
+
+
 def plot_overall_accuracy(docs, out):
-    """
-    Figure 1: Overall accuracy comparison
-    VLM only vs Full system (spatial_action)
-    """
     vlm_correct     = 0
     spatial_correct = 0
     total           = len(docs)
@@ -141,11 +156,8 @@ def plot_overall_accuracy(docs, out):
 
 
 def plot_per_class_accuracy(docs, out):
-    """
-    Figure 2: Per-class accuracy (VLM vs Full System)
-    """
-    class_gt     = defaultdict(int)
-    class_vlm    = defaultdict(int)
+    class_gt      = defaultdict(int)
+    class_vlm     = defaultdict(int)
     class_spatial = defaultdict(int)
 
     for d in docs:
@@ -227,9 +239,6 @@ def plot_per_class_accuracy(docs, out):
 
 
 def plot_confusion_matrix(docs, out):
-    """
-    Figure 3: Confusion matrix (Full System)
-    """
     classes = [c for c in BEHAVIOR_ORDER
                if any(norm(d.get("ground_truth")) == c for d in docs)]
 
@@ -280,10 +289,6 @@ def plot_confusion_matrix(docs, out):
 
 
 def plot_spatial_reasoning_contribution(docs, out):
-    """
-    Figure 4: Which reasoning layer contributed to correct predictions
-    Ablation study: shows how much each layer improved accuracy
-    """
     layer_total   = defaultdict(int)
     layer_correct = defaultdict(int)
 
@@ -297,12 +302,10 @@ def plot_spatial_reasoning_contribution(docs, out):
         if spa == gt:
             layer_correct[layer] += 1
 
-    layers = sorted(layer_total.keys(),
-                    key=lambda x: -layer_total[x])
-    totals  = [layer_total[l]   for l in layers]
+    layers   = sorted(layer_total.keys(), key=lambda x: -layer_total[x])
+    totals   = [layer_total[l]   for l in layers]
     corrects = [layer_correct[l] for l in layers]
-    accs    = [layer_correct[l] / layer_total[l] * 100
-               for l in layers]
+    accs     = [layer_correct[l] / layer_total[l] * 100 for l in layers]
 
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
 
@@ -320,6 +323,7 @@ def plot_spatial_reasoning_contribution(docs, out):
     ax1.set_ylabel("Number of Predictions", fontsize=11)
     ax1.set_title("Reasoning Layer Usage Count",
                   fontsize=11, fontweight="bold")
+    ax1.set_xticks(range(len(layers)))
     ax1.set_xticklabels(layers, rotation=20, ha="right", fontsize=9)
     ax1.grid(axis="y", alpha=0.25)
 
@@ -337,6 +341,7 @@ def plot_spatial_reasoning_contribution(docs, out):
     ax2.set_ylim(0, 115)
     ax2.set_title("Accuracy per Reasoning Layer",
                   fontsize=11, fontweight="bold")
+    ax2.set_xticks(range(len(layers)))
     ax2.set_xticklabels(layers, rotation=20, ha="right", fontsize=9)
     ax2.legend(fontsize=9)
     ax2.grid(axis="y", alpha=0.25)
@@ -355,10 +360,6 @@ def plot_spatial_reasoning_contribution(docs, out):
 
 
 def plot_confidence_vs_accuracy(docs, out):
-    """
-    Figure 5: VLM confidence vs accuracy
-    Shows that confidence gate at 0.4 is justified
-    """
     bins       = [0.0, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.01]
     bin_labels = ["0-0.2","0.2-0.3","0.3-0.4","0.4-0.5",
                   "0.5-0.6","0.6-0.7","0.7-0.8","0.8-0.9","0.9-1.0"]
@@ -494,6 +495,8 @@ if __name__ == "__main__":
     if not docs:
         print("No eval_logs found.")
         exit(1)
+
+    diagnose(docs)
 
     vlm_acc, spatial_acc = plot_overall_accuracy(docs, args.out)
     plot_per_class_accuracy(docs, args.out)
