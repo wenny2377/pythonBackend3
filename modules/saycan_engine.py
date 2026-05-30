@@ -7,14 +7,16 @@ from collections import defaultdict
 
 
 BEHAVIOR_LABELS = [
-    "Eating", "Drinking", "SittingDrink", "Cooking", "Opening",
-    "Laying", "Watching", "Reading", "Cleaning", "PhoneUse", "Typing",
+    "Drinking", "SittingDrink", "Sitting", "Eating", "Cooking", "Opening",
+    "Laying", "Watching", "Reading", "Cleaning", "PhoneUse",
+    "Typing", "StandUp", "PickingUp", "PuttingDown", "Standing", "Walking",
 ]
 
 _FALLBACK_BEHAVIOR_TO_OBJECTS = {
-    "Eating":       ["food", "apple", "banana", "bowl", "plate", "fork", "spoon" ,"saladbowl"],
+    "Eating":       ["food", "apple", "banana", "bowl", "plate", "fork", "spoon", "saladbowl"],
     "Drinking":     ["cup", "bottle", "juice", "cola", "water", "mug", "glass"],
     "SittingDrink": ["cup", "mug", "tea", "coffee", "bottle"],
+    "Sitting":      [],
     "Cooking":      ["pan", "pot", "stove", "spatula", "oven"],
     "Opening":      ["refrigerator", "fridge"],
     "Watching":     ["tv", "television", "remote"],
@@ -23,6 +25,11 @@ _FALLBACK_BEHAVIOR_TO_OBJECTS = {
     "PhoneUse":     ["phone", "cell phone", "smartphone"],
     "Cleaning":     ["broom", "mop", "dustpan"],
     "Laying":       [],
+    "StandUp":      [],
+    "PickingUp":    [],
+    "PuttingDown":  [],
+    "Standing":     [],
+    "Walking":      [],
 }
 
 ENV_FALLBACK   = 0.30
@@ -222,6 +229,19 @@ class SayCanEngine:
                 return result
         except Exception as e:
             print(f"[SayCan-Say] LLM failed: {e}")
+            if self.sbert is not None:
+                try:
+                    from modules.scene_engine import AFFORDANCE_DESCRIPTIONS
+                    q_vec = self.sbert.encode(query, normalize_embeddings=True)
+                    scores = {}
+                    for b in BEHAVIOR_LABELS:
+                        proto = AFFORDANCE_DESCRIPTIONS.get(b, b)
+                        p_vec = self.sbert.encode(proto, normalize_embeddings=True)
+                        scores[b] = float(max(0.0, float(q_vec @ p_vec)))
+                    total = sum(scores.values()) or 1.0
+                    return {b: v / total for b, v in scores.items()}
+                except Exception as e2:
+                    print(f"[SayCan-Say] SBERT fallback failed: {e2}")
         return {b: 1.0 / len(BEHAVIOR_LABELS) for b in BEHAVIOR_LABELS}
 
     def _compute_can_habit(self, user_id, virtual_hour,
@@ -425,14 +445,19 @@ class SayCanEngine:
     def _distill_behavior_objects(self):
         cached = list(self.db.saycan_behavior_objects.find({}))
         if cached:
-            for doc in cached:
-                b = doc.get("behavior")
-                o = doc.get("objects", [])
-                if b:
-                    self._behavior_objects[b] = o
-            print(f"[SayCan] Loaded behavior-object map "
-                  f"({len(self._behavior_objects)} entries)")
-            return
+            existing_behaviors = {doc.get("behavior") for doc in cached}
+            if set(BEHAVIOR_LABELS).issubset(existing_behaviors):
+                for doc in cached:
+                    b = doc.get("behavior")
+                    o = doc.get("objects", [])
+                    if b:
+                        self._behavior_objects[b] = o
+                print(f"[SayCan] Loaded behavior-object map "
+                      f"({len(self._behavior_objects)} entries)")
+                return
+            else:
+                print("[SayCan] Behavior labels changed, rebuilding behavior-object map")
+                self.db.saycan_behavior_objects.delete_many({})
 
         print("[SayCan] Distilling behavior-object map via LLM...")
 
@@ -452,7 +477,7 @@ class SayCanEngine:
             f"Allowed Actions: [{behavior_list}]\n"
             f"STRICT CONSTRAINT: Only use objects from: [{object_list_str}]\n\n"
             f"Output ONLY valid JSON. No explanations.\n"
-            f"Example: {{\"Eating\": [\"bowl\", \"fork\" ,\"saladbowl\"], \"Watching\": [\"remote\"]}}"
+            f"Example: {{\"Eating\": [\"bowl\", \"fork\", \"saladbowl\"], \"Watching\": [\"remote\"]}}"
         )
         try:
             resp = requests.post(

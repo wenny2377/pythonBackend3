@@ -14,6 +14,7 @@ AFFORDANCE_DESCRIPTIONS = {
     "Eating":       "dining table or chair where person eats food with fork spoon or chopsticks",
     "Drinking":     "sink or table where person drinks water juice or beverage from cup or bottle",
     "SittingDrink": "sofa or couch where person sits relaxing and drinks coffee tea or beverage",
+    "Sitting":      "sofa chair or couch where person sits idle with empty hands doing nothing",
     "Cooking":      "stove or oven where person cooks food using pan pot or spatula",
     "Opening":      "refrigerator fridge or cabinet door that person opens to get items",
     "Laying":       "bed or sofa where person lies down to sleep or rest horizontally",
@@ -22,6 +23,7 @@ AFFORDANCE_DESCRIPTIONS = {
     "Cleaning":     "floor sink or surface where person cleans using broom mop or cloth",
     "PhoneUse":     "sofa bed or chair where person uses smartphone or makes phone call",
     "Typing":       "desk keyboard or monitor where person types on computer or laptop",
+    "StandUp":      "sofa chair or bed where person rises from seated or lying position to stand up",
     "PickingUp":    "floor or table where person bends down to pick up an object",
     "PuttingDown":  "table shelf or surface where person sets down or places an object",
     "Standing":     "open area hallway or room where person stands still doing nothing",
@@ -61,10 +63,11 @@ class SceneEngine:
         self._retry_interval   = hp.get("scene_retry_interval", 5.0)
         self._retry_max        = hp.get("scene_retry_max",   60)
 
-        self.zone_graph         = []
-        self._affinity_matrix   = {}
-        self._ready             = False
-        self._lock              = threading.Lock()
+        self.zone_graph          = []
+        self._affinity_matrix    = {}
+        self._transition_matrix  = {}
+        self._ready              = False
+        self._lock               = threading.Lock()
 
         self._proto_vecs        = None
         self._proto_labels      = None
@@ -73,6 +76,7 @@ class SceneEngine:
         self._build_proto_vecs()
 
         self._load_affinity_matrix()
+        self._load_transition_matrix()
         self._discover_zones()
 
         if not self._ready:
@@ -166,6 +170,22 @@ class SceneEngine:
             print("[Affinity] No affinity_matrix found, building from scratch")
             self._distill_affinity_matrix()
 
+    def _load_transition_matrix(self):
+        docs = list(self.db.transition_matrix.find({}))
+        if not docs:
+            print("[Transition] No transition_matrix found in MongoDB, using empty dict")
+            return
+        for doc in docs:
+            src  = doc.get("from", "")
+            dst  = doc.get("to", "")
+            prob = float(doc.get("probability", 0.0))
+            if not src or not dst:
+                continue
+            if src not in self._transition_matrix:
+                self._transition_matrix[src] = {}
+            self._transition_matrix[src][dst] = prob
+        print(f"[Transition] Loaded {len(docs)} transition pairs into memory")
+
     def _builtin_affinity_fallback(self, furniture_list: list) -> dict:
         BASE = {
             "tv":           {"Watching":0.90, "Laying":0.05, "PhoneUse":0.03, "Reading":0.02},
@@ -173,19 +193,19 @@ class SceneEngine:
             "monitor":      {"Typing":0.90,   "Reading":0.07, "PhoneUse":0.03},
             "keyboard":     {"Typing":0.95,   "Reading":0.05},
             "desk":         {"Typing":0.70,   "Reading":0.20, "PhoneUse":0.10},
-            "stove":        {"Cooking":0.95,  "Cleaning":0.03, "Eating":0.02},
+            "stove":        {"Cooking":0.85,  "Cleaning":0.35, "Eating":0.02},
             "refrigerator": {"Opening":0.85,  "Cooking":0.10, "Drinking":0.05},
             "fridge":       {"Opening":0.85,  "Cooking":0.10, "Drinking":0.05},
             "cabinet":      {"Opening":0.60,  "Cleaning":0.20, "Cooking":0.10, "Eating":0.10},
             "cabinet2":     {"Opening":0.60,  "Cleaning":0.20, "Cooking":0.10, "Eating":0.10},
-            "sofa":         {"Watching":0.90, "Laying":0.30, "Reading":0.15,
-                             "SittingDrink":0.10, "PhoneUse":0.05},
-            "couch":        {"Watching":0.90, "Laying":0.30, "Reading":0.15,
-                             "SittingDrink":0.10, "PhoneUse":0.05},
-            "sofa side":    {"Watching":0.70, "Laying":0.30,
-                             "SittingDrink":0.20, "PhoneUse":0.10},
-            "sofa side 2":  {"Watching":0.70, "Laying":0.30,
-                             "SittingDrink":0.20, "PhoneUse":0.10},
+            "sofa":         {"Watching":0.25, "Laying":0.25, "Reading":0.25,
+                             "SittingDrink":0.25, "PhoneUse":0.25, "Sitting":0.25},
+            "couch":        {"Watching":0.25, "Laying":0.25, "Reading":0.25,
+                             "SittingDrink":0.25, "PhoneUse":0.25, "Sitting":0.25},
+            "sofa side":    {"Watching":0.25, "Laying":0.25,
+                             "SittingDrink":0.25, "PhoneUse":0.25, "Sitting":0.25},
+            "sofa side 2":  {"Watching":0.25, "Laying":0.25,
+                             "SittingDrink":0.25, "PhoneUse":0.25, "Sitting":0.25},
             "bed":          {"Laying":0.60,   "Reading":0.30, "PhoneUse":0.10},
             "dad's bed":    {"Laying":0.60,   "Reading":0.30, "PhoneUse":0.10},
             "dining table": {"Eating":0.70,   "SittingDrink":0.20,
@@ -196,14 +216,14 @@ class SceneEngine:
                              "Cooking":0.05,  "Drinking":0.05},
             "sink":         {"Drinking":0.40, "Cooking":0.35, "Cleaning":0.25},
             "toilet":       {"Cleaning":0.60, "Standing":0.40},
-            "chair":        {"Eating":0.55,   "SittingDrink":0.35,
-                             "Typing":0.20,   "Reading":0.10},
-            "chair1":       {"Eating":0.55,   "SittingDrink":0.35,
-                             "Typing":0.20,   "Reading":0.10},
-            "chair2":       {"Eating":0.55,   "SittingDrink":0.35,
-                             "Typing":0.20,   "Reading":0.10},
-            "chair3":       {"Eating":0.55,   "SittingDrink":0.35,
-                             "Typing":0.20,   "Reading":0.10},
+            "chair":        {"Eating":0.25,   "SittingDrink":0.25,
+                             "Typing":0.25,   "Reading":0.25, "Sitting":0.25},
+            "chair1":       {"Eating":0.25,   "SittingDrink":0.25,
+                             "Typing":0.25,   "Reading":0.25, "Sitting":0.25},
+            "chair2":       {"Eating":0.25,   "SittingDrink":0.25,
+                             "Typing":0.25,   "Reading":0.25, "Sitting":0.25},
+            "chair3":       {"Eating":0.25,   "SittingDrink":0.25,
+                             "Typing":0.25,   "Reading":0.25, "Sitting":0.25},
         }
         result = {}
         for furn in furniture_list:
@@ -215,6 +235,7 @@ class SceneEngine:
                     "Eating":0.15, "Watching":0.15, "Laying":0.15,
                     "Typing":0.10, "Reading":0.10,  "Cleaning":0.10,
                     "Drinking":0.10, "Cooking":0.10, "SittingDrink":0.05,
+                    "Sitting":0.05,
                 }
         print(f"[Affinity] Cold-start prior loaded: {len(result)} furniture entries")
         return result

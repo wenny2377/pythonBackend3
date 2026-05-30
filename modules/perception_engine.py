@@ -48,7 +48,7 @@ YOUR_OBJECTS = (
     set(_ontology.get("scene_objects", [])) |
     set(str(k).lower() for k in _ontology.get("item_to_action", {}).keys()) |
     {"remote", "remote control", "tv remote", "juice", "cola", "pan",
-     "broom", "mop", "spatula", "bowl", "saladbowl""cup", "bottle", "phone",
+     "broom", "mop", "spatula", "bowl", "saladbowl", "cup", "bottle", "phone",
      "book", "laptop", "keyboard", "fork", "spoon", "plate", "food"}
 )
 
@@ -78,13 +78,13 @@ BODY_IMPOSSIBLE = {
 }
 
 BEHAVIOR_LABELS = _beh_cfg.get("behavior_labels", [
-    "Drinking", "SittingDrink", "Eating", "Cooking", "Opening",
+    "Drinking", "SittingDrink", "Sitting", "Eating", "Cooking", "Opening",
     "Laying", "Watching", "Reading", "Cleaning", "PhoneUse",
-    "Typing", "PickingUp", "PuttingDown", "Standing", "Walking",
+    "Typing", "StandUp", "PickingUp", "PuttingDown", "Standing", "Walking",
 ])
 
 NO_WEIGHT_ACTIONS = set(_beh_cfg.get("no_weight_actions",
-    ["PickingUp", "PuttingDown", "Walking", "Standing"]))
+    ["PickingUp", "PuttingDown", "Walking", "Standing", "StandUp"]))
 
 VISION_PROTOTYPES = {
     k: v.strip()
@@ -102,18 +102,36 @@ BULK_WRITE_INTERVAL   = float(_hp.get("bulk_write_interval", 30.0))
 L3_STANDARD_THRESHOLD = float(_hp.get("l3_standard_threshold", 0.40))
 HIGH_AFFORDANCE_L3_THRESHOLD = float(_hp.get("high_affordance_l3_threshold", 0.30))
 
-VLM_CONFIDENCE_THRESHOLD  = float(_hp.get("vlm_confidence_threshold", 0.50))
-VLM_HINT_CONFIDENCE_GATE  = float(_hp.get("vlm_hint_confidence_gate", 0.60))
+VLM_CONFIDENCE_THRESHOLD = float(_hp.get("vlm_confidence_threshold", 0.50))
+VLM_HINT_CONFIDENCE_GATE = float(_hp.get("vlm_hint_confidence_gate", 0.60))
 
 HIGH_AFFORDANCE_FURNITURE = set(_ontology.get("high_affordance_furniture", [
     "tv", "television", "stove", "oven", "refrigerator", "fridge",
     "keyboard", "monitor", "cabinet"
 ]))
 
-HELD_WEIGHT      = 0.7
-NEARBY_WEIGHT    = 0.3
-SAYCАН_MIN_SCORE = 0.15
+HELD_WEIGHT          = 0.7
+NEARBY_WEIGHT        = 0.3
+SAYCAN_MIN_SCORE     = 0.15
 MIN_WRITE_CONFIDENCE = 0.20
+
+ACTION_TO_RELATION = {
+    "Drinking":     "holding",
+    "SittingDrink": "sitting_on",
+    "Sitting":      "sitting_on",
+    "Eating":       "eating_at",
+    "Cooking":      "using",
+    "Opening":      "interacting_with",
+    "Laying":       "lying_on",
+    "Watching":     "watching",
+    "Reading":      "holding",
+    "Cleaning":     "using",
+    "PhoneUse":     "holding",
+    "Typing":       "using",
+    "StandUp":      "near",
+    "Standing":     "near",
+    "Walking":      "near",
+}
 
 
 def _get_time_slot(virtual_hour) -> str:
@@ -418,8 +436,10 @@ class PerceptionEngine:
             "Output ONLY valid JSON with these exact fields:\n"
             '{"activity":"...","body_position":"...","body_orientation":"...","held_object":"...","confidence":0.0}\n\n'
             "Rules:\n"
-            "- activity: ONE of Eating/Drinking/SittingDrink/Cooking/Opening/"
-            "Laying/Watching/Reading/Cleaning/PhoneUse/Typing/PickingUp/PuttingDown/Standing/Walking\n"
+            "- activity: ONE of Eating/Drinking/SittingDrink/Sitting/Cooking/Opening/"
+            "Laying/Watching/Reading/Cleaning/PhoneUse/Typing/StandUp/PickingUp/PuttingDown/Standing/Walking\n"
+            "- Sitting = sitting idle with empty hands. SittingDrink = sitting while holding beverage.\n"
+            "- StandUp = person actively rising from seated/lying position.\n"
             "- body_position: standing/sitting/lying\n"
             "- body_orientation: facing_toward/facing_away/side\n"
             "- held_object: name of object in hand, "
@@ -653,9 +673,9 @@ class PerceptionEngine:
         ergonomic = 0.50
         return 0.6 * ergonomic + 0.4 * float(zone_affinity)
 
-    def _saycан_score(self, held_obj: str, nearby_objs: list,
-                       body_position: str, behavior: str,
-                       zone_affinity: float = 0.0) -> float:
+    def _saycan_score(self, held_obj: str, nearby_objs: list,
+                      body_position: str, behavior: str,
+                      zone_affinity: float = 0.0) -> float:
         if (body_position.lower(), behavior) in BODY_IMPOSSIBLE:
             return 0.0
         p_l_held   = self._compute_p_l(held_obj, behavior)
@@ -669,15 +689,15 @@ class PerceptionEngine:
         p_v = self._compute_p_v(body_position, behavior, zone_affinity)
         return p_l * p_v
 
-    def _layer3a_saycаn(self, held_obj: str, nearby_objs: list,
-                         body_position: str, nearest_zone: dict) -> tuple:
+    def _layer3a_saycan(self, held_obj: str, nearby_objs: list,
+                        body_position: str, nearest_zone: dict) -> tuple:
         scores = {}
         for behavior in BEHAVIOR_LABELS:
             if behavior in NO_WEIGHT_ACTIONS:
                 continue
             z_aff = self.scene_engine.get_zone_affinity(nearest_zone, behavior) \
                     if nearest_zone else 0.0
-            scores[behavior] = self._saycан_score(
+            scores[behavior] = self._saycan_score(
                 held_obj, nearby_objs, body_position, behavior, z_aff)
 
         if not scores:
@@ -686,11 +706,11 @@ class PerceptionEngine:
         best_behavior = max(scores, key=scores.get)
         best_score    = scores[best_behavior]
 
-        if best_score < SAYCАН_MIN_SCORE:
+        if best_score < SAYCAN_MIN_SCORE:
             return None, "", best_score
 
         held_info = held_obj if held_obj != "none" else f"nearby:{nearby_objs[:1]}"
-        reason = f"L3a_saycаn:{held_info}->{best_behavior}(score={best_score:.2f})"
+        reason = f"L3a_saycan:{held_info}->{best_behavior}(score={best_score:.2f})"
         return best_behavior, reason, best_score
 
     def _layer3b_heading(self, user_pos: dict, user_forward: dict,
@@ -826,15 +846,85 @@ class PerceptionEngine:
         )
         return best_behavior, reason
 
-    def _minimum_prior_defense(self, body_position: str) -> tuple:
-        pos = body_position.lower().strip() if body_position else "standing"
-        mapping = {
-            "lying":    "Laying",
-            "sitting":  "SittingDrink",
-            "standing": "Standing",
+    def _temporal_smooth(self, new_action: str,
+                          evidence_score: float,
+                          user_id: str) -> str:
+        prev_doc = self.col_activity.find_one(
+            {"user": user_id}, sort=[("date", -1)])
+        if not prev_doc or not prev_doc.get("sequence"):
+            return new_action
+        seq = prev_doc["sequence"]
+        if not seq:
+            return new_action
+        prev_action = seq[-1].get("action", "Standing")
+        if prev_action == new_action:
+            return new_action
+        trans_matrix = getattr(self.scene_engine, "_transition_matrix", {})
+        prob = trans_matrix.get(prev_action, {}).get(new_action, 0.0)
+        if prob >= 0.05:
+            if evidence_score >= 0.55:
+                return new_action
+            return prev_action
+        else:
+            if evidence_score >= 0.80:
+                return new_action
+            return prev_action
+
+    def _layer3b_heading_extended(self, user_pos: dict,
+                                   user_forward: dict,
+                                   body_position: str) -> tuple:
+        if not user_pos or not user_forward:
+            return None, ""
+
+        ux    = float(user_pos.get("x", 0))
+        uz    = float(user_pos.get("z", 0))
+        fwd_x = float(user_forward.get("x", 0))
+        fwd_z = float(user_forward.get("z", 0))
+        fwd_len = math.sqrt(fwd_x**2 + fwd_z**2)
+        if fwd_len < 0.01:
+            return None, ""
+        fwd_x /= fwd_len
+        fwd_z /= fwd_len
+
+        target_map = {
+            "tv":           "Watching",
+            "television":   "Watching",
+            "monitor":      "Watching",
+            "stove":        "Cooking",
+            "refrigerator": "Opening",
+            "fridge":       "Opening",
         }
-        action = mapping.get(pos, "Standing")
-        return action, f"MinPrior:{pos}->{action}"
+
+        best_action = None
+        best_reason = ""
+        best_angle  = 30.0
+
+        for label, action in target_map.items():
+            if (body_position.lower(), action) in BODY_IMPOSSIBLE:
+                continue
+            doc = self.col_scene.find_one({"label": label}, {"pos": 1})
+            if not doc:
+                continue
+            pos = doc.get("pos")
+            if not isinstance(pos, list) or len(pos) < 2:
+                continue
+            dx   = pos[0] - ux
+            dz   = pos[1] - uz
+            dist = math.sqrt(dx**2 + dz**2)
+            if dist < 0.01 or dist > 5.0:
+                continue
+            dx /= dist
+            dz /= dist
+            cos_angle = fwd_x * dx + fwd_z * dz
+            angle_deg = math.degrees(math.acos(max(-1.0, min(1.0, cos_angle))))
+            if angle_deg < best_angle:
+                best_angle  = angle_deg
+                best_action = action
+                best_reason = (f"ray_cast:{label}"
+                               f"->{action}"
+                               f"(angle={angle_deg:.1f}°,dist={dist:.1f}m)")
+
+        return best_action, best_reason
 
     def _spatial_reasoning(self, activity_hint: str, body_position: str,
                             held_obj: str, user_pos: dict, user_forward: dict,
@@ -853,34 +943,97 @@ class PerceptionEngine:
                 and activity_hint not in NO_WEIGHT_ACTIONS
                 and (body_position.lower(), activity_hint) not in BODY_IMPOSSIBLE
                 and vlm_confidence >= VLM_HINT_CONFIDENCE_GATE):
-            return activity_hint, f"VLM_hint:{activity_hint}", zone_label
+            action = self._temporal_smooth(activity_hint, vlm_confidence, user_id)
+            return action, f"VLM_hint:{activity_hint}", zone_label
 
         action, reason = self._layer3b5_proximity(user_pos, room_name, body_position)
         if action:
+            action = self._temporal_smooth(action, vlm_confidence, user_id)
             return action, reason, zone_label
 
-        action, reason, score = self._layer3a_saycаn(
+        action, reason = self._layer3b_heading_extended(user_pos, user_forward, body_position)
+        if action:
+            action = self._temporal_smooth(action, vlm_confidence, user_id)
+            return action, reason, zone_label
+
+        action, reason, score = self._layer3a_saycan(
             norm_held, nearby_objs, body_position, nearest_zone)
         if action:
+            action = self._temporal_smooth(action, vlm_confidence, user_id)
             return action, reason, zone_label
 
         action, reason = self._layer3b_heading(
             user_pos, user_forward, nearest_zone, body_position)
         if action:
+            action = self._temporal_smooth(action, vlm_confidence, user_id)
             return action, reason, zone_label
 
         action, reason = self._layer3c_zone_affinity(nearest_zone, body_position)
         if action:
+            action = self._temporal_smooth(action, vlm_confidence, user_id)
             return action, reason, zone_label
 
         if (activity_hint
                 and activity_hint in BEHAVIOR_LABELS
                 and activity_hint not in NO_WEIGHT_ACTIONS
                 and (body_position.lower(), activity_hint) not in BODY_IMPOSSIBLE):
-            return activity_hint, f"VLM_hint_fallback:{activity_hint}", zone_label
+            action = self._temporal_smooth(activity_hint, vlm_confidence, user_id)
+            return action, f"VLM_hint_fallback:{activity_hint}", zone_label
 
-        action, reason = self._minimum_prior_defense(body_position)
+        action, reason = self._minimum_prior_defense(body_position, norm_held)
+        action = self._temporal_smooth(action, vlm_confidence, user_id)
         return action, reason, zone_label
+
+    def _emit_edge(self, user_id: str, action: str,
+                   bound_label: str, confidence: float,
+                   user_pos: dict):
+        if confidence < 0.55:
+            return
+        relation = ACTION_TO_RELATION.get(action, "near")
+        now      = int(datetime.datetime.utcnow().timestamp())
+
+        agent_node = {
+            "id":             user_id,
+            "type":           "agent",
+            "label":          user_id,
+            "pos":            [user_pos.get("x", 0), user_pos.get("z", 0)],
+            "current_action": action,
+            "timestamp":      now,
+        }
+
+        furniture_doc = self.col_scene.find_one(
+            {"label": bound_label}, {"pos": 1, "room": 1})
+        furniture_node = {
+            "id":     bound_label,
+            "type":   "furniture",
+            "label":  bound_label,
+            "pos":    furniture_doc.get("pos", [0, 0]) if furniture_doc else [0, 0],
+            "room":   furniture_doc.get("room", "") if furniture_doc else "",
+        }
+
+        edge = {
+            "from":       user_id,
+            "relation":   relation,
+            "to":         bound_label,
+            "confidence": round(confidence, 3),
+            "source":     "spatial_reasoning",
+            "timestamp":  now,
+        }
+
+        try:
+            self.db.scene_graph.update_one(
+                {"agent_id": user_id},
+                {"$set": {
+                    "agent_id":       user_id,
+                    "agent_node":     agent_node,
+                    "furniture_node": furniture_node,
+                    "edges":          [edge],
+                    "updated_at":     datetime.datetime.utcnow(),
+                }},
+                upsert=True
+            )
+        except Exception as e:
+            print(f"[EmitEdge] {e}")
 
     def _get_user_id(self, img_b64, hint="Unknown_User"):
         if not self.face_app or not self.face_bank:
@@ -1094,7 +1247,7 @@ class PerceptionEngine:
         _infer_source = "vlm"
 
         if body_orientation == "facing_away":
-            vlm_confidence = vlm_confidence * 0.3
+            vlm_confidence = 0.0
             _infer_source  = "low_conf_facing_away"
             if held_object in ("none", "unknown"):
                 _inferred = self._infer_held_object(
@@ -1219,26 +1372,16 @@ class PerceptionEngine:
                 "timestamp":         datetime.datetime.utcnow(),
             })
 
-        _record_action = spatial_action if spatial_action not in ("Unknown", "none", "") \
-                         else activity_hint or ""
-        _exp_mode = payload.get("experiment_mode", "habit")
-
-        if (_record_action and
-                _record_action not in NO_WEIGHT_ACTIONS and
-                _record_action != "Unknown" and
-                self.manifold_engine is not None and
-                _exp_mode != "recognition" and
-                vlm_confidence >= MIN_WRITE_CONFIDENCE):
-            try:
-                self.manifold_engine.record_training_sample(
-                    user_id        = final_user,
-                    virtual_hour   = virtual_hour,
-                    user_pos       = user_pos,
-                    prev_action    = _record_action,
-                    current_action = _record_action,
-                )
-            except Exception:
-                pass
+        if (spatial_action not in ("Unknown", "none", "") and
+                bound_label != "Unknown_Area" and
+                user_pos):
+            self._emit_edge(
+                user_id     = final_user,
+                action      = spatial_action,
+                bound_label = bound_label,
+                confidence  = float(result.get("_vlm_confidence", 0.5)),
+                user_pos    = user_pos,
+            )
 
         print(f"[Done] {final_user} | hint={activity_hint} | "
               f"spatial={spatial_action} | reason={upgrade_reason} | "
@@ -1261,7 +1404,7 @@ class PerceptionEngine:
             "user_pos":          user_pos or {},
             "virtual_hour":      virtual_hour or 12.0,
             "room":              room_name or "",
-            "experiment_mode":   _exp_mode,
+            "experiment_mode":   payload.get("experiment_mode", "habit"),
             "time_slot":         _get_time_slot(virtual_hour),
             "virtual_day":       virtual_day,
         }
@@ -1305,7 +1448,9 @@ class PerceptionEngine:
             update_op = {
                 "$inc":         inc_ops,
                 "$set":         base_set,
-                "$setOnInsert": {"first_seen": now},
+                "$setOnInsert": {
+                    "first_seen":   now,
+                },
             }
             if is_interacting:
                 update_op["$addToSet"] = {"interacted_by": user_id}

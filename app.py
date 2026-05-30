@@ -72,9 +72,9 @@ _beh_cfg   = _load_yaml("config/behavior_config.yaml")
 _sys_cfg   = _load_yaml("config/system_config.yaml")
 
 behavior_labels = _beh_cfg.get("behavior_labels", [
-    "Drinking", "SittingDrink", "Eating", "Cooking", "Opening",
+    "Drinking", "SittingDrink", "Sitting", "Eating", "Cooking", "Opening",
     "Laying", "Watching", "Reading", "Cleaning", "PhoneUse",
-    "Typing", "PickingUp", "PuttingDown", "Standing", "Walking",
+    "Typing", "StandUp", "PickingUp", "PuttingDown", "Standing", "Walking",
 ])
 
 scene_engine = SceneEngine(
@@ -124,7 +124,6 @@ proposal_engine = ServiceProposalEngine(
     llm_model  = CONFIG.LLM_MODEL,
 )
 
-
 interaction_engine = InteractionEngine(
     mongo_client  = mongo_client,
     vector_memory = vector_memory,
@@ -133,7 +132,7 @@ interaction_engine = InteractionEngine(
     saycan_engine = saycan_engine,
 )
 
-entropy_monitor   = EntropyMonitor()
+entropy_monitor = EntropyMonitor()
 
 classifier = ObjectClassifier(db)
 classifier.start()
@@ -143,8 +142,6 @@ atexit.register(perception.shutdown)
 _vlm_lock      = threading.Lock()
 _predict_queue = _queue.Queue()
 
-# Ground truth cache: t_capture -> ground_truth
-# Used for precise eval_logs alignment
 _gt_cache      = {}
 _gt_cache_lock = threading.Lock()
 
@@ -423,7 +420,6 @@ def predict():
     if existing:
         return jsonify({"status": "ok", "episode_id": episode_id, "cached": True}), 200
 
-    # 立刻剝離 ground truth，存入暫存區
     t_capture    = data.get("t_capture", "")
     ground_truth = data.get("activity", "")
     if t_capture and ground_truth:
@@ -460,7 +456,7 @@ def _process_predict(episode_id, data):
         source_nodes = data.get('source_nodes', [])
         room_name    = data.get('room_name', '')
         virtual_hour = data.get('virtual_hour')
-        virtual_day  = data.get('virtual_day', '')   # 虛擬天 yyyy-mm-dd
+        virtual_day  = data.get('virtual_day', '')
         t_capture    = data.get('t_capture', '')
 
         if not room_name and source_nodes:
@@ -515,18 +511,15 @@ def _process_predict(episode_id, data):
         _user_pos = result.get("user_pos") or {}
         _exp_mode = result.get("experiment_mode", "habit")
 
-        # 分析 VLM 投票熵
         _activity_votes = [result.get("action", "")] if result.get("action") else []
         _body_votes     = [result["result"].get("_body_position", "")]
         _held_votes     = [result["result"].get("_held_object", "none")]
         _entropy_info   = entropy_monitor.analyze(
             _user_id, _activity_votes, _body_votes, _held_votes)
 
-        _raw_action   = result.get("spatial_action") or result.get("action", "Unknown")
-        _action       = _raw_action
-        _smooth_reason = ""
-
-        _zone = result.get("zone_label") or result.get("zone_name") or ""
+        _raw_action = result.get("spatial_action") or result.get("action", "Unknown")
+        _action     = _raw_action
+        _zone       = result.get("zone_label") or result.get("zone_name") or ""
 
         if _action and _action not in ("none", "", "Unknown") and _zone:
             habit_engine.record(
@@ -544,7 +537,6 @@ def _process_predict(episode_id, data):
                 experiment_mode   = _exp_mode,
             )
 
-            # 更新 affinity_history（使用虛擬天，讓圖 A 能正確顯示收斂曲線）
             if _zone and _action not in ("none", "", "Unknown"):
                 scene_engine.update_user_affinity(
                     user_id     = _user_id,
@@ -571,7 +563,6 @@ def _process_predict(episode_id, data):
         if action == "none":
             return
 
-        # 直接從 scene_snapshots 解析 bound label（移除舊版 MemoryManager）
         final_bound_label = vlm_object if (
             vlm_object and "Unknown" not in str(vlm_object)
         ) else ""
@@ -599,7 +590,6 @@ def _process_predict(episode_id, data):
         if not final_bound_label:
             final_bound_label = "Unknown_Area"
 
-        # 更新 activity_sequences（原 MemoryManager 職責）
         try:
             today = datetime.datetime.utcnow().strftime("%Y-%m-%d")
             db.activity_sequences.update_one(
@@ -661,19 +651,17 @@ def _process_predict(episode_id, data):
                     )
 
         try:
-            prev_doc = db.activity_sequences.find_one(
-                {"user": user_id}, sort=[("timestamp", -1)])
-            prev_action_label = "Standing"
-            if prev_doc and prev_doc.get("sequence"):
-                seq = prev_doc["sequence"]
-                if len(seq) >= 2:
-                    prev_action_label = seq[-2].get("action", "Standing")
+            _prev_seq_doc = db.activity_sequences.find_one(
+                {"user": user_id}, sort=[("date", -1)])
+            _real_prev = "Standing"
+            if _prev_seq_doc and len(_prev_seq_doc.get("sequence", [])) >= 2:
+                _real_prev = _prev_seq_doc["sequence"][-2].get("action", "Standing")
 
             intent_prediction = manifold_engine.predict_intent(
                 user_id      = user_id,
                 virtual_hour = virtual_hour,
                 user_pos     = est_pos,
-                prev_action  = prev_action_label,
+                prev_action  = _real_prev,
             )
 
             if intent_prediction.get("trigger"):
@@ -689,10 +677,38 @@ def _process_predict(episode_id, data):
 
             habit_engine._check_and_update_skill(user_id)
 
+            NO_WEIGHT_ACTIONS = set(_beh_cfg.get("no_weight_actions",
+                ["PickingUp", "PuttingDown", "Walking", "Standing"]))
+            _record_action = spatial_action if spatial_action not in ("Unknown", "none", "") \
+                             else activity or ""
+
+            if (_record_action and
+                    _record_action not in NO_WEIGHT_ACTIONS and
+                    _record_action != "Unknown" and
+                    manifold_engine is not None and
+                    _exp_mode != "recognition" and
+                    result["result"].get("_vlm_confidence", 0) >= 0.20):
+
+                _prev_for_mlp = "Standing"
+                _seq_doc_mlp  = db.activity_sequences.find_one(
+                    {"user": user_id}, sort=[("date", -1)])
+                if _seq_doc_mlp and len(_seq_doc_mlp.get("sequence", [])) >= 2:
+                    _prev_for_mlp = _seq_doc_mlp["sequence"][-2].get("action", "Standing")
+
+                try:
+                    manifold_engine.record_training_sample(
+                        user_id        = user_id,
+                        virtual_hour   = virtual_hour,
+                        user_pos       = est_pos,
+                        prev_action    = _prev_for_mlp,
+                        current_action = _record_action,
+                    )
+                except Exception:
+                    pass
+
         except Exception as e:
             print(f"[Manifold] non-critical error: {e}")
 
-        # 用 t_capture 回溯真值，確保 eval_logs 對齊
         with _gt_cache_lock:
             actual_gt = _gt_cache.pop(t_capture, activity)
 
@@ -709,7 +725,6 @@ def _process_predict(episode_id, data):
                 "zone_label":      result.get("zone_label", ""),
                 "sbert_sim":       result.get("sbert_sim", 0.0),
                 "entropy":         _entropy_info["overall_entropy"],
-
                 "t_capture":       t_capture,
                 "vlm_ms":          vlm_ms,
                 "timestamp":       datetime.datetime.utcnow(),
@@ -762,7 +777,6 @@ def handle_scene():
                 "y":           obj.get('y', 0),
                 "z":           obj.get('z', 0),
                 "room":        obj.get('room', ''),
-                "image":       obj.get('image', ''),
                 "source":      obj.get('source', 'sensor'),
                 "held_by":     obj.get('held_by', ''),
                 "processed":   False,
@@ -830,21 +844,26 @@ def dynamic_sync():
                 "room":         room,
                 "sensor_pos":   position,
                 "last_seen":    now,
+                "status":       "active",
+                "status_since": now,
                 "source":       source,
                 "category":     category,
             }
             if held_by:
-                set_fields["held_by"]  = held_by
+                set_fields["held_by"] = held_by
             else:
-                set_fields["held_by"]  = ""
+                set_fields["held_by"]      = ""
                 set_fields["last_seen_on"] = last_seen_on
 
             db.dynamic_objects.update_one(
                 {"label": label},
                 {
                     "$set": set_fields,
-                    "$inc":         {"seen_count": 1},
-                    "$setOnInsert": {"first_seen": now, "spatial_rel": "on"},
+                    "$inc": {"seen_count": 1},
+                    "$setOnInsert": {
+                        "first_seen":   now,
+                        "spatial_rel":  "on",
+                    },
                 },
                 upsert=True,
             )
@@ -970,8 +989,8 @@ def query_habit():
         answer     = "I don't remember."
 
         if top_habit:
-            fresh_doc  = db.scene_snapshots.find_one({"label": top_habit['instance']})
-            nav_target = fresh_doc.get('pos') if fresh_doc else top_habit.get('furniture_pos')
+            fresh_doc    = db.scene_snapshots.find_one({"label": top_habit['instance']})
+            nav_target   = fresh_doc.get('pos') if fresh_doc else top_habit.get('furniture_pos')
             interact_str = ", ".join(top_habit.get('interacting_items', [])) or "nothing specific"
             answer = (
                 f"Based on observations, "

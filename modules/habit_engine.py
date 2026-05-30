@@ -6,7 +6,7 @@ HABIT_THRESHOLD   = 5
 REJECTION_PENALTY = -3
 DEDUP_THRESHOLD   = 0.78
 
-NO_WEIGHT_ACTIONS = {"PickingUp", "PuttingDown", "Walking", "Standing"}
+NO_WEIGHT_ACTIONS = {"PickingUp", "PuttingDown", "Walking", "Standing", "StandUp"}
 
 
 class HabitEngine:
@@ -75,19 +75,6 @@ class HabitEngine:
                 )
             except Exception as e:
                 print(f"[HabitEngine] FAISS write error: {e}")
-
-        if self.manifold_engine is not None and experiment_mode != "recognition":
-            try:
-                self.manifold_engine.record_training_sample(
-                    user_id        = user_id,
-                    current_action = action,
-                    virtual_hour   = virtual_hour,
-                    user_pos       = {"x": pos[0] * 10, "z": pos[1] * 10}
-                                     if pos else {},
-                    prev_action    = action,
-                )
-            except Exception as e:
-                print(f"[Manifold] {e}")
 
         threading.Thread(
             target=self._check_and_update_skill,

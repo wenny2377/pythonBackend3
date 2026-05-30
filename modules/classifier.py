@@ -17,7 +17,7 @@ OBJECT_CATEGORIES = {
     "food": {
         "banana", "apple", "sandwich", "orange", "broccoli",
         "carrot", "hot dog", "pizza", "donut", "cake",
-        "bowl","saladbowl", "plate",
+        "bowl", "saladbowl", "plate",
     },
     "drink": {
         "bottle", "wine glass", "cup", "juice", "cola",
@@ -86,7 +86,7 @@ class ObjectClassifier:
 
     @staticmethod
     def _make_instance_key(label: str, room: str, anchor: str) -> str:
-        return f"{label.lower()}|{room.lower()}|{anchor.lower()}"
+        return f"{label.lower()}|{room.lower()}"
 
     def _loop(self):
         while self._running:
@@ -244,7 +244,7 @@ class ObjectClassifier:
         instance_key = self._make_instance_key(label, room, anchor)
 
         return UpdateOne(
-            {"instance_key": instance_key},
+            {"label": label, "room": room},
             {
                 "$set": {
                     "instance_key":  instance_key,
@@ -257,10 +257,10 @@ class ObjectClassifier:
                     "spatial_rel":   rel,
                     "source":        doc.get("source", "sensor"),
                 },
-                "$inc":        {"seen_count": 1},
+                "$inc":         {"seen_count": 1},
                 "$setOnInsert": {
-                    "first_seen": now,
-                    "is_movable": True,
+                    "first_seen":   now,
+                    "is_movable":   True,
                 },
             },
             upsert=True
