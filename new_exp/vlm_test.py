@@ -3,18 +3,13 @@ import json
 import base64
 import requests
 from collections import defaultdict, Counter
+import cv2
+from ultralytics import YOLO
 
-# === 系統配置 ===
 OLLAMA_URL = "http://127.0.0.1:11434"
-VLM_MODEL  = "llava-phi3" 
+VLM_MODEL  = "gemma3:4b"
 IMAGE_DIR  = "/home/wenny/db/robotBrain/debug_images"
 OUTPUT_DIR = "./visual_debug_results"
-
-# 嚴格對齊你的 Unity 標籤清單
-BEHAVIOR_LABELS = [
-    "Eating", "Drinking", "SittingDrink", "Cooking", "Opening",
-    "Laying", "Watching", "Reading", "Cleaning", "PhoneUse", "Typing"
-]
 
 ROOM_NAME_MAP = {
     "kitchen":    "Kitchen",
@@ -22,152 +17,193 @@ ROOM_NAME_MAP = {
     "dadroom":    "BedRoom(dad)",
 }
 
+ROOM_LABELS = {
+    "bedroom": ["Laying", "Watching", "Reading", "Typing", "PhoneUse"],
+    "dad":     ["Laying", "Watching", "Reading", "Typing", "PhoneUse"],
+    "kitchen": ["Cooking", "Opening", "Eating", "Drinking", "Cleaning"],
+    "livingroom": ["Eating", "Drinking", "SittingDrink", "Laying",
+                   "Watching", "Reading", "PhoneUse", "Cleaning"],
+}
+
+yolo_model = YOLO("yolov8n-pose.pt")
+
+
 def parse_filename(fname):
-    base  = os.path.basename(fname).replace(".jpg","").replace(".png","")
+    base  = os.path.basename(fname).replace(".jpg", "").replace(".png", "")
     parts = base.split("_")
+    room_raw = parts[4] if len(parts) > 4 else ""
     return {
-        "timestamp":    parts[0],
-        "user_id":      parts[2], # Dad / Mom
-        "ground_truth": parts[3],
-        "room_name":    ROOM_NAME_MAP.get(parts[4].lower().strip(), parts[4]), 
-        "cam_id":       parts[5],
-        "burst_idx":    parts[6],
+        "timestamp":    parts[0] if len(parts) > 0 else "",
+        "user_id":      parts[2] if len(parts) > 2 else "",
+        "ground_truth": parts[3] if len(parts) > 3 else "",
+        "room_name":    ROOM_NAME_MAP.get(room_raw.lower().strip(), room_raw),
+        "cam_id":       parts[5] if len(parts) > 5 else "",
+        "burst_idx":    parts[6] if len(parts) > 6 else "",
     }
 
+
 def group_bursts(image_dir):
-    files  = sorted(f for f in os.listdir(image_dir) if f.endswith(".jpg") or f.endswith(".png"))
+    files  = sorted(f for f in os.listdir(image_dir)
+                    if f.endswith(".jpg") or f.endswith(".png"))
     groups = defaultdict(list)
     for f in files:
         info = parse_filename(f)
-        key  = f"{info['timestamp']}_{info['user_id']}_{info['ground_truth']}_{info['room_name']}"
+        key  = (f"{info['timestamp']}_{info['user_id']}_"
+                f"{info['ground_truth']}_{info['room_name']}")
         groups[key].append({**info, "path": os.path.join(image_dir, f)})
     return dict(groups)
 
-def encode_image_to_base64(image_path):
-    with open(image_path, "rb") as image_file:
-        return base64.b64encode(image_file.read()).decode('utf-8')
 
-def vlm_direct_infer(image_path, room, person):
-    """
-    直問 VLM 核心感知大腦。
-    針對俯視角（Top-down）、Unity 標籤錯位（DadRoom Phone 汙染）進行強規則 Prompt Constraint。
-    """
-    img_base64 = encode_image_to_base64(image_path)
-    allowed_list = ", ".join(BEHAVIOR_LABELS)
-    
+def get_allowed_labels(room_name):
+    room_lower = room_name.lower()
+    for key, labels in ROOM_LABELS.items():
+        if key in room_lower:
+            return labels
+    return ["Eating", "Drinking", "SittingDrink", "Watching",
+            "Laying", "Reading", "PhoneUse", "Cleaning"]
+
+
+def crop_upper_body(image_path):
+    try:
+        img = cv2.imread(image_path)
+        if img is None:
+            return image_path, False
+
+        h, w = img.shape[:2]
+        results = yolo_model(img, verbose=False)
+
+        if not results or results[0].keypoints is None:
+            return image_path, False
+
+        kps = results[0].keypoints.data
+        if kps is None or len(kps) == 0:
+            return image_path, False
+
+        kp = kps[0].cpu().numpy()
+
+        points = []
+        for idx in [0, 5, 6, 7, 8, 9, 10]:
+            if idx < len(kp) and kp[idx][2] > 0.3:
+                points.append((int(kp[idx][0]), int(kp[idx][1])))
+
+        if len(points) < 2:
+            if results[0].boxes is not None and len(results[0].boxes) > 0:
+                box   = results[0].boxes[0].xyxy[0].cpu().numpy()
+                x1, y1, x2, y2 = map(int, box)
+                mid_y = (y1 + y2) // 2
+                crop  = img[y1:mid_y, x1:x2]
+                if crop.size > 0:
+                    out = image_path.replace(".jpg", "_crop.jpg").replace(".png", "_crop.png")
+                    cv2.imwrite(out, crop)
+                    return out, True
+            return image_path, False
+
+        xs  = [p[0] for p in points]
+        ys  = [p[1] for p in points]
+        pad = 40
+        x1  = max(0, min(xs) - pad)
+        y1  = max(0, min(ys) - pad)
+        x2  = min(w, max(xs) + pad)
+        y2  = min(h, max(ys) + pad)
+
+        crop = img[y1:y2, x1:x2]
+        if crop.size == 0:
+            return image_path, False
+
+        out = image_path.replace(".jpg", "_crop.jpg").replace(".png", "_crop.png")
+        cv2.imwrite(out, crop)
+        return out, True
+
+    except Exception as e:
+        print(f"[Crop] {e}")
+        return image_path, False
+
+
+def vlm_infer(image_path, room_name, allowed_labels, is_cropped):
+    with open(image_path, "rb") as f:
+        img_b64 = base64.b64encode(f.read()).decode()
+
+    allowed_str = "/".join(allowed_labels)
+    focus       = "upper body and hands" if is_cropped else "person"
+
     prompt = (
-        f"You are an expert activity recognition system looking through a top-down surveillance camera.\n"
-        f"Analyze the image and determine what exact action the target person is doing right now.\n\n"
-        f"Context:\n"
-        f"- Target Person: {person}\n"
-        f"- Current Location Room: {room}\n\n"
-        f"Strict Dataset Rules for Perspective & Label Alignment:\n"
-        f"1. LAYING DOWN: If the person is elongated horizontally on a couch or bed, the action is ALWAYS 'Laying', even if they hold an object.\n"
-        f"2. DRINKING/EATING: Look closely at the hands. If holding a bottle/cup to the mouth, it is 'Drinking'. If holding a bowl/plate/food, it is 'Eating'.\n"
-        f"3. SIMULATOR LABEL COUPLING (CRITICAL): If the person is holding a phone/smartphone in the 'BedRoom(dad)', the simulator records this action as 'Typing'. You MUST output 'Typing' for phone usage in DadRoom.\n"
-        f"4. COOKING: If the person is near a stove, counter, or dining table holding a pan, pot, knife, or preparing food (like bananas/apples on table), output 'Cooking'.\n"
-        f"5. OPENING: If the person is reaching out to pull the refrigerator door handle, output 'Opening'.\n\n"
-        f"Allowed Activity List (Choose EXACTLY ONE): [{allowed_list}]\n\n"
-        f"Output MUST follow this format strictly:\n"
-        f"VISUAL_EVIDENCE: <Short sentence describing object in hand and posture>\n"
-        f"ACTION: <exactly one label from the list>"
+        f"Image shows a {focus} in {room_name}.\n"
+        f"Step 1: What object is the person holding or interacting with?\n"
+        f"Step 2: Based on that object and head angle, choose ONE action.\n"
+        f"- PhoneUse/Reading: head tilted down, eyes looking down\n"
+        f"- Drinking: head tilted back, chin raised\n"
+        f"- Watching: head level, eyes forward\n"
+        f"- Cooking: at stove, holding pan or spatula\n"
+        f"- Eating: bringing food to mouth\n"
+        f"Answer with exactly ONE word from: {allowed_str}\n"
+        f"Action:"
     )
 
     try:
         resp = requests.post(
-            f"{OLLAMA_URL}/api/generate",
+            f"{OLLAMA_URL}/api/chat",
             json={
-                "model": VLM_MODEL, "prompt": prompt, "images": [img_base64], "stream": False,
-                "options": {
-                    "temperature": 0.001, # 壓低溫度，消滅幻覺隨機性
-                    "num_predict": 80     # 放大長度防止 ACTION: 被截斷
-                }
+                "model":    VLM_MODEL,
+                "messages": [{"role": "user", "content": prompt,
+                               "images": [img_b64]}],
+                "stream":   False,
+                "options":  {"temperature": 0.0, "num_predict": 20},
             },
-            timeout=30
+            timeout=60,
         )
-        raw = resp.json().get("response", "").strip()
-        
-        action = None
-        evidence = raw
-        
-        # 精確解析格式
-        for line in raw.split("\n"):
-            clean_line = line.strip()
-            if clean_line.upper().startswith("ACTION:"):
-                action = clean_line.split(":", 1)[1].strip()
-            elif clean_line.upper().startswith("VISUAL_EVIDENCE:"):
-                evidence = clean_line.split(":", 1)[1].strip()
-                
-        # Fallback 保底防範碎碎念
-        if not action or action not in BEHAVIOR_LABELS:
-            for b in BEHAVIOR_LABELS:
-                if b.lower() in raw.lower():
-                    action = b
-                    break
-        return action, evidence
+        raw = resp.json().get("message", {}).get("content", "").strip()
+        for label in allowed_labels:
+            if label.lower() in raw.lower():
+                return label, raw
+        return allowed_labels[0], raw
     except Exception as e:
-        return "Watching", f"Error: {e}"
+        return allowed_labels[0], f"error: {e}"
+
 
 def main():
-    import cv2
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     groups = group_bursts(IMAGE_DIR)
-    
-    print(f"Starting End-to-End Direct VLM Evaluation using {VLM_MODEL}...")
-    print(f"{'GT':15} {'VLM Direct Pred':18} {'Room':15} {'Person':10} OK")
-    print("-"*75)
-    
-    correct = 0
-    total = 0
-    results = []
+
+    print(f"YOLO Upper-Body + VLM Pipeline | model={VLM_MODEL}")
+    print(f"{'GT':15} {'Pred':18} {'Room':15} OK")
+    print("-" * 60)
+
+    correct = total = 0
 
     for key, images in sorted(groups.items()):
-        # 時序濾波：讓群組連拍圖片進行集體投票，防止單幀抖動死角
-        group_preds = []
-        group_evidences = []
-        
-        gt = images[0]["ground_truth"]
-        room = images[0]["room_name"]
-        person = images[0]["user_id"]
-        
-        for img_info in images:
-            pred, evidence = vlm_direct_infer(img_info["path"], room, person)
-            if pred:
-                group_preds.append(pred)
-                group_evidences.append(evidence)
-                
-        if group_preds:
-            final_pred = Counter(group_preds).most_common(1)[0][0]
-            best_idx = group_preds.index(final_pred)
-            final_evidence = group_evidences[best_idx]
-        else:
-            final_pred, final_evidence = "Watching", "No response"
-            
-        total += 1
-        is_correct = (final_pred == gt)
-        if is_correct: correct += 1
-        
-        results.append({"gt": gt, "is_correct": is_correct})
-        ok_marker = "✓" if is_correct else "✗"
-        print(f"{ok_marker} {gt:14} {str(final_pred):17} {room:14} {person:9}")
-        
-        # 繪製視覺化 Debug 看板，方便在 visual_debug_results 裡直接點擊圖片確認
-        rep_path = images[0]["path"]
-        img_canvas = cv2.imread(rep_path)
-        if img_canvas is not None:
-            color = (0, 255, 0) if is_correct else (0, 0, 255)
-            status_str = f"[{ok_marker}] GT: {gt}  |  VLM_PRED: {final_pred}"
-            cv2.putText(img_canvas, status_str, (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2, cv2.LINE_AA)
-            
-            # 把 VLM 的描述直接畫在第二行
-            evidence_clean = str(final_evidence)[:60]
-            cv2.putText(img_canvas, f"VLM See: {evidence_clean}", (20, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 0), 1, cv2.LINE_AA)
-            
-            out_filename = f"{ok_marker}_{os.path.basename(rep_path)}"
-            cv2.imwrite(os.path.join(OUTPUT_DIR, out_filename), img_canvas)
+        gt      = images[0]["ground_truth"]
+        room    = images[0]["room_name"]
+        allowed = get_allowed_labels(room)
+        preds   = []
 
-    print(f"\n{'='*60}")
-    print(f"Direct VLM Accuracy: {correct}/{total} = {correct/total*100:.1f}%")
+        for info in images:
+            crop_path, is_cropped = crop_upper_body(info["path"])
+            pred, raw = vlm_infer(crop_path, room, allowed, is_cropped)
+            if crop_path != info["path"] and os.path.exists(crop_path):
+                os.remove(crop_path)
+            preds.append(pred)
+
+        final_pred = Counter(preds).most_common(1)[0][0] if preds else allowed[0]
+        total += 1
+        ok     = final_pred.lower() == gt.lower()
+        if ok:
+            correct += 1
+        marker = "✓" if ok else "✗"
+        print(f"{marker} {gt:14} {final_pred:17} {room:14}")
+
+        rep = cv2.imread(images[0]["path"])
+        if rep is not None:
+            color = (0, 255, 0) if ok else (0, 0, 255)
+            cv2.putText(rep, f"GT:{gt} PRED:{final_pred}",
+                        (10, 35), cv2.FONT_HERSHEY_SIMPLEX,
+                        0.7, color, 2, cv2.LINE_AA)
+            cv2.imwrite(os.path.join(OUTPUT_DIR,
+                f"{'OK' if ok else 'NG'}_{os.path.basename(images[0]['path'])}"), rep)
+
+    acc = correct / total * 100 if total else 0
+    print(f"\n{'='*50}")
+    print(f"Accuracy: {correct}/{total} = {acc:.1f}%")
+
 
 if __name__ == "__main__":
     main()

@@ -1,0 +1,8 @@
+=================================================================
+Chapter 4.3: System Integration Summary
+Generated: 2026-05-30 08:19
+=================================================================
+
+service_proposals : 2
+Mean Confidence   : 0.824
+observation_logs  : 18

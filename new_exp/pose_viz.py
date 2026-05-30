@@ -50,8 +50,35 @@ def _angle(a, b, c):
 
 
 def extract_features(kp, box):
+    # ===================================================
+    # 相機 10 度傾斜校正區區
+    # ===================================================
+    # 如果畫面「順時針」歪（人看起來往左倒），請用 -10.0 轉回來
+    # 如果畫面「逆時針」歪（人看起來往右倒），請改用 10.0
+    ANGLE_DEG = -10.0  
+    angle_rad = np.radians(ANGLE_DEG)
+    cos_a, sin_a = np.cos(angle_rad), np.sin(angle_rad)
+    
+    # 使用 Bounding Box 的中心點作為旋轉基準點
+    cx = float(box[0] + box[2]) / 2.0
+    cy = float(box[1] + box[3]) / 2.0
+    
+    # 複製一份關鍵點，並對有效座標進行逆向旋轉
+    corrected_kp = np.copy(kp)
+    for i in range(len(kp)):
+        if kp[i][0] > 0 and kp[i][1] > 0:
+            x_old = kp[i][0] - cx
+            y_old = kp[i][1] - cy
+            # 旋轉矩陣變換
+            x_new = x_old * cos_a - y_old * sin_a + cx
+            y_new = x_old * sin_a + y_old * cos_a + cy
+            corrected_kp[i][0] = x_new
+            corrected_kp[i][1] = y_new
+    # ===================================================
+
     def pt(i):
-        return np.array(kp[i][:2], dtype=float)
+        # 接下來所有特徵計算都採用校正後的座標 (corrected_kp)
+        return np.array(corrected_kp[i][:2], dtype=float)
 
     bw = float(box[2] - box[0])
     bh = float(box[3] - box[1])
@@ -66,6 +93,7 @@ def extract_features(kp, box):
     body_vec = hip_mid - shoulder_mid
     body_len = np.linalg.norm(body_vec)
 
+    # 判斷點是否被偵測到，仍可用原本的 kp（因為不影響大於 0 的判斷）
     visible_ankles = (kp[L_ANKLE][0] > 0 and kp[L_ANKLE][1] > 0) or \
                      (kp[R_ANKLE][0] > 0 and kp[R_ANKLE][1] > 0)
     visible_knees  = (kp[L_KNEE][0] > 0 and kp[L_KNEE][1] > 0) or \
@@ -188,6 +216,7 @@ def infer_pose(features):
 
 
 def draw_pose_on_image(img, kp, body_pos, hand_hint, hints, box, conf):
+    # 繪製骨架依然使用 YOLO 原生輸出的 kp，讓標註貼合原始影像畫面
     for i, j in SKELETON:
         x1, y1 = int(kp[i][0]), int(kp[i][1])
         x2, y2 = int(kp[j][0]), int(kp[j][1])
@@ -207,7 +236,6 @@ def draw_pose_on_image(img, kp, body_pos, hand_hint, hints, box, conf):
     pc = BODY_COLOR.get(body_pos, (150,150,150))
     hc = HAND_HINT_COLOR.get(hand_hint, (100,100,100))
 
-    f = features if False else {}
     y0 = 10
     cv2.putText(img, f"Body: {body_pos}", (10, y0+16),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.65, pc, 2, cv2.LINE_AA)
