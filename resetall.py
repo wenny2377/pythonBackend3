@@ -52,6 +52,9 @@ COLLECTIONS_TO_CLEAR = [
     "saycan_behavior_objects",
     "navigation_logs",
     "user_positions",
+    "charades_affinity",
+    "charades_affinity_normalized",
+    "transition_matrix",
 ]
 
 AFFINITY_COLLECTIONS = ["affinity_matrix"]
@@ -157,8 +160,9 @@ def main():
     print(f"\n{'='*55}")
     print("  Reset complete.")
     print("  Next steps:")
-    print("    1. python3 app.py")
-    print("    2. Press Play in Unity (HabitExp mode)")
+    print("    1. python3 build_charades_matrix.py")
+    print("    2. python3 app.py")
+    print("    3. Press Play in Unity (HabitExp mode)")
     print(f"{'='*55}\n")
 
 

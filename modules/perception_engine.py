@@ -926,10 +926,42 @@ class PerceptionEngine:
 
         return best_action, best_reason
 
+    def _skeleton_body_position(self, payload: dict) -> tuple:
+        hip_h    = float(payload.get("hip_height",    -1))
+        arm_elev = float(payload.get("arm_elevation", -1))
+        head_pit = float(payload.get("head_pitch",    -1))
+        body_pos = payload.get("body_pos",  "")
+        arm_pose = payload.get("arm_pose",  "")
+
+        if body_pos in ("sitting", "standing", "lying"):
+            skel_body = body_pos
+        elif hip_h < 0:
+            skel_body = None
+        elif hip_h < 0.40:
+            skel_body = "lying"
+        elif hip_h < 0.65:
+            skel_body = "sitting"
+        else:
+            skel_body = "standing"
+
+        if arm_pose in ("raised", "mid", "low"):
+            skel_arm = arm_pose
+        elif arm_elev < 0:
+            skel_arm = None
+        elif arm_elev < 30:
+            skel_arm = "raised"
+        elif arm_elev < 65:
+            skel_arm = "mid"
+        else:
+            skel_arm = "low"
+
+        return skel_body, skel_arm
+
     def _spatial_reasoning(self, activity_hint: str, body_position: str,
                             held_obj: str, user_pos: dict, user_forward: dict,
                             room_name: str, user_id: str,
-                            vlm_confidence: float = 0.0) -> tuple:
+                            vlm_confidence: float = 0.0,
+                            payload: dict = None) -> tuple:
         if not self.scene_engine.is_ready():
             return activity_hint or "Unknown", "zone_not_ready", ""
 
@@ -937,6 +969,34 @@ class PerceptionEngine:
         zone_label   = nearest_zone["zone_name"] if nearest_zone else ""
         nearby_objs  = self._get_nearby_objects(user_pos, room_name)
         norm_held    = self._normalize_object(held_obj)
+
+        # ── 骨架直接命中（優先於所有視覺推理）──
+        if payload:
+            skel_body, skel_arm = self._skeleton_body_position(payload)
+            if skel_body and skel_arm:
+                skel_action = None
+                skel_reason = ""
+
+                if skel_body == "standing" and skel_arm == "raised":
+                    skel_action = "Drinking"
+                    skel_reason = f"skeleton:{skel_body}+{skel_arm}→Drinking"
+                elif skel_body == "standing" and skel_arm == "mid":
+                    skel_action = "PhoneUse"
+                    skel_reason = f"skeleton:{skel_body}+{skel_arm}→PhoneUse"
+                elif skel_body == "sitting" and skel_arm == "low":
+                    skel_action = "Eating"
+                    skel_reason = f"skeleton:{skel_body}+{skel_arm}→Eating"
+                elif skel_body == "lying":
+                    skel_action = "Laying"
+                    skel_reason = f"skeleton:{skel_body}→Laying"
+
+                if skel_action and (skel_body, skel_action) not in BODY_IMPOSSIBLE:
+                    action = self._temporal_smooth(skel_action, 0.90, user_id)
+                    return action, skel_reason, zone_label
+
+            # 骨架修正 body_position（讓後續決策鏈更準確）
+            if skel_body in ("sitting", "standing", "lying"):
+                body_position = skel_body
 
         if (activity_hint
                 and activity_hint in BEHAVIOR_LABELS
@@ -998,6 +1058,7 @@ class PerceptionEngine:
             "label":          user_id,
             "pos":            [user_pos.get("x", 0), user_pos.get("z", 0)],
             "current_action": action,
+            "status":         "active",
             "timestamp":      now,
         }
 
@@ -1009,6 +1070,7 @@ class PerceptionEngine:
             "label":  bound_label,
             "pos":    furniture_doc.get("pos", [0, 0]) if furniture_doc else [0, 0],
             "room":   furniture_doc.get("room", "") if furniture_doc else "",
+            "status": "active",
         }
 
         edge = {
@@ -1287,6 +1349,7 @@ class PerceptionEngine:
             room_name      = room_name,
             user_id        = final_user,
             vlm_confidence = vlm_confidence,
+            payload        = payload,
         )
 
         bound_doc, confidence = self._bind_furniture(coord_label, user_pos, room_name)
@@ -1440,6 +1503,8 @@ class PerceptionEngine:
                 "room":         room_name,
                 "last_seen":    now,
                 "source":       "vlm",
+                "status":       "active",
+                "status_since": now,
             }
             if bound_pos:
                 base_set["furniture_pos"] = bound_pos
@@ -1449,7 +1514,7 @@ class PerceptionEngine:
                 "$inc":         inc_ops,
                 "$set":         base_set,
                 "$setOnInsert": {
-                    "first_seen":   now,
+                    "first_seen": now,
                 },
             }
             if is_interacting:

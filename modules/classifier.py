@@ -256,11 +256,13 @@ class ObjectClassifier:
                     "last_seen_on":  anchor,
                     "spatial_rel":   rel,
                     "source":        doc.get("source", "sensor"),
+                    "status":        "active",
+                    "status_since":  now,
                 },
                 "$inc":         {"seen_count": 1},
                 "$setOnInsert": {
-                    "first_seen":   now,
-                    "is_movable":   True,
+                    "first_seen": now,
+                    "is_movable": True,
                 },
             },
             upsert=True
