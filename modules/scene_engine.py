@@ -417,7 +417,22 @@ class SceneEngine:
                 if ch2: base = max(base, BASE_MASS_CH12)
                 if ch3: base = max(base, BASE_MASS_CH3)
 
-                mass = base + top1_score * (1.0 + delta)
+                # Importance Factor：主家具提升 mass，輔助家具降低 mass
+                # 主家具定義空間功能，輔助家具（chair/stool）不應搶走 anchor
+                PRIMARY_ANCHORS = {
+                    "tv", "television", "stove", "oven", "refrigerator",
+                    "fridge", "desk", "monitor", "bed", "sink",
+                    "dining table", "table2", "sofa", "cabinet",
+                }
+                SUPPORT_FURNITURE = {"chair", "stool", "seat"}
+
+                importance = 1.0
+                if any(p in lbl_lower for p in PRIMARY_ANCHORS):
+                    importance = 1.5
+                elif any(s in lbl_lower for s in SUPPORT_FURNITURE):
+                    importance = 0.4
+
+                mass = (base + top1_score * (1.0 + delta)) * importance
 
                 channel_str = "".join([
                     "1" if ch1 else "_",

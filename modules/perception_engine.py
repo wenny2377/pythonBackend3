@@ -765,7 +765,8 @@ class PerceptionEngine:
 
     def _layer3b5_proximity(self, user_pos: dict,
                              room_name: str,
-                             body_position: str) -> tuple:
+                             body_position: str,
+                             nearest_zone: dict = None) -> tuple:
         if not user_pos:
             return None, ""
 
@@ -806,6 +807,22 @@ class PerceptionEngine:
                     best_behavior = behavior
                     best_label    = furn_label
                     best_dist     = dist
+
+        # Zone action_label 覆蓋：
+        # 當 proximity 給出 Sitting，但當前 zone 有明確的非 Sitting 行為
+        # 讓 zone 的 action_label 覆蓋（解決 Typing_Zone 被 chair→Sitting 蓋掉的問題）
+        if best_behavior in ("Sitting", "Eating") and nearest_zone:
+            zone_action = nearest_zone.get("action_label", "")
+            if (zone_action
+                    and zone_action not in ("Sitting", "Standing", "Walking", "")
+                    and zone_action in BEHAVIOR_LABELS
+                    and zone_action not in NO_WEIGHT_ACTIONS
+                    and (body_position.lower(), zone_action) not in BODY_IMPOSSIBLE):
+                best_behavior = zone_action
+                reason = (f"L3b5_proximity:{best_label}"
+                          f"->{best_behavior}"
+                          f"(zone_override,dist={best_dist:.2f}m)")
+                return best_behavior, reason
 
         if best_behavior:
             reason = (f"L3b5_proximity:{best_label}"
@@ -1002,9 +1019,6 @@ class PerceptionEngine:
             return "Sitting", "MinPrior:sitting→Sitting"
 
         if pos == "standing":
-            # head_pitch PhoneUse 候選
-            if head_pitch != -999 and 28 <= head_pitch <= 50:
-                return "PhoneUse", f"MinPrior:standing+head{head_pitch:.0f}°→PhoneUse"
             return "Standing", "MinPrior:standing→Standing"
 
         return "Standing", "MinPrior:default→Standing"
@@ -1024,11 +1038,14 @@ class PerceptionEngine:
         if hip_h < 0:
             skel_body = None
         elif hip_h < 0.900:
-            # 坐/躺重疊區：用 head_pitch 區分
             if head_pitch < -45:
-                skel_body = "lying"    # 頭部幾乎水平 → 躺下
+                skel_body = "lying"
+            elif hip_h >= 0.880 and head_pitch > 45:
+                # 邊界灰色地帶（0.880-0.900）且大幅低頭
+                # Cleaning(hip=0.895, head=60-66°) 保護：強制判 standing
+                skel_body = "standing"
             else:
-                skel_body = "sitting"  # 頭部正常角度 → 坐著
+                skel_body = "sitting"
         else:
             skel_body = "standing"
 
@@ -1044,15 +1061,17 @@ class PerceptionEngine:
         if head_pitch > -999:  # 有效值
             if skel_body == "sitting":
                 if head_pitch < -15:
-                    head_hint = "SittingDrink"   # 仰頭喝飲料
+                    head_hint = "SittingDrink"   # 仰頭喝飲料（-33 到 -15°）
                 elif 15 <= head_pitch <= 28:
-                    head_hint = "Eating"          # 略低頭看食物
-                elif head_pitch > 28:
-                    head_hint = "Reading"         # 大幅低頭看書
+                    head_hint = "Eating"          # 略低頭看食物（21°）
+                elif head_pitch > 55:
+                    head_hint = "Reading"         # 大幅低頭看書（實測 56-87°）
+                # Cleaning head=60-66° 是站姿，骨架已確認 standing，不會進此分支
                 # 0-15° 平視：Watching / Sitting，交給幾何推理
+                # Cleaning 是站姿（hip 0.895-0.940 邊界），head_pitch 60-66°
+                # 若被誤判為 sitting，head>28° 會觸發 Reading，需要在幾何層否決
             elif skel_body == "standing":
-                if 28 <= head_pitch <= 50:
-                    head_hint = "PhoneUse"        # 低頭看手機
+                pass
 
         return skel_body, head_hint
 
@@ -1061,87 +1080,217 @@ class PerceptionEngine:
                             room_name: str, user_id: str,
                             vlm_confidence: float = 0.0,
                             payload: dict = None) -> tuple:
+
         if not self.scene_engine.is_ready():
             return activity_hint or "Unknown", "zone_not_ready", ""
 
         nearest_zone = self.scene_engine.find_nearest_zone(user_pos, room_name)
         zone_label   = nearest_zone["zone_name"] if nearest_zone else ""
-        nearby_objs  = self._get_nearby_objects(user_pos, room_name)
         norm_held    = self._normalize_object(held_obj)
 
-        # ── 骨架姿態判斷（hip_height + head_pitch）──
-        # hip  : 坐/站/躺三群完全分離，100% 準確
-        # head : SittingDrink(-15°)、Eating(15-28°)、PhoneUse(28-50°站姿)
+        # ── 骨架解析：只做 body_position 修正 ──────────────────────
+        skel_body  = None
+        head_pitch = float(payload.get("head_pitch", -999)) if payload else -999
         if payload:
-            skel_body, head_hint = self._skeleton_body_position(payload)
-
-            # 骨架直接命中：head_pitch 確定的行為
-            if head_hint and skel_body:
-                if (skel_body, head_hint) not in BODY_IMPOSSIBLE:
-                    action = self._temporal_smooth(head_hint, 0.85, user_id)
-                    return action, f"skeleton_head:{skel_body}+head→{head_hint}", zone_label
-
-            # 骨架修正 body_position，讓後續決策層更準確
+            skel_body, _ = self._skeleton_body_position(payload)
             if skel_body in ("sitting", "standing", "lying"):
                 body_position = skel_body
 
-            # 骨架 lying 直接命中 Laying
-            if skel_body == "lying":
-                action = self._temporal_smooth("Laying", 0.90, user_id)
-                return action, "skeleton_hip:lying→Laying", zone_label
+        # ── 評分初始化 ──────────────────────────────────────────────
+        scores  = {b: 0.0 for b in BEHAVIOR_LABELS}
+        reasons = {b: ""  for b in BEHAVIOR_LABELS}
 
-        if (activity_hint
-                and activity_hint in BEHAVIOR_LABELS
-                and activity_hint not in NO_WEIGHT_ACTIONS
-                and (body_position.lower(), activity_hint) not in BODY_IMPOSSIBLE
-                and vlm_confidence >= VLM_HINT_CONFIDENCE_GATE):
-            action = self._temporal_smooth(activity_hint, vlm_confidence, user_id)
-            return action, f"VLM_hint:{activity_hint}", zone_label
+        # ── 層 0：BODY_IMPOSSIBLE 硬過濾 ────────────────────────────
+        for b in BEHAVIOR_LABELS:
+            if (body_position.lower(), b) in BODY_IMPOSSIBLE:
+                scores[b] = -999.0
 
-        action, reason = self._layer3b5_proximity(user_pos, room_name, body_position)
-        if action:
-            action = self._temporal_smooth(action, vlm_confidence, user_id)
-            return action, reason, zone_label
+        # ── 層 1：骨架 head_pitch 匹配分 ────────────────────────────
+        # 每個行為有理想 head_pitch 和容忍範圍，統一公式計算
+        # (理想角度, 容忍範圍, 適用 body_position)
+        HEAD_PITCH_PROFILE = {
+            "SittingDrink": (-25,  8, "sitting"),
+            "Eating":       ( 21,  8, "sitting"),
+            "Reading":      ( 70, 18, "sitting"),
+            "Sitting":      (  2,  8, "sitting"),
+            "Watching":     (  0,  8, "sitting"),
+            "Typing":       (  2,  6, "sitting"),
+            "Laying":       (-83, 10, "lying"),
+            "Cleaning":     ( 63,  8, "standing"),
+            "Cooking":      ( 25,  8, "standing"),
+            "Opening":      ( 32,  8, "standing"),
+            "PhoneUse":     ( 36, 10, "standing"),
+            "Drinking":     ( 24, 10, "standing"),
+        }
 
-        action, reason = self._layer3b_heading_extended(user_pos, user_forward, body_position)
-        if action:
-            action = self._temporal_smooth(action, vlm_confidence, user_id)
-            return action, reason, zone_label
+        W_HEAD = 0.35
+        if head_pitch > -999 and skel_body:
+            for b, (ideal, tol, req_body) in HEAD_PITCH_PROFILE.items():
+                if scores[b] <= -999:
+                    continue
+                if skel_body != req_body:
+                    continue
+                diff = abs(head_pitch - ideal)
+                if diff <= tol:
+                    gain = W_HEAD * (1.0 - diff / tol)
+                    scores[b]  += gain
+                    reasons[b] += f"head({head_pitch:.0f}°≈{ideal}°)+{gain:.2f} "
+                else:
+                    scores[b] -= W_HEAD * 0.3
 
-        action, reason, score = self._layer3a_saycan(
-            norm_held, nearby_objs, body_position, nearest_zone)
-        if action:
-            action = self._temporal_smooth(action, vlm_confidence, user_id)
-            return action, reason, zone_label
+        # ── 層 2：Laying 直接強命中 ─────────────────────────────────
+        # lying 是唯一完全可靠的骨架判斷，給予最高分
+        if skel_body == "lying" and scores.get("Laying", -999) > -999:
+            scores["Laying"] += 0.90
+            reasons["Laying"] += "skeleton_lying+0.90 "
 
-        action, reason = self._layer3b_heading(
-            user_pos, user_forward, nearest_zone, body_position)
-        if action:
-            action = self._temporal_smooth(action, vlm_confidence, user_id)
-            return action, reason, zone_label
+        # ── 層 3：幾何 Proximity 分 ──────────────────────────────────
+        W_PROXIMITY = 0.30
+        if user_pos:
+            ux = float(user_pos.get("x", 0))
+            uz = float(user_pos.get("z", 0))
+            INTERACTION_RADIUS = 1.5
+            query = {"room": {"$regex": room_name, "$options": "i"}} if room_name else {}
+            docs  = list(self.col_scene.find(query, {"label": 1, "pos": 1}))
+            if not docs:
+                docs = list(self.col_scene.find({}, {"label": 1, "pos": 1}))
 
-        action, reason = self._layer3c_zone_affinity(nearest_zone, body_position)
-        if action:
-            action = self._temporal_smooth(action, vlm_confidence, user_id)
-            return action, reason, zone_label
+            for doc in docs:
+                pos = doc.get("pos")
+                if not isinstance(pos, list) or len(pos) < 2:
+                    continue
+                dist = math.sqrt((ux - pos[0])**2 + (uz - pos[1])**2)
+                if dist > INTERACTION_RADIUS:
+                    continue
+                furn_label    = doc.get("label", "").lower().strip()
+                action_scores = self.scene_engine._affinity_matrix.get(furn_label, {})
+                proximity_factor = max(0.0, 1.0 - dist / INTERACTION_RADIUS)
+                for b, aff in action_scores.items():
+                    if b in scores and scores[b] > -999 and b not in NO_WEIGHT_ACTIONS:
+                        gain = W_PROXIMITY * aff * proximity_factor
+                        scores[b]  += gain
+                        reasons[b] += f"prox:{furn_label}({aff:.2f})+{gain:.2f} "
 
-        if (activity_hint
-                and activity_hint in BEHAVIOR_LABELS
-                and activity_hint not in NO_WEIGHT_ACTIONS
-                and (body_position.lower(), activity_hint) not in BODY_IMPOSSIBLE):
-            action = self._temporal_smooth(activity_hint, vlm_confidence, user_id)
-            return action, f"VLM_hint_fallback:{activity_hint}", zone_label
+        # ── 層 4：Ray-cast 朝向分 ────────────────────────────────────
+        W_RAYCAST = 0.25
+        if user_pos and user_forward:
+            ux    = float(user_pos.get("x", 0))
+            uz    = float(user_pos.get("z", 0))
+            fwd_x = float(user_forward.get("x", 0))
+            fwd_z = float(user_forward.get("z", 0))
+            fwd_len = math.sqrt(fwd_x**2 + fwd_z**2)
+            if fwd_len > 0.01:
+                fwd_x /= fwd_len
+                fwd_z /= fwd_len
+                target_map = {
+                    "tv":           "Watching",
+                    "television":   "Watching",
+                    "stove":        "Cooking",
+                    "refrigerator": "Opening",
+                    "fridge":       "Opening",
+                }
+                for label, action in target_map.items():
+                    if scores.get(action, -999) <= -999:
+                        continue
+                    doc = self.col_scene.find_one({"label": label}, {"pos": 1})
+                    if not doc:
+                        continue
+                    pos = doc.get("pos")
+                    if not isinstance(pos, list) or len(pos) < 2:
+                        continue
+                    dx   = pos[0] - ux
+                    dz   = pos[1] - uz
+                    dist = math.sqrt(dx**2 + dz**2)
+                    if dist < 0.01 or dist > 5.0:
+                        continue
+                    dx /= dist
+                    dz /= dist
+                    cos_a = fwd_x * dx + fwd_z * dz
+                    if cos_a > 0.70:
+                        gain = W_RAYCAST * cos_a
+                        scores[action]  += gain
+                        reasons[action] += f"ray:{label}(cos={cos_a:.2f})+{gain:.2f} "
 
-        _head_pitch_val = float(payload.get("head_pitch", -999)) if payload else -999
-        _vhour_val      = float(payload.get("virtual_hour", -1)) if payload else -1
-        _vhour_final    = _vhour_val if _vhour_val >= 0 else None
-        action, reason = self._minimum_prior_defense(
-            body_position, norm_held,
-            head_pitch   = _head_pitch_val,
-            virtual_hour = _vhour_final,
-        )
-        action = self._temporal_smooth(action, vlm_confidence, user_id)
-        return action, reason, zone_label
+        # ── 層 5：Zone affinity 分 ───────────────────────────────────
+        W_ZONE = 0.15
+        if nearest_zone:
+            for b in BEHAVIOR_LABELS:
+                if scores.get(b, -999) <= -999 or b in NO_WEIGHT_ACTIONS:
+                    continue
+                aff = self.scene_engine.get_zone_affinity(nearest_zone, b)
+                if aff > 0:
+                    gain = W_ZONE * aff
+                    scores[b]  += gain
+                    reasons[b] += f"zone:{nearest_zone['zone_name']}({aff:.2f})+{gain:.2f} "
+
+        # ── 層 6：VLM 加分（不跳過任何行為）────────────────────────
+        W_VLM = 0.20
+        if activity_hint and activity_hint in BEHAVIOR_LABELS:
+            if (scores.get(activity_hint, -999) > -999
+                    and activity_hint not in NO_WEIGHT_ACTIONS):
+                gain = W_VLM * vlm_confidence
+                scores[activity_hint]  += gain
+                reasons[activity_hint] += f"vlm({vlm_confidence:.2f})+{gain:.2f} "
+
+        # ── 層 7：時間先驗分 ─────────────────────────────────────────
+        W_TIME = 0.10
+        virtual_hour = float(payload.get("virtual_hour", -1)) if payload else -1
+        if virtual_hour >= 0 and skel_body == "sitting":
+            h = virtual_hour
+            time_boosts = {}
+            if 7 <= h < 10 or 12 <= h < 13:
+                time_boosts["Eating"] = 0.2
+            if 19 <= h < 22:
+                time_boosts["Watching"] = 0.2
+            if h >= 23 or h < 6:
+                time_boosts["Laying"] = 0.2
+            for b, boost in time_boosts.items():
+                if scores.get(b, -999) > -999:
+                    gain = W_TIME * boost
+                    scores[b]  += gain
+                    reasons[b] += f"time({h:.0f}h)+{gain:.2f} "
+
+        # ── 層 8：行為慣性分 ─────────────────────────────────────────
+        W_TEMPORAL = 0.10
+        prev_doc = self.col_activity.find_one(
+            {"user": user_id}, sort=[("date", -1)])
+        if prev_doc and prev_doc.get("sequence"):
+            seq = prev_doc["sequence"]
+            if seq:
+                prev_action = seq[-1].get("action", "")
+                n_consec = sum(
+                    1 for e in reversed(seq)
+                    if e.get("action") == prev_action
+                )
+                inertia = min(W_TEMPORAL * n_consec * 0.3, W_TEMPORAL)
+                if prev_action in scores and scores[prev_action] > -999:
+                    scores[prev_action]  += inertia
+                    reasons[prev_action] += f"inertia(n={n_consec})+{inertia:.2f} "
+
+                trans_matrix = getattr(self.scene_engine, "_transition_matrix", {})
+                for b in BEHAVIOR_LABELS:
+                    if scores.get(b, -999) <= -999:
+                        continue
+                    prob = trans_matrix.get(prev_action, {}).get(b, 0.0)
+                    if prob > 0:
+                        gain = W_TEMPORAL * prob * 0.5
+                        scores[b] += gain
+
+        # ── 最終決策：選最高分 ───────────────────────────────────────
+        valid = {b: s for b, s in scores.items()
+                 if s > -999 and b not in NO_WEIGHT_ACTIONS}
+        if not valid:
+            return "Standing", "MinPrior:no_valid", zone_label
+
+        best_action = max(valid, key=valid.get)
+        best_score  = valid[best_action]
+
+        reason_str = reasons.get(best_action, "").strip()[:60]
+        if not reason_str:
+            reason_str = f"score:{best_score:.2f}"
+
+        return best_action, reason_str, zone_label
+
 
     def _emit_edge(self, user_id: str, action: str,
                    bound_label: str, confidence: float,
