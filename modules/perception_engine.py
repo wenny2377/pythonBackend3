@@ -848,7 +848,8 @@ class PerceptionEngine:
 
     def _temporal_smooth(self, new_action: str,
                           evidence_score: float,
-                          user_id: str) -> str:
+                          user_id: str,
+                          hip_height: float = -1) -> str:
         prev_doc = self.col_activity.find_one(
             {"user": user_id}, sort=[("date", -1)])
         if not prev_doc or not prev_doc.get("sequence"):
@@ -856,17 +857,50 @@ class PerceptionEngine:
         seq = prev_doc["sequence"]
         if not seq:
             return new_action
+
         prev_action = seq[-1].get("action", "Standing")
         if prev_action == new_action:
             return new_action
+
+        # 計算連續相同行為的幀數（行為慣性）
+        n_consecutive = 0
+        for entry in reversed(seq):
+            if entry.get("action") == prev_action:
+                n_consecutive += 1
+            else:
+                break
+
+        # 骨架 hip 劇烈變化 → 重置慣性，允許立即轉換
+        # 例如：從坐到站，hip 變化 > 0.15m，允許行為立即轉換
+        if hip_height > 0:
+            prev_hip_entries = [
+                e for e in reversed(seq[-3:])
+                if e.get("hip_height") is not None
+            ]
+            if prev_hip_entries:
+                prev_hip = float(prev_hip_entries[0].get("hip_height", hip_height))
+                hip_delta = abs(hip_height - prev_hip)
+                if hip_delta > 0.15:
+                    n_consecutive = 0  # 重置慣性
+
+        # 動態門檻：N 幀越多，轉換需要越高的信心
+        if n_consecutive < 3:
+            conf_threshold = 0.55   # 自由轉換
+        elif n_consecutive < 5:
+            conf_threshold = 0.65   # 需要較高信心
+        else:
+            conf_threshold = 0.75   # 需要很高信心
+
         trans_matrix = getattr(self.scene_engine, "_transition_matrix", {})
         prob = trans_matrix.get(prev_action, {}).get(new_action, 0.0)
+
         if prob >= 0.05:
-            if evidence_score >= 0.55:
+            if evidence_score >= conf_threshold:
                 return new_action
             return prev_action
         else:
-            if evidence_score >= 0.80:
+            # 轉移矩陣不支持此轉換，需要更高信心
+            if evidence_score >= max(conf_threshold + 0.10, 0.80):
                 return new_action
             return prev_action
 
@@ -926,36 +960,101 @@ class PerceptionEngine:
 
         return best_action, best_reason
 
-    def _skeleton_body_position(self, payload: dict) -> tuple:
-        hip_h    = float(payload.get("hip_height",    -1))
-        arm_elev = float(payload.get("arm_elevation", -1))
-        head_pit = float(payload.get("head_pitch",    -1))
-        body_pos = payload.get("body_pos",  "")
-        arm_pose = payload.get("arm_pose",  "")
+    def _minimum_prior_defense(self, body_position: str, held_obj: str,
+                                head_pitch: float = -999,
+                                virtual_hour: float = None) -> tuple:
+        pos = body_position.lower().strip() if body_position else "standing"
 
-        if body_pos in ("sitting", "standing", "lying"):
-            skel_body = body_pos
-        elif hip_h < 0:
+        if pos == "lying":
+            return "Laying", "MinPrior:lying→Laying"
+
+        if pos == "sitting":
+            # 1. head_pitch 優先：仰頭喝飲料
+            if head_pitch != -999 and head_pitch < -15:
+                return "SittingDrink", f"MinPrior:sitting+head{head_pitch:.0f}°→SittingDrink"
+
+            # 2. held_object 次之
+            if held_obj and held_obj != "none":
+                action_hint = ITEM_TO_ACTION.get(held_obj.lower(), "")
+                if action_hint == "Drinking":
+                    return "SittingDrink", "MinPrior:sitting+drink→SittingDrink"
+                if action_hint in ("Eating", "Cooking"):
+                    return "Eating", "MinPrior:sitting+food→Eating"
+                if action_hint == "Reading":
+                    return "Reading", "MinPrior:sitting+book→Reading"
+                if action_hint == "PhoneUse":
+                    return "PhoneUse", "MinPrior:sitting+phone→PhoneUse"
+
+            # 3. head_pitch Eating 候選
+            if head_pitch != -999 and 15 <= head_pitch <= 28:
+                return "Eating", f"MinPrior:sitting+head{head_pitch:.0f}°→Eating"
+
+            # 4. 時間先驗（空間幾何無法決定時）
+            if virtual_hour is not None:
+                h = float(virtual_hour)
+                if 7 <= h < 10 or 12 <= h < 13:
+                    return "Eating", f"MinPrior:sitting+hour{h:.0f}→Eating"
+                if 19 <= h < 22:
+                    return "Watching", f"MinPrior:sitting+hour{h:.0f}→Watching"
+                if h >= 23 or h < 6:
+                    return "Laying", f"MinPrior:sitting+hour{h:.0f}→Laying"
+
+            return "Sitting", "MinPrior:sitting→Sitting"
+
+        if pos == "standing":
+            # head_pitch PhoneUse 候選
+            if head_pitch != -999 and 28 <= head_pitch <= 50:
+                return "PhoneUse", f"MinPrior:standing+head{head_pitch:.0f}°→PhoneUse"
+            return "Standing", "MinPrior:standing→Standing"
+
+        return "Standing", "MinPrior:default→Standing"
+
+    def _skeleton_body_position(self, payload: dict) -> tuple:
+        hip_h      = float(payload.get("hip_height",    -1))
+        head_pitch = float(payload.get("head_pitch",  -999))
+
+        # 實測數據：
+        #   Laying  hip=0.789-0.846  head=-82 到 -83°（躺下頭部水平）
+        #   坐姿群  hip=0.690-0.742  head=0 到 38°
+        #   站姿群  hip=0.895-0.993  head=-7 到 38°
+        #
+        # 關鍵發現：Sitting(0.690-0.742) < Laying(0.789-0.846)
+        # 不能用 hip 單獨區分坐/躺，必須用 head_pitch 輔助
+        # Laying head=-83°，Sitting head=0-5°，差距極大，可完全區分
+        if hip_h < 0:
             skel_body = None
-        elif hip_h < 0.40:
-            skel_body = "lying"
-        elif hip_h < 0.65:
-            skel_body = "sitting"
+        elif hip_h < 0.900:
+            # 坐/躺重疊區：用 head_pitch 區分
+            if head_pitch < -45:
+                skel_body = "lying"    # 頭部幾乎水平 → 躺下
+            else:
+                skel_body = "sitting"  # 頭部正常角度 → 坐著
         else:
             skel_body = "standing"
 
-        if arm_pose in ("raised", "mid", "low"):
-            skel_arm = arm_pose
-        elif arm_elev < 0:
-            skel_arm = None
-        elif arm_elev < 30:
-            skel_arm = "raised"
-        elif arm_elev < 65:
-            skel_arm = "mid"
-        else:
-            skel_arm = "low"
+        # head_pitch 實測數值：
+        #   SittingDrink : -33 到 -15°（仰頭喝飲料，負值）
+        #   Sitting      :   0 到  5°（平視）
+        #   Watching     :   0°（平視電視）
+        #   Eating       :  21°（略低頭）
+        #   PhoneUse     :  34-38°（低頭看手機）
+        #   Cleaning     :  60-66°（大幅低頭）
+        #   Standing     :  -1°
+        head_hint = None
+        if head_pitch > -999:  # 有效值
+            if skel_body == "sitting":
+                if head_pitch < -15:
+                    head_hint = "SittingDrink"   # 仰頭喝飲料
+                elif 15 <= head_pitch <= 28:
+                    head_hint = "Eating"          # 略低頭看食物
+                elif head_pitch > 28:
+                    head_hint = "Reading"         # 大幅低頭看書
+                # 0-15° 平視：Watching / Sitting，交給幾何推理
+            elif skel_body == "standing":
+                if 28 <= head_pitch <= 50:
+                    head_hint = "PhoneUse"        # 低頭看手機
 
-        return skel_body, skel_arm
+        return skel_body, head_hint
 
     def _spatial_reasoning(self, activity_hint: str, body_position: str,
                             held_obj: str, user_pos: dict, user_forward: dict,
@@ -970,33 +1069,26 @@ class PerceptionEngine:
         nearby_objs  = self._get_nearby_objects(user_pos, room_name)
         norm_held    = self._normalize_object(held_obj)
 
-        # ── 骨架直接命中（優先於所有視覺推理）──
+        # ── 骨架姿態判斷（hip_height + head_pitch）──
+        # hip  : 坐/站/躺三群完全分離，100% 準確
+        # head : SittingDrink(-15°)、Eating(15-28°)、PhoneUse(28-50°站姿)
         if payload:
-            skel_body, skel_arm = self._skeleton_body_position(payload)
-            if skel_body and skel_arm:
-                skel_action = None
-                skel_reason = ""
+            skel_body, head_hint = self._skeleton_body_position(payload)
 
-                if skel_body == "standing" and skel_arm == "raised":
-                    skel_action = "Drinking"
-                    skel_reason = f"skeleton:{skel_body}+{skel_arm}→Drinking"
-                elif skel_body == "standing" and skel_arm == "mid":
-                    skel_action = "PhoneUse"
-                    skel_reason = f"skeleton:{skel_body}+{skel_arm}→PhoneUse"
-                elif skel_body == "sitting" and skel_arm == "low":
-                    skel_action = "Eating"
-                    skel_reason = f"skeleton:{skel_body}+{skel_arm}→Eating"
-                elif skel_body == "lying":
-                    skel_action = "Laying"
-                    skel_reason = f"skeleton:{skel_body}→Laying"
+            # 骨架直接命中：head_pitch 確定的行為
+            if head_hint and skel_body:
+                if (skel_body, head_hint) not in BODY_IMPOSSIBLE:
+                    action = self._temporal_smooth(head_hint, 0.85, user_id)
+                    return action, f"skeleton_head:{skel_body}+head→{head_hint}", zone_label
 
-                if skel_action and (skel_body, skel_action) not in BODY_IMPOSSIBLE:
-                    action = self._temporal_smooth(skel_action, 0.90, user_id)
-                    return action, skel_reason, zone_label
-
-            # 骨架修正 body_position（讓後續決策鏈更準確）
+            # 骨架修正 body_position，讓後續決策層更準確
             if skel_body in ("sitting", "standing", "lying"):
                 body_position = skel_body
+
+            # 骨架 lying 直接命中 Laying
+            if skel_body == "lying":
+                action = self._temporal_smooth("Laying", 0.90, user_id)
+                return action, "skeleton_hip:lying→Laying", zone_label
 
         if (activity_hint
                 and activity_hint in BEHAVIOR_LABELS
@@ -1040,7 +1132,14 @@ class PerceptionEngine:
             action = self._temporal_smooth(activity_hint, vlm_confidence, user_id)
             return action, f"VLM_hint_fallback:{activity_hint}", zone_label
 
-        action, reason = self._minimum_prior_defense(body_position, norm_held)
+        _head_pitch_val = float(payload.get("head_pitch", -999)) if payload else -999
+        _vhour_val      = float(payload.get("virtual_hour", -1)) if payload else -1
+        _vhour_final    = _vhour_val if _vhour_val >= 0 else None
+        action, reason = self._minimum_prior_defense(
+            body_position, norm_held,
+            head_pitch   = _head_pitch_val,
+            virtual_hour = _vhour_final,
+        )
         action = self._temporal_smooth(action, vlm_confidence, user_id)
         return action, reason, zone_label
 
@@ -1417,7 +1516,11 @@ class PerceptionEngine:
         self._index_to_faiss(final_user, log_action, bound_doc, result, mongo_id)
 
         if ground_truth_activity:
+            import uuid as _uuid
             self.db["eval_logs"].insert_one({
+                "episode_id":        str(_uuid.uuid4()),
+                "t_capture":         payload.get("t_capture", ""),
+                "user":              final_user,
                 "user_id":           final_user,
                 "ground_truth":      ground_truth_activity,
                 "vlm_output":        activity_hint,
