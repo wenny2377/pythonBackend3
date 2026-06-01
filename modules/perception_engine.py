@@ -1037,17 +1037,15 @@ class PerceptionEngine:
         # Laying head=-83°，Sitting head=0-5°，差距極大，可完全區分
         if hip_h < 0:
             skel_body = None
+        elif hip_h >= 0.900:
+            skel_body = "standing"
         elif hip_h < 0.900:
             if head_pitch < -45:
                 skel_body = "lying"
             elif hip_h >= 0.880 and head_pitch > 45:
-                # 邊界灰色地帶（0.880-0.900）且大幅低頭
-                # Cleaning(hip=0.895, head=60-66°) 保護：強制判 standing
                 skel_body = "standing"
             else:
                 skel_body = "sitting"
-        else:
-            skel_body = "standing"
 
         # head_pitch 實測數值：
         #   SittingDrink : -33 到 -15°（仰頭喝飲料，負值）
@@ -1088,13 +1086,19 @@ class PerceptionEngine:
         zone_label   = nearest_zone["zone_name"] if nearest_zone else ""
         norm_held    = self._normalize_object(held_obj)
 
-        # ── 骨架解析：只做 body_position 修正 ──────────────────────
+        # ── 骨架解析：hip_height 主導 body_position ────────────────
+        # hip_height simulates MediaPipe normalized hip ratio (hip_y/body_height)
+        # Decision authority: skeleton > VLM for body_position
         skel_body  = None
         head_pitch = float(payload.get("head_pitch", -999)) if payload else -999
         if payload:
             skel_body, _ = self._skeleton_body_position(payload)
             if skel_body in ("sitting", "standing", "lying"):
                 body_position = skel_body
+            elif skel_body is None:
+                # hip_height unavailable: fall back to VLM body_position
+                # In real deployment this means MediaPipe failed
+                pass
 
         # ── 評分初始化 ──────────────────────────────────────────────
         scores  = {b: 0.0 for b in BEHAVIOR_LABELS}
@@ -1163,7 +1167,7 @@ class PerceptionEngine:
         # 物件在用戶 1.5m 內（不需要消失）→ 推斷可能在使用
         # 對應真實場景：同事物件偵測系統看到鍵盤在用戶旁邊 → Typing 可能
         # 比 held_object 弱（W=0.40）因為在附近不等於在使用
-        W_NEARBY = 0.40
+        W_NEARBY = 0.25
         # user_pos fallback from user_positions if not in payload
         if not user_pos:
             _upos_doc = self.db.user_positions.find_one(
@@ -1202,9 +1206,16 @@ class PerceptionEngine:
                         and _naction not in NO_WEIGHT_ACTIONS):
                     _proximity_factor = max(0.0, 1.0 - _ndist / 1.5)
                     _gain = W_NEARBY * _proximity_factor
-                    scores[_naction]  += _gain
-                    reasons[_naction] += (
-                        f"nearby:{_nlabel}→{_naction}+{_gain:.2f} ")
+                    # If held_object already scored this action, skip nearby
+                    # to avoid double-counting the same evidence
+                    _held_already = (
+                        norm_held and norm_held != "none" and
+                        ITEM_TO_ACTION.get(norm_held.lower(), "") == _naction
+                    )
+                    if not _held_already:
+                        scores[_naction]  += _gain
+                        reasons[_naction] += (
+                            f"nearby:{_nlabel}→{_naction}+{_gain:.2f} ")
 
         # ── 層 3：幾何 Proximity 分 ──────────────────────────────────
         W_PROXIMITY = 0.30

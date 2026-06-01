@@ -217,14 +217,14 @@ class SceneEngine:
                              "SittingDrink":0.30},
             "sink":         {"Cleaning":1.00, "Drinking":0.45},
             "toilet":       {"Cleaning":0.71, "Standing":0.30},
-            "chair":        {"Sitting":1.00,  "Eating":0.25,
-                             "SittingDrink":0.25, "Typing":0.25, "Reading":0.25},
-            "chair1":       {"Sitting":1.00,  "Eating":0.25,
-                             "SittingDrink":0.25, "Typing":0.25, "Reading":0.25},
-            "chair2":       {"Sitting":1.00,  "Eating":0.25,
-                             "SittingDrink":0.25, "Typing":0.25, "Reading":0.25},
-            "chair3":       {"Sitting":1.00,  "Eating":0.25,
-                             "SittingDrink":0.25, "Typing":0.25, "Reading":0.25},
+            "chair":        {"Sitting":0.50,  "Eating":0.60,
+                             "SittingDrink":0.50, "Typing":0.60, "Reading":0.40},
+            "chair1":       {"Sitting":0.50,  "Eating":0.60,
+                             "SittingDrink":0.50, "Typing":0.60, "Reading":0.40},
+            "chair2":       {"Sitting":0.50,  "Eating":0.60,
+                             "SittingDrink":0.50, "Typing":0.60, "Reading":0.40},
+            "chair3":       {"Sitting":0.50,  "Eating":0.60,
+                             "SittingDrink":0.50, "Typing":0.60, "Reading":0.40},
         }
         result = {}
         for furn in furniture_list:
@@ -244,38 +244,36 @@ class SceneEngine:
     def _distill_affinity_matrix(self):
         all_docs = list(self.col_scene.find({}, {"label": 1}))
         furniture_list = list({
-            doc["label"] for doc in all_docs if doc.get("label")
+            doc["label"].lower().strip()
+            for doc in all_docs if doc.get("label")
         })
         if not furniture_list:
-            print("[Affinity] No furniture in scene_snapshots, using empty matrix")
+            print("[Affinity] No furniture in scene_snapshots")
             return
-
-        behavior_list    = self.behavior_labels
-        affordance_vecs  = self._get_affordance_vecs()
-
-        print(f"[Affinity] Computing via SBERT affordance descriptions "
-              f"({len(furniture_list)} furniture x {len(behavior_list)} behaviors)...")
 
         all_matrix = {}
 
-        for furn in furniture_list:
-            key      = furn.lower().strip()
-            furn_vec = self.sbert.encode(
-                [furn], normalize_embeddings=True)[0].astype("float32")
-            sims   = affordance_vecs @ furn_vec
-            scores = {}
-            for i, beh in enumerate(behavior_list):
-                scores[beh] = round(float(max(0.0, sims[i])), 3)
-            all_matrix[key] = scores
+        charades_docs = list(self.db.charades_affinity_normalized.find({}))
+        for doc in charades_docs:
+            furn = doc.get("furniture", "").lower().strip()
+            beh  = doc.get("behavior", "")
+            score = float(doc.get("score", 0.0))
+            if not furn or not beh:
+                continue
+            if furn not in all_matrix:
+                all_matrix[furn] = {}
+            all_matrix[furn][beh] = round(score, 3)
+
+        print(f"[Affinity] Loaded {len(charades_docs)} entries from charades_affinity_normalized")
 
         fallback = self._builtin_affinity_fallback(furniture_list)
         for key, beh_scores in fallback.items():
-            if key not in all_matrix:
-                all_matrix[key] = beh_scores
+            key_lower = key.lower().strip()
+            if key_lower not in all_matrix:
+                all_matrix[key_lower] = beh_scores
             else:
                 for beh, score in beh_scores.items():
-                    all_matrix[key][beh] = score
-        print(f"[Affinity] Merged SBERT affordance + cold-start prior")
+                    all_matrix[key_lower][beh] = score
 
         bulk = []
         for furn_key, action_scores in all_matrix.items():
@@ -298,11 +296,10 @@ class SceneEngine:
                 aff[furn][d["behavior"]] = d["score"]
             self._affinity_matrix = aff
             furn_count = len(set(d["furniture"] for d in bulk))
-            print(f"[Affinity] Distilled {len(bulk)} entries "
-                  f"({furn_count} furniture x {len(behavior_list)} behaviors)")
-            print(f"[Affinity] Sample keys: {list(aff.keys())[:5]}")
+            print(f"[Affinity] Built {len(bulk)} entries ({furn_count} furniture)")
         else:
             print("[Affinity] No valid entries")
+
 
     def _get_furniture_affinity(self, furniture_label: str, action: str) -> float:
         label = furniture_label.lower().strip()

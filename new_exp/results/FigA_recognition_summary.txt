@@ -1,26 +1,26 @@
 ============================================================
 Fig.A  Recognition Summary
-Generated: 2026-06-01 11:42
+Generated: 2026-06-01 16:34
 ============================================================
 
-Total samples : 121
-Correct       : 98
-Overall Acc   : 81.0%
+Total samples : 333
+Correct       : 219
+Overall Acc   : 65.8%
 
 Per-group Accuracy:
-  High    : 100.0%
+  High    : 96.7%
   Medium  : 100.0%
-  Low     : 91.3%
+  Low     : 86.9%
 
 Per-class Recall:
-  SittingDrink   : 71.4% (10/14)
-  Sitting        : 100.0% (12/12)
-  Eating         : 47.1% (8/17)
-  Cooking        : 100.0% (8/8)
-  Opening        : 100.0% (10/10)
-  Laying         : 100.0% (8/8)
-  Watching       : 0.0% (0/10)
-  Reading        : 100.0% (12/12)
-  Cleaning       : 100.0% (14/14)
-  PhoneUse       : 100.0% (8/8)
-  Typing         : 100.0% (8/8)
+  SittingDrink   : 35.3% (12/34)
+  Sitting        : 100.0% (32/32)
+  Eating         : 18.2% (8/44)
+  Cooking        : 100.0% (24/24)
+  Opening        : 100.0% (20/20)
+  Laying         : 100.0% (34/34)
+  Watching       : 0.0% (0/34)
+  Reading        : 80.5% (33/41)
+  Cleaning       : 62.5% (20/32)
+  PhoneUse       : 88.9% (16/18)
+  Typing         : 100.0% (20/20)
