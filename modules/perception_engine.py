@@ -1114,7 +1114,7 @@ class PerceptionEngine:
             "Reading":      ( 70, 18, "sitting"),
             "Sitting":      (  2,  8, "sitting"),
             "Watching":     (  0,  8, "sitting"),
-            "Typing":       (  2,  6, "sitting"),
+            "Typing":       (  2, 12, "sitting"),
             "Laying":       (-83, 10, "lying"),
             "Cleaning":     ( 63,  8, "standing"),
             "Cooking":      ( 25,  8, "standing"),
@@ -1123,7 +1123,7 @@ class PerceptionEngine:
             "Drinking":     ( 24, 10, "standing"),
         }
 
-        W_HEAD = 0.35
+        W_HEAD = 0.45
         if head_pitch > -999 and skel_body:
             for b, (ideal, tol, req_body) in HEAD_PITCH_PROFILE.items():
                 if scores[b] <= -999:
@@ -1144,6 +1144,68 @@ class PerceptionEngine:
             scores["Laying"] += 0.90
             reasons["Laying"] += "skeleton_lying+0.90 "
 
+        # ── 層 X：held_object 加分（最直接的行為依據）────────────────────
+        # 來源：Layer 0 held_by / Layer 2 消失推斷 / Layer 3 VLM
+        # SittingDrink 特殊：cup/bottle 在坐姿時對應 SittingDrink 而非 Drinking
+        W_HELD = 0.55
+        if norm_held and norm_held != "none":
+            _item_action = ITEM_TO_ACTION.get(norm_held.lower(), "")
+            if _item_action == "Drinking" and body_position == "sitting":
+                _item_action = "SittingDrink"
+            if (_item_action
+                    and _item_action in scores
+                    and scores.get(_item_action, -999) > -999
+                    and _item_action not in NO_WEIGHT_ACTIONS):
+                scores[_item_action]  += W_HELD
+                reasons[_item_action] += f"held:{norm_held}→{_item_action}+{W_HELD} "
+
+        # ── 層 X2：Nearby Dynamic Objects 加分 ──────────────────────────
+        # 物件在用戶 1.5m 內（不需要消失）→ 推斷可能在使用
+        # 對應真實場景：同事物件偵測系統看到鍵盤在用戶旁邊 → Typing 可能
+        # 比 held_object 弱（W=0.40）因為在附近不等於在使用
+        W_NEARBY = 0.40
+        # user_pos fallback from user_positions if not in payload
+        if not user_pos:
+            _upos_doc = self.db.user_positions.find_one(
+                {"$or": [
+                    {"user_id": user_id},
+                    {"user_id": user_id.lower()},
+                ]},
+                {"x": 1, "z": 1}
+            )
+            if _upos_doc:
+                user_pos = {"x": float(_upos_doc.get("x", 0)),
+                            "z": float(_upos_doc.get("z", 0))}
+        if user_pos:
+            _ux = float(user_pos.get("x", 0))
+            _uz = float(user_pos.get("z", 0))
+            _nearby_docs = list(self.col_dynamic.find(
+                {"label": {"$exists": True},
+                 "source": {"$ne": "unity_user"}},
+                {"label": 1, "pos": 1, "position": 1, "sensor_pos": 1, "held_by": 1}
+            ))
+            for _ndoc in _nearby_docs:
+                _npos = (_ndoc.get("pos")
+                         or _ndoc.get("position")
+                         or _ndoc.get("sensor_pos"))
+                if not isinstance(_npos, list) or len(_npos) < 2:
+                    continue
+                _ndist = math.sqrt(
+                    (_ux - _npos[0])**2 + (_uz - _npos[1])**2)
+                if _ndist > 1.5:
+                    continue
+                _nlabel = self._normalize_object(
+                    _ndoc.get("label", "").lower())
+                _naction = ITEM_TO_ACTION.get(_nlabel, "")
+                if (_naction and _naction in scores
+                        and scores.get(_naction, -999) > -999
+                        and _naction not in NO_WEIGHT_ACTIONS):
+                    _proximity_factor = max(0.0, 1.0 - _ndist / 1.5)
+                    _gain = W_NEARBY * _proximity_factor
+                    scores[_naction]  += _gain
+                    reasons[_naction] += (
+                        f"nearby:{_nlabel}→{_naction}+{_gain:.2f} ")
+
         # ── 層 3：幾何 Proximity 分 ──────────────────────────────────
         W_PROXIMITY = 0.30
         if user_pos:
@@ -1156,7 +1218,7 @@ class PerceptionEngine:
                 docs = list(self.col_scene.find({}, {"label": 1, "pos": 1}))
 
             for doc in docs:
-                pos = doc.get("pos")
+                pos = doc.get("pos") or doc.get("sensor_pos")
                 if not isinstance(pos, list) or len(pos) < 2:
                     continue
                 dist = math.sqrt((ux - pos[0])**2 + (uz - pos[1])**2)
@@ -1206,13 +1268,13 @@ class PerceptionEngine:
                     dx /= dist
                     dz /= dist
                     cos_a = fwd_x * dx + fwd_z * dz
-                    if cos_a > 0.70:
+                    if cos_a > 0.50:
                         gain = W_RAYCAST * cos_a
                         scores[action]  += gain
                         reasons[action] += f"ray:{label}(cos={cos_a:.2f})+{gain:.2f} "
 
         # ── 層 5：Zone affinity 分 ───────────────────────────────────
-        W_ZONE = 0.15
+        W_ZONE = 0.25
         if nearest_zone:
             for b in BEHAVIOR_LABELS:
                 if scores.get(b, -999) <= -999 or b in NO_WEIGHT_ACTIONS:
@@ -1235,15 +1297,25 @@ class PerceptionEngine:
         # ── 層 7：時間先驗分 ─────────────────────────────────────────
         W_TIME = 0.10
         virtual_hour = float(payload.get("virtual_hour", -1)) if payload else -1
-        if virtual_hour >= 0 and skel_body == "sitting":
+        if virtual_hour >= 0:
             h = virtual_hour
             time_boosts = {}
-            if 7 <= h < 10 or 12 <= h < 13:
-                time_boosts["Eating"] = 0.2
-            if 19 <= h < 22:
-                time_boosts["Watching"] = 0.2
-            if h >= 23 or h < 6:
-                time_boosts["Laying"] = 0.2
+            if skel_body == "sitting":
+                if 7 <= h < 10:
+                    time_boosts["Eating"]   = 0.25
+                if 12 <= h < 13:
+                    time_boosts["Eating"]   = 0.20
+                    time_boosts["Laying"]   = 0.15
+                if 19 <= h < 22:
+                    time_boosts["Watching"] = 0.30
+                    time_boosts["Eating"]   = 0.15
+                if h >= 23 or h < 6:
+                    time_boosts["Laying"]   = 0.25
+            if skel_body == "lying":
+                if 12 <= h < 14:
+                    time_boosts["Laying"]   = 0.20
+                if h >= 23 or h < 6:
+                    time_boosts["Laying"]   = 0.30
             for b, boost in time_boosts.items():
                 if scores.get(b, -999) > -999:
                     gain = W_TIME * boost
@@ -1466,6 +1538,31 @@ class PerceptionEngine:
         node_scores  = payload.get("node_scores", [])
         user_pos     = payload.get("user_pos", None)
         user_forward = payload.get("user_forward", None)
+        # Fallback: read user_forward from user_positions (DynamicSyncManager)
+        # unity_user records are stored in user_positions, not dynamic_objects
+        if not user_forward or (
+            float(user_forward.get("x", 0)) == 0 and
+            float(user_forward.get("z", 0)) == 0
+        ):
+            _col_upos = self.db.user_positions
+            _udoc = _col_upos.find_one(
+                {"$or": [
+                    {"user_id": hint_user_id},
+                    {"user_id": hint_user_id.lower()},
+                    {"user_id": hint_user_id.lower().replace("_", "")},
+                ]},
+                {"forward": 1, "x": 1, "z": 1}
+            )
+            if _udoc and _udoc.get("forward"):
+                fwd = _udoc["forward"]
+                if isinstance(fwd, list) and len(fwd) >= 3:
+                    user_forward = {"x": fwd[0], "y": fwd[1], "z": fwd[2]}
+                elif isinstance(fwd, dict):
+                    user_forward = fwd
+            # Also update user_pos if not in payload
+            if not user_pos and _udoc:
+                user_pos = {"x": float(_udoc.get("x", 0)),
+                            "z": float(_udoc.get("z", 0))}
         room_name    = payload.get("room_name", "")
         virtual_hour = payload.get("virtual_hour", None)
         virtual_day  = payload.get("virtual_day", None)

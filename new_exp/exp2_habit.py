@@ -1,6 +1,6 @@
 """
-exp2_habit.py — 論文實驗分析腳本 v3.0
-保留圖表：Fig.A / Fig.B / Fig.C / Fig.D / Fig.F / Fig.G
+exp2_habit.py — Behaviour Recognition Experiment Analysis v3.1
+Figures: Fig.A / Fig.B / Fig.C / Fig.D / Fig.F / Fig.G
 
 Usage:
   python3 exp2_habit.py
@@ -61,11 +61,11 @@ BEHAVIOR_HIGH   = {"Cooking", "Opening", "Laying", "Watching", "Typing", "Cleani
 BEHAVIOR_MEDIUM = {"Eating", "Drinking", "Standing", "Walking", "StandUp"}
 BEHAVIOR_LOW    = {"SittingDrink", "Sitting", "Reading", "PhoneUse"}
 
-USERS           = ["User_Mom", "User_Dad"]
-FAT_THRESHOLDS  = [2, 3, 5, 8, 10]
-CONVERGENCE_ACC = 0.70
+USERS            = ["User_Mom", "User_Dad"]
+FAT_THRESHOLDS   = [2, 3, 5, 8, 10]
+CONVERGENCE_ACC  = 0.70
 CONVERGENCE_DAYS = 3
-DEDUP_SIM       = 0.78
+DEDUP_SIM        = 0.78
 
 NORMALIZE_MAP = {
     "drinking":     "Drinking",    "sittingdrink": "SittingDrink",
@@ -166,12 +166,12 @@ def _get_showcase_combos(db):
 
 
 # ══════════════════════════════════════════════════════════════
-# Fig.A  Recognition Confusion Matrix（論文 4.1）
+# Fig.A  Recognition Confusion Matrix (Paper 4.1)
 # ══════════════════════════════════════════════════════════════
 
 def run_recognition(db, out):
     print("\n" + "=" * 60)
-    print("Fig.A — Recognition Confusion Matrix（論文 4.1）")
+    print("Fig.A — Behaviour Recognition Confusion Matrix (Paper 4.1)")
     print("=" * 60)
 
     docs = list(db.eval_logs.find(
@@ -211,7 +211,9 @@ def run_recognition(db, out):
 
     group_acc = {}
     for group_name, group_set in [
-        ("High", BEHAVIOR_HIGH), ("Medium", BEHAVIOR_MEDIUM), ("Low", BEHAVIOR_LOW)
+        ("High",   BEHAVIOR_HIGH),
+        ("Medium", BEHAVIOR_MEDIUM),
+        ("Low",    BEHAVIOR_LOW),
     ]:
         idxs = [i for i, l in enumerate(labels_present) if l in group_set]
         if idxs:
@@ -254,7 +256,7 @@ def run_recognition(db, out):
 
     group_str = "  ".join([f"{k}: {v:.1%}" for k, v in group_acc.items()])
     ax.set_title(
-        f"Fig.A  Behaviour Recognition Confusion Matrix（論文 4.1）\n"
+        f"Fig.A  Behaviour Recognition Confusion Matrix (Paper 4.1)\n"
         f"Overall Acc = {overall_acc:.1%} ({correct}/{total})  |  {group_str}\n"
         f"[Red=High-specificity  Orange=Medium  Blue=Low-specificity]",
         fontsize=11, fontweight="bold", pad=12)
@@ -269,7 +271,8 @@ def run_recognition(db, out):
     lines = [
         "=" * 60, "Fig.A  Recognition Summary",
         f"Generated: {datetime.datetime.now():%Y-%m-%d %H:%M}", "=" * 60, "",
-        f"Total samples : {total}", f"Correct       : {correct}",
+        f"Total samples : {total}",
+        f"Correct       : {correct}",
         f"Overall Acc   : {overall_acc:.1%}", "",
         "Per-group Accuracy:",
         *[f"  {k:8}: {v:.1%}" for k, v in group_acc.items()], "",
@@ -286,17 +289,17 @@ def run_recognition(db, out):
 
 
 # ══════════════════════════════════════════════════════════════
-# Fig.B  VLM Confidence vs Actual Accuracy（論文 4.1.1）
+# Fig.B  VLM Confidence Calibration (Paper 4.1.1)
 # ══════════════════════════════════════════════════════════════
 
 def run_vlm_confidence(db, out):
     print("\n" + "=" * 60)
-    print("Fig.B — VLM Confidence vs Actual Accuracy（論文 4.1.1）")
+    print("Fig.B — VLM Confidence Calibration (Paper 4.1.1)")
     print("=" * 60)
 
     docs = list(db.eval_logs.find(
-        {"ground_truth": {"$exists": True, "$ne": ""},
-         "vlm_confidence": {"$exists": True},
+        {"ground_truth":    {"$exists": True, "$ne": ""},
+         "vlm_confidence":  {"$exists": True},
          "spatial_action":  {"$exists": True}},
         {"ground_truth": 1, "spatial_action": 1,
          "vlm_confidence": 1, "upgrade_reason": 1}
@@ -349,7 +352,7 @@ def run_vlm_confidence(db, out):
     ax1.set_xlim(0, 1)
     ax1.set_ylim(0, 110)
     ax1.set_title(
-        "Fig.B  VLM Self-Confidence vs Actual Accuracy（論文 4.1.1）\n"
+        "Fig.B  VLM Self-Confidence vs Actual Accuracy (Paper 4.1.1)\n"
         "Gap between curve and diagonal = self-calibration error",
         fontsize=11, fontweight="bold")
     lines1, labels1 = ax1.get_legend_handles_labels()
@@ -364,18 +367,32 @@ def run_vlm_confidence(db, out):
 
 
 # ══════════════════════════════════════════════════════════════
-# Fig.C  Ablation Study（論文 4.1.2）— 逐層移除
+# Fig.C  Ablation Study (Paper 4.1.2)
+#
+# Ablation logic:
+#   reason field contains the dominant scoring signal, e.g.:
+#     "head(21°≈21°)+0.45 prox:table2(0.70)+0.21 zone:..."
+#   We classify each episode by which layer's signal was decisive:
+#     Skeleton : reason contains "skeleton" OR starts with "head("
+#     Geometry : reason contains "prox:" OR "ray:" OR "zone:"
+#     Held     : reason contains "held:"
+#     Temporal : anything else (inertia, time prior, VLM fallback)
+#
+#   For each Config we simulate "what would the output be if
+#   only layers up to Config N were available":
+#     If the decisive layer is within Config N → use spatial_action
+#     Else → fall back to vlm_output
 # ══════════════════════════════════════════════════════════════
 
 def run_ablation(db, out):
     print("\n" + "=" * 60)
-    print("Fig.C — Ablation Study（論文 4.1.2）")
+    print("Fig.C — Ablation Study (Paper 4.1.2)")
     print("=" * 60)
 
     docs = list(db.eval_logs.find(
-        {"ground_truth": {"$exists": True, "$ne": ""},
+        {"ground_truth":  {"$exists": True, "$ne": ""},
          "spatial_action": {"$exists": True},
-         "vlm_output":     {"$exists": True}},
+         "vlm_output":    {"$exists": True}},
         {"ground_truth": 1, "spatial_action": 1,
          "vlm_output": 1, "upgrade_reason": 1}
     ))
@@ -386,65 +403,94 @@ def run_ablation(db, out):
     total = len(docs)
     print(f"  eval_logs: {total}")
 
-    def _skeleton_hit(reason):
-        r = (reason or "").lower()
-        return "skeleton" in r
+    def _dominant_layer(reason):
+        """
+        Classify the dominant reasoning layer for this episode.
 
-    def _geometry_hit(reason):
+        Priority order (highest to lowest):
+          skeleton : explicit skeleton tag or head-pitch profile match
+          held     : held_object item-to-action mapping
+          nearby   : nearby dynamic object (e.g. keyboard on desk)
+          geometry : spatial proximity / ray-cast / zone affinity
+          temporal : time prior, inertia, or VLM fallback
+        """
         r = (reason or "").lower()
-        return any(k in r for k in [
-            "l3b5_proximity", "ray_cast", "l3a_saycan",
-            "l3b_heading", "l3c_zone"
-        ])
+        if r.startswith("skeleton") or r.startswith("head("):
+            return "skeleton"
+        if "skeleton" in r:
+            return "skeleton"
+        if "held:" in r:
+            return "held"
+        if "nearby:" in r:
+            return "nearby"
+        if "prox:" in r or "ray:" in r or "zone:" in r:
+            return "geometry"
+        return "temporal"
 
-    def _temporal_hit(reason):
-        r = (reason or "").lower()
-        return "minprior" in r or "vlm_hint_fallback" in r
+    # Tag each episode
+    for d in docs:
+        d["_layer"] = _dominant_layer(d.get("upgrade_reason", ""))
 
-    # Config 1：VLM only
+    LAYER_ORDER = ["skeleton", "geometry", "held", "temporal"]
+
+    def _simulate(docs, available_layers):
+        """
+        Simulate accuracy when only `available_layers` are active.
+        If the decisive layer is in available_layers → use spatial_action.
+        Otherwise → fall back to vlm_output.
+        """
+        correct = 0
+        for d in docs:
+            if d["_layer"] in available_layers:
+                pred = norm(d.get("spatial_action", ""))
+            else:
+                pred = norm(d.get("vlm_output", ""))
+            if pred == norm(d["ground_truth"]):
+                correct += 1
+        return correct
+
+    # Config 1: VLM only (no reasoning layers)
     c1 = sum(1 for d in docs
              if norm(d.get("vlm_output", "")) == norm(d["ground_truth"]))
 
-    # Config 2：VLM + 骨架
-    c2 = 0
-    for d in docs:
-        reason = d.get("upgrade_reason", "")
-        if _skeleton_hit(reason):
-            pred = norm(d["spatial_action"])
-        else:
-            pred = norm(d.get("vlm_output", ""))
-        if pred == norm(d["ground_truth"]):
-            c2 += 1
+    # Config 2: VLM + Skeleton (hip + head-pitch profile)
+    c2 = _simulate(docs, {"skeleton"})
 
-    # Config 3：VLM + 骨架 + 幾何
-    c3 = 0
-    for d in docs:
-        reason = d.get("upgrade_reason", "")
-        if _skeleton_hit(reason) or _geometry_hit(reason):
-            pred = norm(d["spatial_action"])
-        else:
-            pred = norm(d.get("vlm_output", ""))
-        if pred == norm(d["ground_truth"]):
-            c3 += 1
+    # Config 3: VLM + Skeleton + Geometry (proximity + ray-cast + zone)
+    c3 = _simulate(docs, {"skeleton", "geometry"})
 
-    # Config 4：Full System（含時序）
-    c4 = sum(1 for d in docs
+    # Config 4: VLM + Skeleton + Geometry + Object Context
+    #   (held_object item-to-action + nearby dynamic objects)
+    c4 = _simulate(docs, {"skeleton", "geometry", "held", "nearby"})
+
+    # Config 5: Full System (all layers including temporal inertia)
+    c5 = sum(1 for d in docs
              if norm(d.get("spatial_action", "")) == norm(d["ground_truth"]))
 
+    # Layer distribution stats
+    layer_counts = Counter(d["_layer"] for d in docs)
+    print(f"  Layer distribution: {dict(layer_counts)}")
+    print(f"  Config 1 (VLM only):          {c1}/{total} = {c1/total:.1%}")
+    print(f"  Config 2 (+Skeleton):         {c2}/{total} = {c2/total:.1%}")
+    print(f"  Config 3 (+Geometry):         {c3}/{total} = {c3/total:.1%}")
+    print(f"  Config 4 (+Held Object):      {c4}/{total} = {c4/total:.1%}")
+    print(f"  Config 5 (Full System):       {c5}/{total} = {c5/total:.1%}")
+
     configs = [
-        ("VLM Only\n(Baseline)",       c1, "#BDBDBD"),
-        ("+ Skeleton\n(hip+head)",     c2, "#2196F3"),
-        ("+ Geometry\n(affinity+ray)", c3, "#4CAF50"),
-        ("Full System\n(+temporal)",   c4, "#F44336"),
+        ("VLM Only\n(Baseline)",          c1, "#BDBDBD"),
+        ("+ Skeleton\n(hip+head)",        c2, "#2196F3"),
+        ("+ Geometry\n(affinity+ray)",    c3, "#4CAF50"),
+        ("+ Object Context\n(held+nearby)",  c4, "#FF9800"),
+        ("Full System\n(+temporal)",      c5, "#F44336"),
     ]
 
-    accs    = [c / total for _, c, _ in configs]
-    labels  = [l for l, _, _ in configs]
-    colors  = [c for _, _, c in configs]
-    counts  = [c for _, c, _ in configs]
-    deltas  = [0] + [accs[i] - accs[i-1] for i in range(1, len(accs))]
+    accs   = [c / total for _, c, _ in configs]
+    labels = [l for l, _, _ in configs]
+    colors = [c for _, _, c in configs]
+    counts = [c for _, c, _ in configs]
+    deltas = [0] + [accs[i] - accs[i-1] for i in range(1, len(accs))]
 
-    fig, ax = plt.subplots(figsize=(10, 5.5))
+    fig, ax = plt.subplots(figsize=(11, 5.5))
     bars = ax.bar(range(len(configs)), [a * 100 for a in accs],
                   color=colors, alpha=0.85, edgecolor="white", width=0.6)
 
@@ -466,37 +512,33 @@ def run_ablation(db, out):
     ax.set_ylabel("Accuracy (%)", fontsize=12)
     ax.set_ylim(0, 115)
     ax.set_title(
-        "Fig.C  Ablation Study — Incremental Layer Contribution（論文 4.1.2）\n"
-        f"Total episodes = {total} | each bar adds one reasoning layer",
+        "Fig.C  Ablation Study — Incremental Layer Contribution (Paper 4.1.2)\n"
+        f"Total episodes = {total} | each bar activates one additional reasoning layer",
         fontsize=11, fontweight="bold")
     ax.grid(axis="y", alpha=0.25)
 
-    # 貢獻箭頭
     for i in range(1, len(accs)):
         x1 = i - 1 + 0.32
-        x2 = i - 0.32
+        x2 = i     - 0.32
         y  = max(accs[i-1], accs[i]) * 100 + 8
         ax.annotate("",
                     xy=(x2, y), xytext=(x1, y),
-                    arrowprops=dict(arrowstyle="->",
-                                   color="#616161", lw=1.5))
+                    arrowprops=dict(arrowstyle="->", color="#616161", lw=1.5))
 
     plt.tight_layout()
     path = os.path.join(out, "FigC_ablation_layer_contribution.png")
     plt.savefig(path, dpi=200, bbox_inches="tight")
     plt.close()
     print(f"  Saved: {path}")
-    print(f"  VLM only: {c1/total:.1%} | +Skeleton: {c2/total:.1%} | "
-          f"+Geometry: {c3/total:.1%} | Full: {c4/total:.1%}")
 
 
 # ══════════════════════════════════════════════════════════════
-# Fig.D  習慣學習收斂曲線（論文 4.2）
+# Fig.D  Habit Learning Curve (Paper 4.2)
 # ══════════════════════════════════════════════════════════════
 
 def run_dynamic(db, out):
     print("\n" + "=" * 60)
-    print("Fig.D — Habit Learning Curve（論文 4.2）")
+    print("Fig.D — Habit Learning Curve (Paper 4.2)")
     print("=" * 60)
 
     snaps = list(db.habit_snapshots.find({}))
@@ -512,8 +554,8 @@ def run_dynamic(db, out):
     fig, axes = plt.subplots(1, n, figsize=(6 * n, 5), sharey=True)
     if n == 1: axes = [axes]
     fig.suptitle(
-        "Fig.D  習慣學習收斂曲線（論文 4.2）\n"
-        "3-day rolling mean; convergence = 70% for 3 consecutive days",
+        "Fig.D  Habit Learning Convergence Curve (Paper 4.2)\n"
+        "3-day rolling mean accuracy; convergence = 70% for 3 consecutive days",
         fontsize=12, fontweight="bold")
 
     colors = ["#2196F3", "#4CAF50", "#E53935"]
@@ -550,12 +592,12 @@ def run_dynamic(db, out):
 
 
 # ══════════════════════════════════════════════════════════════
-# Fig.F  FAT Threshold Sensitivity（論文 4.2）
+# Fig.F  FAT Threshold Sensitivity (Paper 4.2)
 # ══════════════════════════════════════════════════════════════
 
 def run_fat(db, out):
     print("\n" + "=" * 60)
-    print("Fig.F — FAT Threshold Sensitivity（論文 4.2）")
+    print("Fig.F — FAT Threshold Sensitivity (Paper 4.2)")
     print("=" * 60)
 
     if not _SBERT_OK:
@@ -576,8 +618,8 @@ def run_fat(db, out):
         1, len(USERS), figsize=(6 * len(USERS), 5.5), sharey=True)
     if len(USERS) == 1: axes = [axes]
     fig.suptitle(
-        "Fig.F  FAT Threshold Sensitivity（論文 4.2）\n"
-        "Precision / Recall / F1 across FAT values; selected = FAT=5",
+        "Fig.F  FAT Threshold Sensitivity (Paper 4.2)\n"
+        "Precision / Recall / F1 across FAT values; selected threshold = FAT=5",
         fontsize=12, fontweight="bold")
 
     for ax, user_id in zip(axes, USERS):
@@ -600,8 +642,7 @@ def run_fat(db, out):
             if len(habits) < 2:
                 redundancy = 0.0
             else:
-                texts = [f"{h['action']} near {h['instance']}"
-                         for h in habits]
+                texts = [f"{h['action']} near {h['instance']}" for h in habits]
                 vecs  = model.encode(texts, normalize_embeddings=True)
                 pairs = redundant = 0
                 for i in range(len(vecs)):
@@ -660,12 +701,12 @@ def run_fat(db, out):
 
 
 # ══════════════════════════════════════════════════════════════
-# Fig.G  Habit Affinity Convergence（論文 4.2.1）
+# Fig.G  Habit Affinity Convergence (Paper 4.2.1)
 # ══════════════════════════════════════════════════════════════
 
 def run_convergence(db, out):
     print("\n" + "=" * 60)
-    print("Fig.G — Habit Affinity Convergence（論文 4.2.1）")
+    print("Fig.G — Habit Affinity Convergence (Paper 4.2.1)")
     print("=" * 60)
 
     docs = list(db.affinity_history.find({}))
@@ -750,13 +791,14 @@ def run_convergence(db, out):
     ax.axhline(y=L3_PRIOR, color="#FF9800", linewidth=1.5,
                linestyle="--", label=f"L3 Static Prior ({L3_PRIOR})")
     ax.axhline(y=0.70, color="#4CAF50", linewidth=1,
-               linestyle="--", alpha=0.5, label="Personalised threshold (0.70)")
+               linestyle="--", alpha=0.5,
+               label="Personalised threshold (0.70)")
     ax.set_xlabel("Day", fontsize=12)
     ax.set_ylabel("Affinity Score", fontsize=12)
     ax.set_ylim(-0.05, 1.05)
     ax.set_title(
-        "Fig.G  Zone × Behaviour Affinity Convergence（論文 4.2.1）\n"
-        "Shaded = 3-day rolling std; dotted = FAT trigger day",
+        "Fig.G  Zone × Behaviour Affinity Convergence (Paper 4.2.1)\n"
+        "Shaded = 3-day rolling std; dotted vertical = FAT trigger day",
         fontsize=12, fontweight="bold")
     ax.legend(fontsize=9)
     ax.grid(axis="y", alpha=0.25)
@@ -772,7 +814,8 @@ def run_convergence(db, out):
 # ══════════════════════════════════════════════════════════════
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="論文實驗分析腳本 v3.0")
+    parser = argparse.ArgumentParser(
+        description="Behaviour Recognition Experiment Analysis v3.1")
     parser.add_argument("--out",  default="results")
     parser.add_argument("--only", default="",
                         help="Run only one figure: A/B/C/D/F/G")
@@ -780,8 +823,8 @@ if __name__ == "__main__":
 
     os.makedirs(args.out, exist_ok=True)
     db = connect()
-    print(f"Connected → {DB_NAME}")
-    print(f"Output   → {args.out}/")
+    print(f"Connected -> {DB_NAME}")
+    print(f"Output   -> {args.out}/")
 
     only = args.only.upper()
 
@@ -794,9 +837,9 @@ if __name__ == "__main__":
 
     print(f"\nDone. Check {args.out}/")
     print("\nFigure index:")
-    print("  FigA  Recognition Confusion Matrix     （論文 4.1）")
-    print("  FigB  VLM Confidence Calibration        （論文 4.1.1）")
-    print("  FigC  Ablation Study Layer Contribution （論文 4.1.2）")
-    print("  FigD  Habit Learning Curve              （論文 4.2）")
-    print("  FigF  FAT Threshold Sensitivity         （論文 4.2）")
-    print("  FigG  Affinity Convergence              （論文 4.2.1）")
+    print("  FigA  Recognition Confusion Matrix      (Paper 4.1)")
+    print("  FigB  VLM Confidence Calibration         (Paper 4.1.1)")
+    print("  FigC  Ablation Study Layer Contribution  (Paper 4.1.2)")
+    print("  FigD  Habit Learning Curve               (Paper 4.2)")
+    print("  FigF  FAT Threshold Sensitivity          (Paper 4.2)")
+    print("  FigG  Affinity Convergence               (Paper 4.2.1)")
