@@ -1121,16 +1121,52 @@ def track_position():
         x         = float(data.get("x", 0))
         z         = float(data.get("z", 0))
         room_name = data.get("room_name", "")
+        forward_x = float(data.get("forward_x", 0))
+        forward_z = float(data.get("forward_z", 0))
+
+        update = {
+            "user_id":    user_id,
+            "x":          x,
+            "z":          z,
+            "room":       room_name,
+            "updated_at": datetime.datetime.utcnow(),
+        }
+        if forward_x != 0 or forward_z != 0:
+            update["forward"] = [forward_x, 0.0, forward_z]
+
         db.user_positions.update_one(
             {"user_id": user_id},
-            {"$set": {"user_id": user_id, "x": x, "z": z,
-                      "room": room_name,
-                      "updated_at": datetime.datetime.utcnow()}},
-            upsert=True)
+            {"$set": update},
+            upsert=True
+        )
         return jsonify({"status": "ok"}), 200
     except Exception as e:
         import traceback
         print(f"[TrackPosition Error] {e}\n{traceback.format_exc()}")
+        return jsonify({"error": str(e)}), 500
+    
+@app.route('/device_state', methods=['POST'])
+def device_state():
+    try:
+        data  = request.get_json()
+        label = data.get('label', '').lower().strip()
+        state = data.get('state', 'off')
+        if not label:
+            return jsonify({"status": "error"}), 400
+        db.device_states.update_one(
+            {"label": label},
+            {"$set": {
+                "label":      label,
+                "state":      state,
+                "updated_at": datetime.datetime.utcnow(),
+            }},
+            upsert=True
+        )
+        print(f"[DeviceState] {label} -> {state}")
+        return jsonify({"status": "ok", "label": label, "state": state}), 200
+    except Exception as e:
+        import traceback
+        print(f"[DeviceState Error] {e}\n{traceback.format_exc()}")
         return jsonify({"error": str(e)}), 500
 
 

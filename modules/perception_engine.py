@@ -1255,14 +1255,19 @@ class PerceptionEngine:
             if fwd_len > 0.01:
                 fwd_x /= fwd_len
                 fwd_z /= fwd_len
+                # Check TV state: only boost Watching if TV is on
+                _tv_doc   = self.db.device_states.find_one({"label": "tv"})
+                _tv_on    = _tv_doc and _tv_doc.get("state") == "on"
+                _tv_boost = 1.0 if _tv_on else 0.4
+
                 target_map = {
-                    "tv":           "Watching",
-                    "television":   "Watching",
-                    "stove":        "Cooking",
-                    "refrigerator": "Opening",
-                    "fridge":       "Opening",
+                    "tv":           ("Watching", _tv_boost),
+                    "television":   ("Watching", _tv_boost),
+                    "stove":        ("Cooking",  1.0),
+                    "refrigerator": ("Opening",  1.0),
+                    "fridge":       ("Opening",  1.0),
                 }
-                for label, action in target_map.items():
+                for label, (action, tv_factor) in target_map.items():
                     if scores.get(action, -999) <= -999:
                         continue
                     doc = self.col_scene.find_one({"label": label}, {"pos": 1})
@@ -1280,7 +1285,7 @@ class PerceptionEngine:
                     dz /= dist
                     cos_a = fwd_x * dx + fwd_z * dz
                     if cos_a > 0.50:
-                        gain = W_RAYCAST * cos_a
+                        gain = W_RAYCAST * cos_a * tv_factor
                         scores[action]  += gain
                         reasons[action] += f"ray:{label}(cos={cos_a:.2f})+{gain:.2f} "
 
