@@ -1,0 +1,222 @@
+# behavior_registry.yaml
+# Single source of truth for Flask perception engine
+# Unity spots are set in Inspector — not here
+# To add a new behaviour: add a new entry here, no Python changes needed
+
+# ══════════════════════════════════════════════════════════════
+# Layer weights — change here to tune the whole system
+# ══════════════════════════════════════════════════════════════
+weights:
+  head:      0.45
+  held:      0.55
+  nearby:    0.25
+  proximity: 0.30
+  raycast:   0.25
+  zone:      0.25
+  vlm:       0.20
+  time:      0.10
+  temporal:  0.10
+
+# ══════════════════════════════════════════════════════════════
+# Ray-cast targets
+# label = furniture label in scene_snapshots
+# action = behaviour to boost
+# tv_on_factor / tv_off_factor = TV state scaling
+# ══════════════════════════════════════════════════════════════
+raycast_targets:
+  - label: tv
+    action: Watching
+    tv_on_factor:  1.0
+    tv_off_factor: 0.4
+  - label: television
+    action: Watching
+    tv_on_factor:  1.0
+    tv_off_factor: 0.4
+  - label: stove
+    action: Cooking
+  - label: refrigerator
+    action: Opening
+  - label: fridge
+    action: Opening
+
+# ══════════════════════════════════════════════════════════════
+# Behaviour definitions
+# Each behaviour defines:
+#   body_position : required posture (sitting / standing / lying)
+#   head_pitch    : ideal angle, tolerance, required body_position
+#   specificity   : high / medium / low (for analysis grouping)
+#   ray_target    : furniture label that boosts this behaviour (optional)
+# ══════════════════════════════════════════════════════════════
+behaviours:
+  Drinking:
+    body_position: standing
+    head_pitch:
+      ideal:     24
+      tolerance: 10
+      req_body:  standing
+    specificity: medium
+
+  SittingDrink:
+    body_position: sitting
+    head_pitch:
+      ideal:    -25
+      tolerance:  8
+      req_body:  sitting
+    specificity: low
+
+  Sitting:
+    body_position: sitting
+    head_pitch:
+      ideal:     2
+      tolerance:  8
+      req_body:  sitting
+    specificity: low
+
+  Eating:
+    body_position: sitting
+    head_pitch:
+      ideal:     21
+      tolerance:  8
+      req_body:  sitting
+    specificity: medium
+
+  Cooking:
+    body_position: standing
+    head_pitch:
+      ideal:     25
+      tolerance:  8
+      req_body:  standing
+    specificity: high
+    ray_target:  stove
+
+  Opening:
+    body_position: standing
+    head_pitch:
+      ideal:     32
+      tolerance:  8
+      req_body:  standing
+    specificity: high
+    ray_target:  refrigerator
+
+  Laying:
+    body_position: lying
+    head_pitch:
+      ideal:    -83
+      tolerance: 10
+      req_body:  lying
+    specificity: high
+
+  Watching:
+    body_position: sitting
+    head_pitch:
+      ideal:     0
+      tolerance:  8
+      req_body:  sitting
+    specificity: low
+    ray_target:  tv
+
+  Reading:
+    body_position: sitting
+    head_pitch:
+      ideal:     70
+      tolerance: 12
+      req_body:  sitting
+    specificity: low
+
+  Cleaning:
+    body_position: standing
+    head_pitch:
+      ideal:     63
+      tolerance:  5
+      req_body:  standing
+    specificity: high
+
+  PhoneUse:
+    body_position: standing
+    head_pitch:
+      ideal:     36
+      tolerance: 10
+      req_body:  standing
+    specificity: high
+
+  Typing:
+    body_position: sitting
+    head_pitch:
+      ideal:     2
+      tolerance: 12
+      req_body:  sitting
+    specificity: high
+
+  StandUp:
+    body_position: standing
+    specificity: medium
+
+  PickingUp:
+    body_position: standing
+    specificity: medium
+
+  PuttingDown:
+    body_position: standing
+    specificity: medium
+
+  Standing:
+    body_position: standing
+    specificity: medium
+
+  Walking:
+    body_position: standing
+    specificity: medium
+
+# ══════════════════════════════════════════════════════════════
+# BODY_IMPOSSIBLE constraints
+# Format: body_position: [list of impossible behaviours]
+# ══════════════════════════════════════════════════════════════
+body_impossible:
+  sitting:
+    - Drinking
+    - Cooking
+    - Opening
+    - Cleaning
+    - PhoneUse
+    - Walking
+    - Standing
+    - StandUp
+  lying:
+    - Drinking
+    - SittingDrink
+    - Sitting
+    - Eating
+    - Cooking
+    - Opening
+    - Watching
+    - Reading
+    - Cleaning
+    - PhoneUse
+    - Typing
+    - Walking
+    - Standing
+    - StandUp
+    - PickingUp
+    - PuttingDown
+  standing:
+    - SittingDrink
+    - Sitting
+    - Eating
+    - Laying
+    - Watching
+    - Reading
+    - Typing
+
+# ══════════════════════════════════════════════════════════════
+# Time prior boosts
+# Format: body_position → hour_range → behaviour: boost
+# ══════════════════════════════════════════════════════════════
+time_prior:
+  sitting:
+    morning:    {hour_min: 7,  hour_max: 10, Eating: 0.25}
+    noon:       {hour_min: 12, hour_max: 13, Eating: 0.20, Laying: 0.15}
+    evening:    {hour_min: 19, hour_max: 22, Watching: 0.30, Eating: 0.15}
+    night:      {hour_min: 23, hour_max: 6,  Laying: 0.25}
+  lying:
+    noon:       {hour_min: 12, hour_max: 14, Laying: 0.20}
+    night:      {hour_min: 23, hour_max: 6,  Laying: 0.30}

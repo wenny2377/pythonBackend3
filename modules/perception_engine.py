@@ -31,10 +31,11 @@ def _load_config(path: str) -> dict:
     return {}
 
 
-_ontology = _load_config("config/robot_ontology.yaml")
-_beh_cfg  = _load_config("config/behavior_config.yaml")
-_sys_cfg  = _load_config("config/system_config.yaml")
-_coco_cfg = _load_config("config/coco_objects.yaml")
+_ontology  = _load_config("config/robot_ontology.yaml")
+_beh_cfg   = _load_config("config/behavior_config.yaml")
+_sys_cfg   = _load_config("config/system_config.yaml")
+_coco_cfg  = _load_config("config/coco_objects.yaml")
+_beh_reg   = _load_config("config/behavior_registry.yaml")
 
 _hp = _sys_cfg.get("hyperparameters", {})
 
@@ -70,7 +71,7 @@ OBJECT_VOCAB = list(dict.fromkeys(
      "spatula", "keyboard", "magazine", "chopsticks", "smartphone"]
 ))
 
-_BODY_CONSTRAINTS_RAW = _ontology.get("body_constraints", {}).get("impossible", {})
+_BODY_CONSTRAINTS_RAW = _beh_reg.get("body_impossible", {}) or     _ontology.get("body_constraints", {}).get("impossible", {})
 BODY_IMPOSSIBLE = {
     (pos.lower(), beh)
     for pos, behs in _BODY_CONSTRAINTS_RAW.items()
@@ -1077,7 +1078,8 @@ class PerceptionEngine:
                             held_obj: str, user_pos: dict, user_forward: dict,
                             room_name: str, user_id: str,
                             vlm_confidence: float = 0.0,
-                            payload: dict = None) -> tuple:
+                            payload: dict = None,
+                            vlm_weight_override: float = None) -> tuple:
 
         if not self.scene_engine.is_ready():
             return activity_hint or "Unknown", "zone_not_ready", ""
@@ -1113,6 +1115,14 @@ class PerceptionEngine:
         # 每個行為有理想 head_pitch 和容忍範圍，統一公式計算
         # (理想角度, 容忍範圍, 適用 body_position)
         HEAD_PITCH_PROFILE = {
+            b: (
+                cfg["head_pitch"]["ideal"],
+                cfg["head_pitch"]["tolerance"],
+                cfg["head_pitch"]["req_body"],
+            )
+            for b, cfg in _beh_reg.get("behaviours", {}).items()
+            if "head_pitch" in cfg
+        } or {
             "SittingDrink": (-25,  8, "sitting"),
             "Eating":       ( 21,  8, "sitting"),
             "Reading":      ( 70, 18, "sitting"),
@@ -1127,7 +1137,7 @@ class PerceptionEngine:
             "Drinking":     ( 24, 10, "standing"),
         }
 
-        W_HEAD = 0.45
+        W_HEAD = _beh_reg.get('weights', {}).get('head', 0.45)
         if head_pitch > -999 and skel_body:
             for b, (ideal, tol, req_body) in HEAD_PITCH_PROFILE.items():
                 if scores[b] <= -999:
@@ -1151,7 +1161,7 @@ class PerceptionEngine:
         # ── 層 X：held_object 加分（最直接的行為依據）────────────────────
         # 來源：Layer 0 held_by / Layer 2 消失推斷 / Layer 3 VLM
         # SittingDrink 特殊：cup/bottle 在坐姿時對應 SittingDrink 而非 Drinking
-        W_HELD = 0.55
+        W_HELD = _beh_reg.get('weights', {}).get('held', 0.55)
         if norm_held and norm_held != "none":
             _item_action = ITEM_TO_ACTION.get(norm_held.lower(), "")
             if _item_action == "Drinking" and body_position == "sitting":
@@ -1167,7 +1177,7 @@ class PerceptionEngine:
         # 物件在用戶 1.5m 內（不需要消失）→ 推斷可能在使用
         # 對應真實場景：同事物件偵測系統看到鍵盤在用戶旁邊 → Typing 可能
         # 比 held_object 弱（W=0.40）因為在附近不等於在使用
-        W_NEARBY = 0.25
+        W_NEARBY = _beh_reg.get('weights', {}).get('nearby', 0.25)
         # user_pos fallback from user_positions if not in payload
         if not user_pos:
             _upos_doc = self.db.user_positions.find_one(
@@ -1218,7 +1228,7 @@ class PerceptionEngine:
                             f"nearby:{_nlabel}→{_naction}+{_gain:.2f} ")
 
         # ── 層 3：幾何 Proximity 分 ──────────────────────────────────
-        W_PROXIMITY = 0.30
+        W_PROXIMITY = _beh_reg.get('weights', {}).get('proximity', 0.30)
         if user_pos:
             ux = float(user_pos.get("x", 0))
             uz = float(user_pos.get("z", 0))
@@ -1245,7 +1255,7 @@ class PerceptionEngine:
                         reasons[b] += f"prox:{furn_label}({aff:.2f})+{gain:.2f} "
 
         # ── 層 4：Ray-cast 朝向分 ────────────────────────────────────
-        W_RAYCAST = 0.25
+        W_RAYCAST = _beh_reg.get('weights', {}).get('raycast', 0.25)
         if user_pos and user_forward:
             ux    = float(user_pos.get("x", 0))
             uz    = float(user_pos.get("z", 0))
@@ -1255,18 +1265,28 @@ class PerceptionEngine:
             if fwd_len > 0.01:
                 fwd_x /= fwd_len
                 fwd_z /= fwd_len
-                # Check TV state: only boost Watching if TV is on
+                # Ray-cast targets from behavior_registry.yaml
                 _tv_doc   = self.db.device_states.find_one({"label": "tv"})
                 _tv_on    = _tv_doc and _tv_doc.get("state") == "on"
                 _tv_boost = 1.0 if _tv_on else 0.4
 
-                target_map = {
-                    "tv":           ("Watching", _tv_boost),
-                    "television":   ("Watching", _tv_boost),
-                    "stove":        ("Cooking",  1.0),
-                    "refrigerator": ("Opening",  1.0),
-                    "fridge":       ("Opening",  1.0),
-                }
+                _ray_entries = _beh_reg.get("raycast_targets", []) or [
+                    {"label": "tv",           "action": "Watching",
+                     "tv_on_factor": 1.0, "tv_off_factor": 0.4},
+                    {"label": "television",   "action": "Watching",
+                     "tv_on_factor": 1.0, "tv_off_factor": 0.4},
+                    {"label": "stove",        "action": "Cooking"},
+                    {"label": "refrigerator", "action": "Opening"},
+                    {"label": "fridge",       "action": "Opening"},
+                ]
+                target_map = {}
+                for _re in _ray_entries:
+                    _lbl = _re["label"]
+                    _act = _re["action"]
+                    if _lbl in ("tv", "television"):
+                        target_map[_lbl] = (_act, _tv_boost)
+                    else:
+                        target_map[_lbl] = (_act, 1.0)
                 for label, (action, tv_factor) in target_map.items():
                     if scores.get(action, -999) <= -999:
                         continue
@@ -1290,7 +1310,7 @@ class PerceptionEngine:
                         reasons[action] += f"ray:{label}(cos={cos_a:.2f})+{gain:.2f} "
 
         # ── 層 5：Zone affinity 分 ───────────────────────────────────
-        W_ZONE = 0.25
+        W_ZONE = _beh_reg.get('weights', {}).get('zone', 0.25)
         if nearest_zone:
             for b in BEHAVIOR_LABELS:
                 if scores.get(b, -999) <= -999 or b in NO_WEIGHT_ACTIONS:
@@ -1302,7 +1322,9 @@ class PerceptionEngine:
                     reasons[b] += f"zone:{nearest_zone['zone_name']}({aff:.2f})+{gain:.2f} "
 
         # ── 層 6：VLM 加分（不跳過任何行為）────────────────────────
-        W_VLM = 0.20
+        W_VLM = (vlm_weight_override
+                  if vlm_weight_override is not None
+                  else _beh_reg.get('weights', {}).get('vlm', 0.20))
         if activity_hint and activity_hint in BEHAVIOR_LABELS:
             if (scores.get(activity_hint, -999) > -999
                     and activity_hint not in NO_WEIGHT_ACTIONS):
@@ -1311,7 +1333,7 @@ class PerceptionEngine:
                 reasons[activity_hint] += f"vlm({vlm_confidence:.2f})+{gain:.2f} "
 
         # ── 層 7：時間先驗分 ─────────────────────────────────────────
-        W_TIME = 0.10
+        W_TIME = _beh_reg.get('weights', {}).get('time', 0.10)
         virtual_hour = float(payload.get("virtual_hour", -1)) if payload else -1
         if virtual_hour >= 0:
             h = virtual_hour
@@ -1339,7 +1361,7 @@ class PerceptionEngine:
                     reasons[b] += f"time({h:.0f}h)+{gain:.2f} "
 
         # ── 層 8：行為慣性分 ─────────────────────────────────────────
-        W_TEMPORAL = 0.10
+        W_TEMPORAL = _beh_reg.get('weights', {}).get('temporal', 0.10)
         prev_doc = self.col_activity.find_one(
             {"user": user_id}, sort=[("date", -1)])
         if prev_doc and prev_doc.get("sequence"):
@@ -1547,6 +1569,21 @@ class PerceptionEngine:
                         continue
             return text
 
+
+    def _compute_vote_entropy(self, votes: list) -> float:
+        import math
+        from collections import Counter
+        if not votes:
+            return 0.0
+        counts  = Counter(votes)
+        total   = len(votes)
+        entropy = 0.0
+        for count in counts.values():
+            p = count / total
+            if p > 0:
+                entropy -= p * math.log2(p)
+        return round(entropy, 4)
+
     def analyze_action_burst(self, payload: dict) -> dict:
         image_list   = payload.get("image_list", [])
         hint_user_id = payload.get("userID", "Unknown_User")
@@ -1701,16 +1738,37 @@ class PerceptionEngine:
               f"orient={body_orientation} held={held_object} "
               f"conf={vlm_confidence:.2f} src={_infer_source}")
 
+        # Dynamic W_VLM based on multi-view voting entropy
+        # High entropy → VLM votes disagree → lower W_VLM
+        # Low entropy  → VLM votes agree    → higher W_VLM
+        _act_entropy = self._compute_vote_entropy(activity_votes)
+        _body_entropy = self._compute_vote_entropy(body_votes)
+        _held_entropy = self._compute_vote_entropy(held_votes)
+        _overall_entropy = _act_entropy * 0.6 + _body_entropy * 0.2 + _held_entropy * 0.2
+        _sys_cfg_vlm = _load_config("config/system_config.yaml").get("entropy", {})
+        _e_high = float(_sys_cfg_vlm.get("high_threshold", 1.2))
+        _e_low  = float(_sys_cfg_vlm.get("low_threshold",  0.4))
+        _w_high = float(_sys_cfg_vlm.get("vlm_weight_high", 0.10))
+        _w_low  = float(_sys_cfg_vlm.get("vlm_weight_low",  0.30))
+        if _overall_entropy >= _e_high:
+            _dynamic_vlm_w = _w_high
+        elif _overall_entropy <= _e_low:
+            _dynamic_vlm_w = _w_low
+        else:
+            _ratio = (_overall_entropy - _e_low) / (_e_high - _e_low)
+            _dynamic_vlm_w = round(_w_low + _ratio * (_w_high - _w_low), 3)
+
         spatial_action, upgrade_reason, zone_label = self._spatial_reasoning(
-            activity_hint  = activity_hint,
-            body_position  = body_position,
-            held_obj       = held_object,
-            user_pos       = user_pos,
-            user_forward   = user_forward,
-            room_name      = room_name,
-            user_id        = final_user,
-            vlm_confidence = vlm_confidence,
-            payload        = payload,
+            activity_hint      = activity_hint,
+            body_position      = body_position,
+            held_obj           = held_object,
+            user_pos           = user_pos,
+            user_forward       = user_forward,
+            room_name          = room_name,
+            user_id            = final_user,
+            vlm_confidence     = vlm_confidence,
+            payload            = payload,
+            vlm_weight_override = _dynamic_vlm_w,
         )
 
         bound_doc, confidence = self._bind_furniture(coord_label, user_pos, room_name)

@@ -1,16 +1,37 @@
 import json
 import re
+import os
 import datetime
 import threading
 import requests
 from collections import defaultdict
 
+try:
+    import yaml as _yaml
+    _YAML_OK = True
+except ImportError:
+    _YAML_OK = False
 
-BEHAVIOR_LABELS = [
+
+def _load_config(path: str) -> dict:
+    if _YAML_OK and os.path.exists(path):
+        with open(path, "r", encoding="utf-8") as f:
+            return _yaml.safe_load(f) or {}
+    return {}
+
+
+_beh_cfg = _load_config("config/behavior_config.yaml")
+_sys_cfg = _load_config("config/system_config.yaml")
+
+BEHAVIOR_LABELS = _beh_cfg.get("behavior_labels", [
     "Drinking", "SittingDrink", "Sitting", "Eating", "Cooking", "Opening",
     "Laying", "Watching", "Reading", "Cleaning", "PhoneUse",
     "Typing", "StandUp", "PickingUp", "PuttingDown", "Standing", "Walking",
-]
+])
+
+_saycan_cfg    = _sys_cfg.get("saycan", {})
+ENV_FALLBACK   = float(_saycan_cfg.get("env_fallback",   0.30))
+MIN_GATE_SCORE = float(_saycan_cfg.get("min_gate_score", 0.05))
 
 _FALLBACK_BEHAVIOR_TO_OBJECTS = {
     "Eating":       ["food", "apple", "banana", "bowl", "plate", "fork", "spoon", "saladbowl"],
@@ -31,9 +52,6 @@ _FALLBACK_BEHAVIOR_TO_OBJECTS = {
     "Standing":     [],
     "Walking":      [],
 }
-
-ENV_FALLBACK   = 0.30
-MIN_GATE_SCORE = 0.05
 
 
 class SayCanEngine:
@@ -200,12 +218,12 @@ class SayCanEngine:
     def _compute_say(self, query: str) -> dict:
         behavior_list = ", ".join(BEHAVIOR_LABELS)
         prompt = (
-            f"You are a home robot intent classifier.\n"
+            "You are a home robot intent classifier.\n"
             f"User said: \"{query}\"\n\n"
-            f"Rate how relevant each behaviour is (0.0=irrelevant, 1.0=perfect).\n"
+            "Rate how relevant each behaviour is (0.0=irrelevant, 1.0=perfect).\n"
             f"Behaviours: {behavior_list}\n\n"
-            f"Output ONLY valid JSON. No explanation.\n"
-            f"Example: {{\"Eating\": 0.9, \"Drinking\": 0.3}}"
+            "Output ONLY valid JSON. No explanation.\n"
+            "Example: {\"Eating\": 0.9, \"Drinking\": 0.3}"
         )
         try:
             resp = requests.post(
@@ -477,7 +495,7 @@ class SayCanEngine:
             f"Allowed Actions: [{behavior_list}]\n"
             f"STRICT CONSTRAINT: Only use objects from: [{object_list_str}]\n\n"
             f"Output ONLY valid JSON. No explanations.\n"
-            f"Example: {{\"Eating\": [\"bowl\", \"fork\", \"saladbowl\"], \"Watching\": [\"remote\"]}}"
+            "Example: {\"Eating\": [\"bowl\", \"fork\"], \"Watching\": [\"remote\"]}"
         )
         try:
             resp = requests.post(
