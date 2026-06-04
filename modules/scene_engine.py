@@ -187,44 +187,64 @@ class SceneEngine:
         print(f"[Transition] Loaded {len(docs)} transition pairs into memory")
 
     def _builtin_affinity_fallback(self, furniture_list: list) -> dict:
-        # 數值來源：Charades_v1_train.csv 統計 + 手工過濾過渡動作
         BASE = {
-            "tv":           {"Watching":1.00, "Sitting":0.25},
-            "television":   {"Watching":1.00, "Sitting":0.25},
-            "monitor":      {"Typing":0.90,   "Reading":0.07},
-            "keyboard":     {"Typing":0.95,   "Reading":0.05},
-            "desk":         {"Typing":0.90,   "Reading":0.20},
-            "stove":        {"Cooking":0.85,  "Cleaning":0.35},
-            "refrigerator": {"Opening":1.00,  "Eating":0.35, "Drinking":0.29},
-            "fridge":       {"Opening":1.00,  "Eating":0.35, "Drinking":0.29},
-            "cabinet":      {"Opening":0.60,  "Cleaning":0.20},
-            "cabinet2":     {"Opening":0.60,  "Cleaning":0.20},
-            "sofa":         {"Sitting":1.00,  "Laying":0.44, "Watching":0.27,
-                             "SittingDrink":0.25, "Reading":0.25, "PhoneUse":0.25},
-            "couch":        {"Sitting":1.00,  "Laying":0.44, "Watching":0.27,
-                             "SittingDrink":0.25, "Reading":0.25, "PhoneUse":0.25},
-            "sofa side":    {"Sitting":1.00,  "Laying":0.44, "Watching":0.27,
-                             "SittingDrink":0.25, "PhoneUse":0.25},
-            "sofa side 2":  {"Sitting":1.00,  "Laying":0.44, "Watching":0.27,
-                             "SittingDrink":0.25, "PhoneUse":0.25},
-            "bed":          {"Laying":0.84,   "Sitting":0.50, "Reading":0.30},
-            "dad's bed":    {"Laying":0.84,   "Sitting":0.50, "Reading":0.30},
-            "dining table": {"Eating":0.70,   "Sitting":0.50,
-                             "SittingDrink":0.30},
-            "table":        {"Eating":0.70,   "Sitting":0.50,
-                             "SittingDrink":0.30},
-            "table2":       {"Eating":0.70,   "Sitting":0.50,
-                             "SittingDrink":0.30},
-            "sink":         {"Cleaning":1.00, "Drinking":0.45},
-            "toilet":       {"Cleaning":0.71, "Standing":0.30},
-            "chair":        {"Sitting":0.50,  "Eating":0.60,
-                             "SittingDrink":0.50, "Typing":0.60, "Reading":0.40},
-            "chair1":       {"Sitting":0.50,  "Eating":0.60,
-                             "SittingDrink":0.50, "Typing":0.60, "Reading":0.40},
-            "chair2":       {"Sitting":0.50,  "Eating":0.60,
-                             "SittingDrink":0.50, "Typing":0.60, "Reading":0.40},
-            "chair3":       {"Sitting":0.50,  "Eating":0.60,
-                             "SittingDrink":0.50, "Typing":0.60, "Reading":0.40},
+            "tv":           {"Watching": 1.00, "Sitting": 0.25},
+            "television":   {"Watching": 1.00, "Sitting": 0.25},
+            "monitor":      {"Typing": 0.90, "Reading": 0.07},
+            "keyboard":     {"Typing": 0.95, "Reading": 0.05},
+            "desk":         {"Typing": 0.90, "Reading": 0.20},
+            "stove":        {"Cooking": 0.85, "Cleaning": 0.35},
+            "refrigerator": {"Opening": 1.00, "Eating": 0.35, "Drinking": 0.29},
+            "fridge":       {"Opening": 1.00, "Eating": 0.35, "Drinking": 0.29},
+            "cabinet":      {"Opening": 0.60, "Cleaning": 0.20},
+            "cabinet2":     {"Opening": 0.60, "Cleaning": 0.20},
+            "sofa": {
+                "Sitting":      1.00,
+                "Laying":       0.44,
+                "Watching":     0.70,
+                "Reading":      0.65,
+                "SittingDrink": 0.50,
+                "PhoneUse":     0.45,
+            },
+            "couch": {
+                "Sitting":      1.00,
+                "Laying":       0.44,
+                "Watching":     0.70,
+                "Reading":      0.65,
+                "SittingDrink": 0.50,
+                "PhoneUse":     0.45,
+            },
+            "sofa side": {
+                "Sitting":      0.60,
+                "Laying":       0.44,
+                "Watching":     0.70,
+                "Reading":      0.65,
+                "SittingDrink": 0.50,
+                "PhoneUse":     0.45,
+            },
+            "sofa side 2": {
+                "Sitting":      0.60,
+                "Laying":       0.44,
+                "Watching":     0.70,
+                "Reading":      0.65,
+                "SittingDrink": 0.50,
+                "PhoneUse":     0.45,
+            },
+            "bed":          {"Laying": 0.84, "Sitting": 0.50, "Reading": 0.30},
+            "dad's bed":    {"Laying": 0.84, "Sitting": 0.50, "Reading": 0.30},
+            "dining table": {"Eating": 0.70, "Sitting": 0.50, "SittingDrink": 0.30},
+            "table":        {"Eating": 0.70, "Sitting": 0.50, "SittingDrink": 0.30},
+            "table2":       {"Eating": 0.70, "Sitting": 0.50, "SittingDrink": 0.30},
+            "sink":         {"Cleaning": 1.00, "Drinking": 0.45},
+            "toilet":       {"Cleaning": 0.71, "Standing": 0.30},
+            "chair":  {"Sitting": 0.50, "Eating": 0.60, "SittingDrink": 0.50,
+                       "Typing": 0.60, "Reading": 0.40},
+            "chair1": {"Sitting": 0.50, "Eating": 0.60, "SittingDrink": 0.50,
+                       "Typing": 0.60, "Reading": 0.40},
+            "chair2": {"Sitting": 0.50, "Eating": 0.60, "SittingDrink": 0.50,
+                       "Typing": 0.60, "Reading": 0.40},
+            "chair3": {"Sitting": 0.50, "Eating": 0.60, "SittingDrink": 0.50,
+                       "Typing": 0.60, "Reading": 0.40},
         }
         result = {}
         for furn in furniture_list:
@@ -233,10 +253,10 @@ class SceneEngine:
                 result[key] = BASE[key]
             else:
                 result[key] = {
-                    "Eating":0.15, "Watching":0.15, "Laying":0.15,
-                    "Typing":0.10, "Reading":0.10,  "Cleaning":0.10,
-                    "Drinking":0.10, "Cooking":0.10, "SittingDrink":0.05,
-                    "Sitting":0.05,
+                    "Eating": 0.15, "Watching": 0.15, "Laying": 0.15,
+                    "Typing": 0.10, "Reading": 0.10, "Cleaning": 0.10,
+                    "Drinking": 0.10, "Cooking": 0.10,
+                    "SittingDrink": 0.05, "Sitting": 0.05,
                 }
         print(f"[Affinity] Cold-start prior loaded: {len(result)} furniture entries")
         return result
@@ -255,8 +275,8 @@ class SceneEngine:
 
         charades_docs = list(self.db.charades_affinity_normalized.find({}))
         for doc in charades_docs:
-            furn = doc.get("furniture", "").lower().strip()
-            beh  = doc.get("behavior", "")
+            furn  = doc.get("furniture", "").lower().strip()
+            beh   = doc.get("behavior", "")
             score = float(doc.get("score", 0.0))
             if not furn or not beh:
                 continue
@@ -273,7 +293,12 @@ class SceneEngine:
                 all_matrix[key_lower] = beh_scores
             else:
                 for beh, score in beh_scores.items():
-                    all_matrix[key_lower][beh] = score
+                    
+                    if beh not in all_matrix[key_lower]:
+                                            all_matrix[key_lower][beh] = score
+                    else:
+                        all_matrix[key_lower][beh] = max(
+                            all_matrix[key_lower][beh], score)
 
         bulk = []
         for furn_key, action_scores in all_matrix.items():
@@ -299,7 +324,6 @@ class SceneEngine:
             print(f"[Affinity] Built {len(bulk)} entries ({furn_count} furniture)")
         else:
             print("[Affinity] No valid entries")
-
 
     def _get_furniture_affinity(self, furniture_label: str, action: str) -> float:
         label = furniture_label.lower().strip()
@@ -414,8 +438,6 @@ class SceneEngine:
                 if ch2: base = max(base, BASE_MASS_CH12)
                 if ch3: base = max(base, BASE_MASS_CH3)
 
-                # Importance Factor：主家具提升 mass，輔助家具降低 mass
-                # 主家具定義空間功能，輔助家具（chair/stool）不應搶走 anchor
                 PRIMARY_ANCHORS = {
                     "tv", "television", "stove", "oven", "refrigerator",
                     "fridge", "desk", "monitor", "bed", "sink",

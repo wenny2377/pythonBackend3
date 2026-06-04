@@ -1,0 +1,214 @@
+[
+  {
+    "label": "apple",
+    "room": "Kitchen ",
+    "last_seen_on": "table2",
+    "spatial_rel": "on",
+    "furniture_pos": [
+      2.261,
+      5.641
+    ],
+    "seen_count": 535,
+    "interact_count": 0,
+    "interacted_by": [],
+    "memory_text": "apple on table2 in Kitchen . seen 535 times. interacted 0 times.",
+    "timestamp": "2026-06-04T18:33:56.668525",
+    "faiss_idx": 220
+  },
+  {
+    "label": "banana",
+    "room": "Kitchen ",
+    "last_seen_on": "table2",
+    "spatial_rel": "on",
+    "furniture_pos": [
+      2.085,
+      5.208
+    ],
+    "seen_count": 535,
+    "interact_count": 0,
+    "interacted_by": [],
+    "memory_text": "banana on table2 in Kitchen . seen 535 times. interacted 0 times.",
+    "timestamp": "2026-06-04T18:33:56.671319",
+    "faiss_idx": 54
+  },
+  {
+    "label": "mouse",
+    "room": "BedRoom(dad)",
+    "last_seen_on": "desk",
+    "spatial_rel": "on",
+    "furniture_pos": [
+      -1.325,
+      1.381
+    ],
+    "seen_count": 527,
+    "interact_count": 0,
+    "interacted_by": [],
+    "memory_text": "mouse on desk in BedRoom(dad). seen 527 times. interacted 0 times.",
+    "timestamp": "2026-06-04T18:33:56.681963",
+    "faiss_idx": 2
+  },
+  {
+    "label": "keyboard",
+    "room": "BedRoom(dad)",
+    "last_seen_on": "desk",
+    "spatial_rel": "on",
+    "furniture_pos": [
+      -1.289,
+      0.785
+    ],
+    "seen_count": 527,
+    "interact_count": 0,
+    "interacted_by": [],
+    "memory_text": "keyboard on desk in BedRoom(dad). seen 527 times. interacted 0 times.",
+    "timestamp": "2026-06-04T18:33:56.686524",
+    "faiss_idx": 3
+  },
+  {
+    "label": "pan",
+    "room": "Kitchen ",
+    "last_seen_on": "stove",
+    "spatial_rel": "on",
+    "furniture_pos": [
+      5.961,
+      3.178
+    ],
+    "seen_count": 1059,
+    "interact_count": 0,
+    "interacted_by": [],
+    "memory_text": "pan on stove in Kitchen . seen 1059 times. interacted 0 times.",
+    "timestamp": "2026-06-04T18:33:56.774779",
+    "faiss_idx": 253
+  },
+  {
+    "label": "book",
+    "room": "LivingRoom",
+    "last_seen_on": "table",
+    "spatial_rel": "on",
+    "furniture_pos": [
+      3.36,
+      -0.76
+    ],
+    "seen_count": 575,
+    "interact_count": 0,
+    "interacted_by": [],
+    "memory_text": "book on table in LivingRoom. seen 575 times. interacted 0 times.",
+    "timestamp": "2026-06-04T18:33:56.701819",
+    "faiss_idx": 338
+  },
+  {
+    "label": "broom",
+    "room": "Kitchen ",
+    "last_seen_on": "chair3",
+    "spatial_rel": "on",
+    "furniture_pos": [
+      3.603,
+      7.485
+    ],
+    "seen_count": 538,
+    "interact_count": 0,
+    "interacted_by": [],
+    "memory_text": "broom on chair3 in Kitchen . seen 538 times. interacted 0 times.",
+    "timestamp": "2026-06-04T18:33:56.711678",
+    "faiss_idx": 325
+  },
+  {
+    "label": "bowl",
+    "room": "LivingRoom",
+    "last_seen_on": "table",
+    "spatial_rel": "on",
+    "furniture_pos": [
+      3.99,
+      -0.66
+    ],
+    "seen_count": 1102,
+    "interact_count": 0,
+    "interacted_by": [],
+    "memory_text": "bowl on table in LivingRoom. seen 1102 times. interacted 0 times.",
+    "timestamp": "2026-06-04T18:33:56.746252",
+    "faiss_idx": 339
+  },
+  {
+    "label": "remote",
+    "room": "LivingRoom",
+    "last_seen_on": "table",
+    "spatial_rel": "on",
+    "furniture_pos": [
+      3.562,
+      -1.25
+    ],
+    "seen_count": 1103,
+    "interact_count": 0,
+    "interacted_by": [],
+    "memory_text": "remote on table in LivingRoom. seen 1103 times. interacted 0 times.",
+    "timestamp": "2026-06-04T18:33:56.751862",
+    "faiss_idx": 340
+  },
+  {
+    "label": "plate",
+    "room": "Kitchen ",
+    "last_seen_on": "sink",
+    "spatial_rel": "on",
+    "furniture_pos": [
+      6.135,
+      4.656
+    ],
+    "seen_count": 536,
+    "interact_count": 0,
+    "interacted_by": [],
+    "memory_text": "plate on sink in Kitchen . seen 536 times. interacted 0 times.",
+    "timestamp": "2026-06-04T18:33:56.748156",
+    "faiss_idx": 204
+  },
+  {
+    "label": "cola",
+    "room": "Kitchen ",
+    "last_seen_on": "table2",
+    "spatial_rel": "on",
+    "furniture_pos": [
+      1.81,
+      5.614
+    ],
+    "seen_count": 538,
+    "interact_count": 1,
+    "interacted_by": [
+      "User_Mom"
+    ],
+    "memory_text": "cola on table2 in Kitchen . seen 538 times. interacted 1 times. used by User_Mom.",
+    "timestamp": "2026-06-04T18:33:56.753475",
+    "faiss_idx": 327
+  },
+  {
+    "label": "bottle",
+    "room": "LivingRoom",
+    "last_seen_on": "table",
+    "spatial_rel": "on",
+    "furniture_pos": [
+      3.67,
+      -1.0
+    ],
+    "seen_count": 578,
+    "interact_count": 0,
+    "interacted_by": [],
+    "memory_text": "bottle on table in LivingRoom. seen 578 times. interacted 0 times.",
+    "timestamp": "2026-06-04T18:33:56.757752",
+    "faiss_idx": 341
+  },
+  {
+    "label": "phone",
+    "room": "Kitchen ",
+    "last_seen_on": "table2",
+    "spatial_rel": "on",
+    "furniture_pos": [
+      2.12,
+      4.84
+    ],
+    "seen_count": 543,
+    "interact_count": 10,
+    "interacted_by": [
+      "User_Dad"
+    ],
+    "memory_text": "phone on table2 in Kitchen . seen 543 times. interacted 10 times. used by User_Dad.",
+    "timestamp": "2026-06-04T18:33:56.779280",
+    "faiss_idx": 319
+  }
+]

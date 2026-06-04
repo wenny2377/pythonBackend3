@@ -484,7 +484,6 @@ def _process_predict(episode_id, data):
                 "z": float(user_fwd_raw.get("z", 0)),
             }
 
-        # Fallback: read forward from user_positions if not in payload
         if est_forward is None and hint_user_id:
             _pos_doc = db.user_positions.find_one({"user_id": hint_user_id})
             if _pos_doc and _pos_doc.get("forward"):
@@ -721,30 +720,17 @@ def _process_predict(episode_id, data):
         except Exception as e:
             print(f"[Manifold] non-critical error: {e}")
 
-        with _gt_cache_lock:
-            actual_gt = _gt_cache.pop(t_capture, activity)
-
         db.eval_logs.update_one(
             {"episode_id": episode_id},
             {"$set": {
-                "episode_id":      episode_id,
-                "status":          "done",
-                "user":            result.get("user", ""),
-                "vlm_output":      result.get("action", "Unknown"),
-                "spatial_action":  spatial_action,
-                "ground_truth":    actual_gt,
-                "upgrade_reason":  result.get("upgrade_reason", ""),
-                "zone_label":      result.get("zone_label", ""),
-                "sbert_sim":       result.get("sbert_sim", 0.0),
-                "entropy":         _entropy_info["overall_entropy"],
-                "forward_x":       est_forward.get("x", 0) if est_forward else None,
-                "forward_z":       est_forward.get("z", 0) if est_forward else None,
-                "t_capture":       t_capture,
-                "vlm_ms":          vlm_ms,
-                "timestamp":       datetime.datetime.utcnow(),
+                "status":    "done",
+                "entropy":   _entropy_info["overall_entropy"],
+                "forward_x": est_forward.get("x", 0) if est_forward else None,
+                "forward_z": est_forward.get("z", 0) if est_forward else None,
+                "vlm_ms":    vlm_ms,
             }},
-            upsert=True,
         )
+
         print(f"[Predict] done | {user_id} | {action} -> {spatial_action} | {vlm_ms}ms")
 
     except Exception as e:
@@ -1157,7 +1143,8 @@ def track_position():
         import traceback
         print(f"[TrackPosition Error] {e}\n{traceback.format_exc()}")
         return jsonify({"error": str(e)}), 500
-    
+
+
 @app.route('/device_state', methods=['POST'])
 def device_state():
     try:

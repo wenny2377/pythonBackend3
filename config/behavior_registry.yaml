@@ -1,52 +1,50 @@
-# behavior_registry.yaml
-# Single source of truth for Flask perception engine
-# Unity spots are set in Inspector — not here
-# To add a new behaviour: add a new entry here, no Python changes needed
-
-# ══════════════════════════════════════════════════════════════
-# Layer weights — change here to tune the whole system
-# ══════════════════════════════════════════════════════════════
 weights:
   head:      0.45
   held:      0.55
   nearby:    0.25
   proximity: 0.30
-  raycast:   0.25
+  raycast:   0.30
   zone:      0.25
   vlm:       0.20
   time:      0.10
   temporal:  0.10
 
-# ══════════════════════════════════════════════════════════════
-# Ray-cast targets
-# label = furniture label in scene_snapshots
-# action = behaviour to boost
-# tv_on_factor / tv_off_factor = TV state scaling
-# ══════════════════════════════════════════════════════════════
 raycast_targets:
   - label: tv
     action: Watching
     tv_on_factor:  1.0
     tv_off_factor: 0.4
+    max_dist: 8.0
   - label: television
     action: Watching
     tv_on_factor:  1.0
     tv_off_factor: 0.4
-  - label: stove
-    action: Cooking
+    max_dist: 8.0
   - label: refrigerator
     action: Opening
+    max_dist: 3.0
   - label: fridge
     action: Opening
+    max_dist: 3.0
 
-# ══════════════════════════════════════════════════════════════
-# Behaviour definitions
-# Each behaviour defines:
-#   body_position : required posture (sitting / standing / lying)
-#   head_pitch    : ideal angle, tolerance, required body_position
-#   specificity   : high / medium / low (for analysis grouping)
-#   ray_target    : furniture label that boosts this behaviour (optional)
-# ══════════════════════════════════════════════════════════════
+strong_held_items:
+  broom:    Cleaning
+  mop:      Cleaning
+  book:     Reading
+  magazine: Reading
+  pan:      Cooking
+  spatula:  Cooking
+
+room_impossible:
+  BedRoom(dad):
+    - Cooking
+    - Cleaning
+  Kitchen:
+    - Laying
+    - Watching
+    - Reading
+    - Typing
+
 behaviours:
   Drinking:
     body_position: standing
@@ -126,8 +124,8 @@ behaviours:
   Cleaning:
     body_position: standing
     head_pitch:
-      ideal:     63
-      tolerance:  5
+      ideal:     75
+      tolerance: 20
       req_body:  standing
     specificity: high
 
@@ -167,10 +165,6 @@ behaviours:
     body_position: standing
     specificity: medium
 
-# ══════════════════════════════════════════════════════════════
-# BODY_IMPOSSIBLE constraints
-# Format: body_position: [list of impossible behaviours]
-# ══════════════════════════════════════════════════════════════
 body_impossible:
   sitting:
     - Drinking
@@ -207,10 +201,6 @@ body_impossible:
     - Reading
     - Typing
 
-# ══════════════════════════════════════════════════════════════
-# Time prior boosts
-# Format: body_position → hour_range → behaviour: boost
-# ══════════════════════════════════════════════════════════════
 time_prior:
   sitting:
     morning:    {hour_min: 7,  hour_max: 10, Eating: 0.25}
@@ -220,3 +210,9 @@ time_prior:
   lying:
     noon:       {hour_min: 12, hour_max: 14, Laying: 0.20}
     night:      {hour_min: 23, hour_max: 6,  Laying: 0.30}
+
+entropy:
+  high_threshold:   1.2
+  low_threshold:    0.4
+  vlm_weight_high:  0.10
+  vlm_weight_low:   0.30

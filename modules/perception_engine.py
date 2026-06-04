@@ -71,11 +71,26 @@ OBJECT_VOCAB = list(dict.fromkeys(
      "spatula", "keyboard", "magazine", "chopsticks", "smartphone"]
 ))
 
-_BODY_CONSTRAINTS_RAW = _beh_reg.get("body_impossible", {}) or     _ontology.get("body_constraints", {}).get("impossible", {})
+_BODY_CONSTRAINTS_RAW = _beh_reg.get("body_impossible", {}) or \
+    _ontology.get("body_constraints", {}).get("impossible", {})
 BODY_IMPOSSIBLE = {
     (pos.lower(), beh)
     for pos, behs in _BODY_CONSTRAINTS_RAW.items()
     for beh in (behs or [])
+}
+
+STRONG_HELD_ITEMS = {
+    str(k).lower(): str(v).strip()
+    for k, v in _beh_reg.get("strong_held_items", {
+        "broom": "Cleaning", "mop": "Cleaning",
+        "book": "Reading", "magazine": "Reading",
+        "pan": "Cooking", "spatula": "Cooking",
+    }).items()
+}
+
+ROOM_IMPOSSIBLE = {
+    str(room): list(behaviors)
+    for room, behaviors in _beh_reg.get("room_impossible", {}).items()
 }
 
 BEHAVIOR_LABELS = _beh_cfg.get("behavior_labels", [
@@ -535,11 +550,9 @@ class PerceptionEngine:
             user_id: str = "") -> str:
         if not user_pos:
             return "none"
-
         ux  = float(user_pos.get("x", 0))
         uz  = float(user_pos.get("z", 0))
         now = datetime.datetime.utcnow()
-
         try:
             held_doc = self.col_dynamic.find_one(
                 {"held_by": user_id} if user_id else {},
@@ -552,7 +565,6 @@ class PerceptionEngine:
                     return label
         except Exception:
             pass
-
         try:
             cutoff = now - datetime.timedelta(seconds=disappeared_threshold_sec)
             query = {
@@ -561,18 +573,15 @@ class PerceptionEngine:
             }
             if room_name:
                 query["room"] = {"$regex": room_name, "$options": "i"}
-
             candidates = list(self.col_dynamic.find(
                 query,
                 {"label": 1, "last_seen_on": 1, "interact_count": 1, "last_seen": 1}
             ).sort("interact_count", -1).limit(10))
-
             for obj in candidates:
                 furniture_label = obj.get("last_seen_on", "")
                 if not furniture_label:
                     continue
-                furniture_doc = self.col_scene.find_one(
-                    {"label": furniture_label}, {"pos": 1})
+                furniture_doc = self.col_scene.find_one({"label": furniture_label}, {"pos": 1})
                 if not furniture_doc:
                     continue
                 pos = furniture_doc.get("pos")
@@ -589,20 +598,16 @@ class PerceptionEngine:
                         return label
         except Exception as e:
             print(f"[Layer0] error: {e}")
-
         return "none"
 
-    def _infer_held_object(self, nearest_furniture: str,
-                            zone_name: str,
-                            room_name: str,
-                            user_pos: dict = None,
+    def _infer_held_object(self, nearest_furniture: str, zone_name: str,
+                            room_name: str, user_pos: dict = None,
                             user_id: str = "") -> str:
         if user_pos:
             _disappeared = self._infer_held_from_disappeared_objects(
                 user_pos, room_name, user_id=user_id)
             if _disappeared and _disappeared != "none":
                 return _disappeared
-
         if nearest_furniture and nearest_furniture != "Unknown_Area":
             try:
                 docs = list(self.col_dynamic.find(
@@ -616,7 +621,6 @@ class PerceptionEngine:
                         return label
             except Exception as e:
                 print(f"[Layer1] error: {e}")
-
         if zone_name:
             try:
                 docs = list(self.col_obs.find(
@@ -636,7 +640,6 @@ class PerceptionEngine:
                             return top1
             except Exception as e:
                 print(f"[Layer2] error: {e}")
-
         if nearest_furniture and nearest_furniture != "Unknown_Area":
             try:
                 furn_key = nearest_furniture.lower().strip()
@@ -653,7 +656,6 @@ class PerceptionEngine:
                         return result
             except Exception as e:
                 print(f"[Layer3] error: {e}")
-
         return "none"
 
     def _compute_p_l(self, obj_label: str, behavior: str) -> float:
@@ -690,352 +692,9 @@ class PerceptionEngine:
         p_v = self._compute_p_v(body_position, behavior, zone_affinity)
         return p_l * p_v
 
-    def _layer3a_saycan(self, held_obj: str, nearby_objs: list,
-                        body_position: str, nearest_zone: dict) -> tuple:
-        scores = {}
-        for behavior in BEHAVIOR_LABELS:
-            if behavior in NO_WEIGHT_ACTIONS:
-                continue
-            z_aff = self.scene_engine.get_zone_affinity(nearest_zone, behavior) \
-                    if nearest_zone else 0.0
-            scores[behavior] = self._saycan_score(
-                held_obj, nearby_objs, body_position, behavior, z_aff)
-
-        if not scores:
-            return None, "", 0.0
-
-        best_behavior = max(scores, key=scores.get)
-        best_score    = scores[best_behavior]
-
-        if best_score < SAYCAN_MIN_SCORE:
-            return None, "", best_score
-
-        held_info = held_obj if held_obj != "none" else f"nearby:{nearby_objs[:1]}"
-        reason = f"L3a_saycan:{held_info}->{best_behavior}(score={best_score:.2f})"
-        return best_behavior, reason, best_score
-
-    def _layer3b_heading(self, user_pos: dict, user_forward: dict,
-                          nearest_zone: dict, body_position: str) -> tuple:
-        if not user_pos or not user_forward or not nearest_zone:
-            return None, ""
-
-        ux = float(user_pos.get("x", 0))
-        uz = float(user_pos.get("z", 0))
-        cx = nearest_zone["center"][0]
-        cz = nearest_zone["center"][1]
-
-        dx, dz = cx - ux, cz - uz
-        dist = math.sqrt(dx * dx + dz * dz)
-        if dist < 0.01:
-            return None, ""
-
-        dx /= dist
-        dz /= dist
-
-        fwd_x = float(user_forward.get("x", 0))
-        fwd_z = float(user_forward.get("z", 0))
-        fwd_len = math.sqrt(fwd_x * fwd_x + fwd_z * fwd_z)
-        if fwd_len < 0.01:
-            return None, ""
-
-        fwd_x /= fwd_len
-        fwd_z /= fwd_len
-
-        heading = float(fwd_x * dx + fwd_z * dz)
-        if heading < HEADING_THRESHOLD:
-            return None, ""
-
-        zone_furniture = set(f.lower() for f in nearest_zone.get("furniture", []))
-        is_high_aff    = bool(zone_furniture & HIGH_AFFORDANCE_FURNITURE)
-
-        if not is_high_aff and heading < 0.65:
-            return None, ""
-
-        action_label = nearest_zone.get("action_label", "")
-        if not action_label or action_label in NO_WEIGHT_ACTIONS:
-            return None, ""
-
-        if (body_position.lower(), action_label) in BODY_IMPOSSIBLE:
-            return None, ""
-
-        reason = (
-            f"L3b_heading:{nearest_zone['zone_name']}"
-            f"->{action_label}(cos={heading:.2f})"
-        )
-        return action_label, reason
-
-    def _layer3b5_proximity(self, user_pos: dict,
-                             room_name: str,
-                             body_position: str,
-                             nearest_zone: dict = None) -> tuple:
-        if not user_pos:
-            return None, ""
-
-        ux = float(user_pos.get("x", 0))
-        uz = float(user_pos.get("z", 0))
-
-        INTERACTION_RADIUS = 1.5
-        MIN_AFFINITY       = 0.40
-
-        query = {"room": {"$regex": room_name, "$options": "i"}} if room_name else {}
-        docs = list(self.col_scene.find(query, {"label": 1, "pos": 1}))
-        if not docs:
-            docs = list(self.col_scene.find({}, {"label": 1, "pos": 1}))
-
-        best_behavior = None
-        best_score    = MIN_AFFINITY
-        best_label    = ""
-        best_dist     = float("inf")
-
-        for doc in docs:
-            pos = doc.get("pos")
-            if not isinstance(pos, list) or len(pos) < 2:
-                continue
-            dist = math.sqrt((ux - pos[0])**2 + (uz - pos[1])**2)
-            if dist > INTERACTION_RADIUS:
-                continue
-
-            furn_label    = doc.get("label", "").lower().strip()
-            action_scores = self.scene_engine._affinity_matrix.get(furn_label, {})
-
-            for behavior, score in action_scores.items():
-                if behavior in NO_WEIGHT_ACTIONS:
-                    continue
-                if (body_position.lower(), behavior) in BODY_IMPOSSIBLE:
-                    continue
-                if score > best_score or (score == best_score and dist < best_dist):
-                    best_score    = score
-                    best_behavior = behavior
-                    best_label    = furn_label
-                    best_dist     = dist
-
-        # Zone action_label 覆蓋：
-        # 當 proximity 給出 Sitting，但當前 zone 有明確的非 Sitting 行為
-        # 讓 zone 的 action_label 覆蓋（解決 Typing_Zone 被 chair→Sitting 蓋掉的問題）
-        if best_behavior in ("Sitting", "Eating") and nearest_zone:
-            zone_action = nearest_zone.get("action_label", "")
-            if (zone_action
-                    and zone_action not in ("Sitting", "Standing", "Walking", "")
-                    and zone_action in BEHAVIOR_LABELS
-                    and zone_action not in NO_WEIGHT_ACTIONS
-                    and (body_position.lower(), zone_action) not in BODY_IMPOSSIBLE):
-                best_behavior = zone_action
-                reason = (f"L3b5_proximity:{best_label}"
-                          f"->{best_behavior}"
-                          f"(zone_override,dist={best_dist:.2f}m)")
-                return best_behavior, reason
-
-        if best_behavior:
-            reason = (f"L3b5_proximity:{best_label}"
-                      f"->{best_behavior}"
-                      f"(aff={best_score:.2f},dist={best_dist:.2f}m)")
-            return best_behavior, reason
-
-        return None, ""
-
-    def _layer3c_zone_affinity(self, nearest_zone: dict,
-                                body_position: str) -> tuple:
-        if not nearest_zone:
-            return None, ""
-
-        zone_furniture = set(f.lower() for f in nearest_zone.get("furniture", []))
-        is_high_aff    = bool(zone_furniture & HIGH_AFFORDANCE_FURNITURE)
-        threshold      = HIGH_AFFORDANCE_L3_THRESHOLD if is_high_aff else L3_STANDARD_THRESHOLD
-
-        best_behavior = None
-        best_aff      = threshold
-
-        for behavior in BEHAVIOR_LABELS:
-            if behavior in NO_WEIGHT_ACTIONS:
-                continue
-            if (body_position.lower(), behavior) in BODY_IMPOSSIBLE:
-                continue
-            aff = self.scene_engine.get_zone_affinity(nearest_zone, behavior)
-            if aff > best_aff:
-                best_aff      = aff
-                best_behavior = behavior
-
-        if not best_behavior:
-            return None, ""
-
-        reason = (
-            f"L3c_zone:{nearest_zone['zone_name']}"
-            f"->{best_behavior}(aff={best_aff:.2f})"
-        )
-        return best_behavior, reason
-
-    def _temporal_smooth(self, new_action: str,
-                          evidence_score: float,
-                          user_id: str,
-                          hip_height: float = -1) -> str:
-        prev_doc = self.col_activity.find_one(
-            {"user": user_id}, sort=[("date", -1)])
-        if not prev_doc or not prev_doc.get("sequence"):
-            return new_action
-        seq = prev_doc["sequence"]
-        if not seq:
-            return new_action
-
-        prev_action = seq[-1].get("action", "Standing")
-        if prev_action == new_action:
-            return new_action
-
-        # 計算連續相同行為的幀數（行為慣性）
-        n_consecutive = 0
-        for entry in reversed(seq):
-            if entry.get("action") == prev_action:
-                n_consecutive += 1
-            else:
-                break
-
-        # 骨架 hip 劇烈變化 → 重置慣性，允許立即轉換
-        # 例如：從坐到站，hip 變化 > 0.15m，允許行為立即轉換
-        if hip_height > 0:
-            prev_hip_entries = [
-                e for e in reversed(seq[-3:])
-                if e.get("hip_height") is not None
-            ]
-            if prev_hip_entries:
-                prev_hip = float(prev_hip_entries[0].get("hip_height", hip_height))
-                hip_delta = abs(hip_height - prev_hip)
-                if hip_delta > 0.15:
-                    n_consecutive = 0  # 重置慣性
-
-        # 動態門檻：N 幀越多，轉換需要越高的信心
-        if n_consecutive < 3:
-            conf_threshold = 0.55   # 自由轉換
-        elif n_consecutive < 5:
-            conf_threshold = 0.65   # 需要較高信心
-        else:
-            conf_threshold = 0.75   # 需要很高信心
-
-        trans_matrix = getattr(self.scene_engine, "_transition_matrix", {})
-        prob = trans_matrix.get(prev_action, {}).get(new_action, 0.0)
-
-        if prob >= 0.05:
-            if evidence_score >= conf_threshold:
-                return new_action
-            return prev_action
-        else:
-            # 轉移矩陣不支持此轉換，需要更高信心
-            if evidence_score >= max(conf_threshold + 0.10, 0.80):
-                return new_action
-            return prev_action
-
-    def _layer3b_heading_extended(self, user_pos: dict,
-                                   user_forward: dict,
-                                   body_position: str) -> tuple:
-        if not user_pos or not user_forward:
-            return None, ""
-
-        ux    = float(user_pos.get("x", 0))
-        uz    = float(user_pos.get("z", 0))
-        fwd_x = float(user_forward.get("x", 0))
-        fwd_z = float(user_forward.get("z", 0))
-        fwd_len = math.sqrt(fwd_x**2 + fwd_z**2)
-        if fwd_len < 0.01:
-            return None, ""
-        fwd_x /= fwd_len
-        fwd_z /= fwd_len
-
-        target_map = {
-            "tv":           "Watching",
-            "television":   "Watching",
-            "monitor":      "Watching",
-            "stove":        "Cooking",
-            "refrigerator": "Opening",
-            "fridge":       "Opening",
-        }
-
-        best_action = None
-        best_reason = ""
-        best_angle  = 30.0
-
-        for label, action in target_map.items():
-            if (body_position.lower(), action) in BODY_IMPOSSIBLE:
-                continue
-            doc = self.col_scene.find_one({"label": label}, {"pos": 1})
-            if not doc:
-                continue
-            pos = doc.get("pos")
-            if not isinstance(pos, list) or len(pos) < 2:
-                continue
-            dx   = pos[0] - ux
-            dz   = pos[1] - uz
-            dist = math.sqrt(dx**2 + dz**2)
-            if dist < 0.01 or dist > 5.0:
-                continue
-            dx /= dist
-            dz /= dist
-            cos_angle = fwd_x * dx + fwd_z * dz
-            angle_deg = math.degrees(math.acos(max(-1.0, min(1.0, cos_angle))))
-            if angle_deg < best_angle:
-                best_angle  = angle_deg
-                best_action = action
-                best_reason = (f"ray_cast:{label}"
-                               f"->{action}"
-                               f"(angle={angle_deg:.1f}°,dist={dist:.1f}m)")
-
-        return best_action, best_reason
-
-    def _minimum_prior_defense(self, body_position: str, held_obj: str,
-                                head_pitch: float = -999,
-                                virtual_hour: float = None) -> tuple:
-        pos = body_position.lower().strip() if body_position else "standing"
-
-        if pos == "lying":
-            return "Laying", "MinPrior:lying→Laying"
-
-        if pos == "sitting":
-            # 1. head_pitch 優先：仰頭喝飲料
-            if head_pitch != -999 and head_pitch < -15:
-                return "SittingDrink", f"MinPrior:sitting+head{head_pitch:.0f}°→SittingDrink"
-
-            # 2. held_object 次之
-            if held_obj and held_obj != "none":
-                action_hint = ITEM_TO_ACTION.get(held_obj.lower(), "")
-                if action_hint == "Drinking":
-                    return "SittingDrink", "MinPrior:sitting+drink→SittingDrink"
-                if action_hint in ("Eating", "Cooking"):
-                    return "Eating", "MinPrior:sitting+food→Eating"
-                if action_hint == "Reading":
-                    return "Reading", "MinPrior:sitting+book→Reading"
-                if action_hint == "PhoneUse":
-                    return "PhoneUse", "MinPrior:sitting+phone→PhoneUse"
-
-            # 3. head_pitch Eating 候選
-            if head_pitch != -999 and 15 <= head_pitch <= 28:
-                return "Eating", f"MinPrior:sitting+head{head_pitch:.0f}°→Eating"
-
-            # 4. 時間先驗（空間幾何無法決定時）
-            if virtual_hour is not None:
-                h = float(virtual_hour)
-                if 7 <= h < 10 or 12 <= h < 13:
-                    return "Eating", f"MinPrior:sitting+hour{h:.0f}→Eating"
-                if 19 <= h < 22:
-                    return "Watching", f"MinPrior:sitting+hour{h:.0f}→Watching"
-                if h >= 23 or h < 6:
-                    return "Laying", f"MinPrior:sitting+hour{h:.0f}→Laying"
-
-            return "Sitting", "MinPrior:sitting→Sitting"
-
-        if pos == "standing":
-            return "Standing", "MinPrior:standing→Standing"
-
-        return "Standing", "MinPrior:default→Standing"
-
     def _skeleton_body_position(self, payload: dict) -> tuple:
         hip_h      = float(payload.get("hip_height",    -1))
         head_pitch = float(payload.get("head_pitch",  -999))
-
-        # 實測數據：
-        #   Laying  hip=0.789-0.846  head=-82 到 -83°（躺下頭部水平）
-        #   坐姿群  hip=0.690-0.742  head=0 到 38°
-        #   站姿群  hip=0.895-0.993  head=-7 到 38°
-        #
-        # 關鍵發現：Sitting(0.690-0.742) < Laying(0.789-0.846)
-        # 不能用 hip 單獨區分坐/躺，必須用 head_pitch 輔助
-        # Laying head=-83°，Sitting head=0-5°，差距極大，可完全區分
         if hip_h < 0:
             skel_body = None
         elif hip_h >= 0.900:
@@ -1047,32 +706,47 @@ class PerceptionEngine:
                 skel_body = "standing"
             else:
                 skel_body = "sitting"
-
-        # head_pitch 實測數值：
-        #   SittingDrink : -33 到 -15°（仰頭喝飲料，負值）
-        #   Sitting      :   0 到  5°（平視）
-        #   Watching     :   0°（平視電視）
-        #   Eating       :  21°（略低頭）
-        #   PhoneUse     :  34-38°（低頭看手機）
-        #   Cleaning     :  60-66°（大幅低頭）
-        #   Standing     :  -1°
         head_hint = None
-        if head_pitch > -999:  # 有效值
+        if head_pitch > -999:
             if skel_body == "sitting":
                 if head_pitch < -15:
-                    head_hint = "SittingDrink"   # 仰頭喝飲料（-33 到 -15°）
+                    head_hint = "SittingDrink"
                 elif 15 <= head_pitch <= 28:
-                    head_hint = "Eating"          # 略低頭看食物（21°）
+                    head_hint = "Eating"
                 elif head_pitch > 55:
-                    head_hint = "Reading"         # 大幅低頭看書（實測 56-87°）
-                # Cleaning head=60-66° 是站姿，骨架已確認 standing，不會進此分支
-                # 0-15° 平視：Watching / Sitting，交給幾何推理
-                # Cleaning 是站姿（hip 0.895-0.940 邊界），head_pitch 60-66°
-                # 若被誤判為 sitting，head>28° 會觸發 Reading，需要在幾何層否決
-            elif skel_body == "standing":
-                pass
-
+                    head_hint = "Reading"
         return skel_body, head_hint
+
+    def _temporal_smooth(self, new_action: str, evidence_score: float,
+                          user_id: str, hip_height: float = -1) -> str:
+        prev_doc = self.col_activity.find_one({"user": user_id}, sort=[("date", -1)])
+        if not prev_doc or not prev_doc.get("sequence"):
+            return new_action
+        seq = prev_doc["sequence"]
+        if not seq:
+            return new_action
+        prev_action = seq[-1].get("action", "Standing")
+        if prev_action == new_action:
+            return new_action
+        n_consecutive = 0
+        for entry in reversed(seq):
+            if entry.get("action") == prev_action:
+                n_consecutive += 1
+            else:
+                break
+        if hip_height > 0:
+            prev_hip_entries = [e for e in reversed(seq[-3:]) if e.get("hip_height") is not None]
+            if prev_hip_entries:
+                prev_hip = float(prev_hip_entries[0].get("hip_height", hip_height))
+                if abs(hip_height - prev_hip) > 0.15:
+                    n_consecutive = 0
+        conf_threshold = 0.55 if n_consecutive < 3 else (0.65 if n_consecutive < 5 else 0.75)
+        trans_matrix = getattr(self.scene_engine, "_transition_matrix", {})
+        prob = trans_matrix.get(prev_action, {}).get(new_action, 0.0)
+        if prob >= 0.05:
+            return new_action if evidence_score >= conf_threshold else prev_action
+        else:
+            return new_action if evidence_score >= max(conf_threshold + 0.10, 0.80) else prev_action
 
     def _spatial_reasoning(self, activity_hint: str, body_position: str,
                             held_obj: str, user_pos: dict, user_forward: dict,
@@ -1088,32 +762,51 @@ class PerceptionEngine:
         zone_label   = nearest_zone["zone_name"] if nearest_zone else ""
         norm_held    = self._normalize_object(held_obj)
 
-        # ── 骨架解析：hip_height 主導 body_position ────────────────
-        # hip_height simulates MediaPipe normalized hip ratio (hip_y/body_height)
-        # Decision authority: skeleton > VLM for body_position
         skel_body  = None
         head_pitch = float(payload.get("head_pitch", -999)) if payload else -999
         if payload:
             skel_body, _ = self._skeleton_body_position(payload)
             if skel_body in ("sitting", "standing", "lying"):
                 body_position = skel_body
-            elif skel_body is None:
-                # hip_height unavailable: fall back to VLM body_position
-                # In real deployment this means MediaPipe failed
-                pass
 
-        # ── 評分初始化 ──────────────────────────────────────────────
-        scores  = {b: 0.0 for b in BEHAVIOR_LABELS}
-        reasons = {b: ""  for b in BEHAVIOR_LABELS}
+        # ══════════════════════════════════════════════════════
+        # 階段 1：硬過濾 → 建立 candidates
+        # ══════════════════════════════════════════════════════
+        candidates = set(b for b in BEHAVIOR_LABELS if b not in NO_WEIGHT_ACTIONS)
 
-        # ── 層 0：BODY_IMPOSSIBLE 硬過濾 ────────────────────────────
-        for b in BEHAVIOR_LABELS:
+        for b in list(candidates):
             if (body_position.lower(), b) in BODY_IMPOSSIBLE:
-                scores[b] = -999.0
+                candidates.discard(b)
 
-        # ── 層 1：骨架 head_pitch 匹配分 ────────────────────────────
-        # 每個行為有理想 head_pitch 和容忍範圍，統一公式計算
-        # (理想角度, 容忍範圍, 適用 body_position)
+        if room_name:
+            for room_key, forbidden in ROOM_IMPOSSIBLE.items():
+                if room_key.lower() in room_name.lower():
+                    for b in forbidden:
+                        candidates.discard(b)
+
+        if not candidates:
+            return "Standing", "no_candidates", zone_label
+
+        # ══════════════════════════════════════════════════════
+        # 階段 2：強證據直通（skeleton > held_object）
+        # ══════════════════════════════════════════════════════
+        if skel_body == "lying" and "Laying" in candidates:
+            return "Laying", "strong:skeleton_lying", zone_label
+
+        if norm_held and norm_held != "none":
+            strong_action = STRONG_HELD_ITEMS.get(norm_held.lower(), "")
+            if strong_action and strong_action in candidates:
+                return strong_action, f"strong:held:{norm_held}→{strong_action}", zone_label
+
+        if skel_body == "sitting" and head_pitch > 55 and "Reading" in candidates:
+            return "Reading", f"strong:head({head_pitch:.0f}°)→Reading", zone_label
+
+        # ══════════════════════════════════════════════════════
+        # 階段 3：軟證據投票（只在 candidates 裡投票）
+        # ══════════════════════════════════════════════════════
+        scores  = {b: 0.0 for b in candidates}
+        reasons = {b: ""  for b in candidates}
+
         HEAD_PITCH_PROFILE = {
             b: (
                 cfg["head_pitch"]["ideal"],
@@ -1125,12 +818,12 @@ class PerceptionEngine:
         } or {
             "SittingDrink": (-25,  8, "sitting"),
             "Eating":       ( 21,  8, "sitting"),
-            "Reading":      ( 70, 18, "sitting"),
+            "Reading":      ( 70, 12, "sitting"),
             "Sitting":      (  2,  8, "sitting"),
             "Watching":     (  0,  8, "sitting"),
             "Typing":       (  2, 12, "sitting"),
             "Laying":       (-83, 10, "lying"),
-            "Cleaning":     ( 63,  8, "standing"),
+            "Cleaning":     ( 75, 20, "standing"),
             "Cooking":      ( 25,  8, "standing"),
             "Opening":      ( 32,  8, "standing"),
             "PhoneUse":     ( 36, 10, "standing"),
@@ -1140,7 +833,7 @@ class PerceptionEngine:
         W_HEAD = _beh_reg.get('weights', {}).get('head', 0.45)
         if head_pitch > -999 and skel_body:
             for b, (ideal, tol, req_body) in HEAD_PITCH_PROFILE.items():
-                if scores[b] <= -999:
+                if b not in scores:
                     continue
                 if skel_body != req_body:
                     continue
@@ -1152,39 +845,19 @@ class PerceptionEngine:
                 else:
                     scores[b] -= W_HEAD * 0.3
 
-        # ── 層 2：Laying 直接強命中 ─────────────────────────────────
-        # lying 是唯一完全可靠的骨架判斷，給予最高分
-        if skel_body == "lying" and scores.get("Laying", -999) > -999:
-            scores["Laying"] += 0.90
-            reasons["Laying"] += "skeleton_lying+0.90 "
-
-        # ── 層 X：held_object 加分（最直接的行為依據）────────────────────
-        # 來源：Layer 0 held_by / Layer 2 消失推斷 / Layer 3 VLM
-        # SittingDrink 特殊：cup/bottle 在坐姿時對應 SittingDrink 而非 Drinking
         W_HELD = _beh_reg.get('weights', {}).get('held', 0.55)
         if norm_held and norm_held != "none":
             _item_action = ITEM_TO_ACTION.get(norm_held.lower(), "")
             if _item_action == "Drinking" and body_position == "sitting":
                 _item_action = "SittingDrink"
-            if (_item_action
-                    and _item_action in scores
-                    and scores.get(_item_action, -999) > -999
-                    and _item_action not in NO_WEIGHT_ACTIONS):
+            if _item_action and _item_action in scores and _item_action not in NO_WEIGHT_ACTIONS:
                 scores[_item_action]  += W_HELD
                 reasons[_item_action] += f"held:{norm_held}→{_item_action}+{W_HELD} "
 
-        # ── 層 X2：Nearby Dynamic Objects 加分 ──────────────────────────
-        # 物件在用戶 1.5m 內（不需要消失）→ 推斷可能在使用
-        # 對應真實場景：同事物件偵測系統看到鍵盤在用戶旁邊 → Typing 可能
-        # 比 held_object 弱（W=0.40）因為在附近不等於在使用
         W_NEARBY = _beh_reg.get('weights', {}).get('nearby', 0.25)
-        # user_pos fallback from user_positions if not in payload
         if not user_pos:
             _upos_doc = self.db.user_positions.find_one(
-                {"$or": [
-                    {"user_id": user_id},
-                    {"user_id": user_id.lower()},
-                ]},
+                {"$or": [{"user_id": user_id}, {"user_id": user_id.lower()}]},
                 {"x": 1, "z": 1}
             )
             if _upos_doc:
@@ -1194,40 +867,27 @@ class PerceptionEngine:
             _ux = float(user_pos.get("x", 0))
             _uz = float(user_pos.get("z", 0))
             _nearby_docs = list(self.col_dynamic.find(
-                {"label": {"$exists": True},
-                 "source": {"$ne": "unity_user"}},
-                {"label": 1, "pos": 1, "position": 1, "sensor_pos": 1, "held_by": 1}
+                {"label": {"$exists": True}, "source": {"$ne": "unity_user"}},
+                {"label": 1, "pos": 1, "position": 1, "sensor_pos": 1}
             ))
             for _ndoc in _nearby_docs:
-                _npos = (_ndoc.get("pos")
-                         or _ndoc.get("position")
-                         or _ndoc.get("sensor_pos"))
+                _npos = (_ndoc.get("pos") or _ndoc.get("position") or _ndoc.get("sensor_pos"))
                 if not isinstance(_npos, list) or len(_npos) < 2:
                     continue
-                _ndist = math.sqrt(
-                    (_ux - _npos[0])**2 + (_uz - _npos[1])**2)
+                _ndist = math.sqrt((_ux - _npos[0])**2 + (_uz - _npos[1])**2)
                 if _ndist > 1.5:
                     continue
-                _nlabel = self._normalize_object(
-                    _ndoc.get("label", "").lower())
+                _nlabel  = self._normalize_object(_ndoc.get("label", "").lower())
                 _naction = ITEM_TO_ACTION.get(_nlabel, "")
-                if (_naction and _naction in scores
-                        and scores.get(_naction, -999) > -999
-                        and _naction not in NO_WEIGHT_ACTIONS):
+                if (_naction and _naction in scores and _naction not in NO_WEIGHT_ACTIONS):
                     _proximity_factor = max(0.0, 1.0 - _ndist / 1.5)
                     _gain = W_NEARBY * _proximity_factor
-                    # If held_object already scored this action, skip nearby
-                    # to avoid double-counting the same evidence
-                    _held_already = (
-                        norm_held and norm_held != "none" and
-                        ITEM_TO_ACTION.get(norm_held.lower(), "") == _naction
-                    )
+                    _held_already = (norm_held and norm_held != "none" and
+                                     ITEM_TO_ACTION.get(norm_held.lower(), "") == _naction)
                     if not _held_already:
                         scores[_naction]  += _gain
-                        reasons[_naction] += (
-                            f"nearby:{_nlabel}→{_naction}+{_gain:.2f} ")
+                        reasons[_naction] += f"nearby:{_nlabel}→{_naction}+{_gain:.2f} "
 
-        # ── 層 3：幾何 Proximity 分 ──────────────────────────────────
         W_PROXIMITY = _beh_reg.get('weights', {}).get('proximity', 0.30)
         if user_pos:
             ux = float(user_pos.get("x", 0))
@@ -1237,7 +897,6 @@ class PerceptionEngine:
             docs  = list(self.col_scene.find(query, {"label": 1, "pos": 1}))
             if not docs:
                 docs = list(self.col_scene.find({}, {"label": 1, "pos": 1}))
-
             for doc in docs:
                 pos = doc.get("pos") or doc.get("sensor_pos")
                 if not isinstance(pos, list) or len(pos) < 2:
@@ -1249,14 +908,12 @@ class PerceptionEngine:
                 action_scores = self.scene_engine._affinity_matrix.get(furn_label, {})
                 proximity_factor = max(0.0, 1.0 - dist / INTERACTION_RADIUS)
                 for b, aff in action_scores.items():
-                    if b in scores and scores[b] > -999 and b not in NO_WEIGHT_ACTIONS:
+                    if b in scores and b not in NO_WEIGHT_ACTIONS:
                         gain = W_PROXIMITY * aff * proximity_factor
                         scores[b]  += gain
                         reasons[b] += f"prox:{furn_label}({aff:.2f})+{gain:.2f} "
 
-        # ── 層 4：Ray-cast 朝向分 ────────────────────────────────────
-        W_RAYCAST = _beh_reg.get('weights', {}).get('raycast', 0.25)
-        print(f"[RAY_DEBUG] user_pos={user_pos} user_forward={user_forward}")
+        W_RAYCAST = _beh_reg.get('weights', {}).get('raycast', 0.30)
         if user_pos and user_forward:
             ux    = float(user_pos.get("x", 0))
             uz    = float(user_pos.get("z", 0))
@@ -1266,35 +923,31 @@ class PerceptionEngine:
             if fwd_len > 0.01:
                 fwd_x /= fwd_len
                 fwd_z /= fwd_len
-                # Ray-cast targets from behavior_registry.yaml
                 _tv_doc   = self.db.device_states.find_one({"label": "tv"})
                 _tv_on    = _tv_doc and _tv_doc.get("state") == "on"
                 _tv_boost = 1.0 if _tv_on else 0.4
-
                 _ray_entries = _beh_reg.get("raycast_targets", []) or [
                     {"label": "tv",           "action": "Watching",
-                     "tv_on_factor": 1.0, "tv_off_factor": 0.4},
+                     "tv_on_factor": 1.0, "tv_off_factor": 0.4, "max_dist": 8.0},
                     {"label": "television",   "action": "Watching",
-                     "tv_on_factor": 1.0, "tv_off_factor": 0.4},
-                    {"label": "stove",        "action": "Cooking"},
-                    {"label": "refrigerator", "action": "Opening"},
-                    {"label": "fridge",       "action": "Opening"},
+                     "tv_on_factor": 1.0, "tv_off_factor": 0.4, "max_dist": 8.0},
+                    {"label": "refrigerator", "action": "Opening", "max_dist": 3.0},
+                    {"label": "fridge",       "action": "Opening", "max_dist": 3.0},
                 ]
                 target_map = {}
                 for _re in _ray_entries:
                     _lbl = _re["label"]
-                    if "actions" in _re:
-                        _acts = {}
-                        for _a, _w in _re["actions"].items():
-                            _tf = _tv_boost if _lbl in ("tv", "television") else 1.0
-                            _acts[_a] = _w * _tf
-                        target_map[_lbl] = _acts
-                    else:
-                        _act = _re.get("action", "")
-                        _tf  = _tv_boost if _lbl in ("tv", "television") else 1.0
-                        target_map[_lbl] = {_act: _tf}
+                    _act = _re.get("action", "")
+                    _tf  = _tv_boost if _lbl in ("tv", "television") else 1.0
+                    target_map[_lbl] = {"action": _act, "weight": _tf,
+                                        "max_dist": float(_re.get("max_dist", 8.0))}
 
-                for label, action_weights in target_map.items():
+                for label, info in target_map.items():
+                    action      = info["action"]
+                    weight      = info["weight"]
+                    ray_max_dist = info["max_dist"]
+                    if action not in scores:
+                        continue
                     doc = self.col_scene.find_one({"label": label}, {"pos": 1})
                     if not doc:
                         continue
@@ -1304,159 +957,111 @@ class PerceptionEngine:
                     dx   = pos[0] - ux
                     dz   = pos[1] - uz
                     dist = math.sqrt(dx**2 + dz**2)
-                    if dist < 0.01 or dist > 8.0:
+                    if dist < 0.01 or dist > ray_max_dist:
                         continue
                     dx /= dist
                     dz /= dist
                     cos_a = fwd_x * dx + fwd_z * dz
                     if cos_a > 0.50:
-                        for action, weight in action_weights.items():
-                            if (body_position.lower(), action) in BODY_IMPOSSIBLE:
-                                continue
-                            gain = W_RAYCAST * cos_a * weight
-                            scores[action]  += gain
-                            reasons[action] += f"ray:{label}(cos={cos_a:.2f})+{gain:.2f} "
+                        dist_factor = max(0.3, 1.0 - dist / (ray_max_dist * 2))
+                        gain = W_RAYCAST * cos_a * weight * dist_factor
+                        scores[action]  += gain
+                        reasons[action] += f"ray:{label}(cos={cos_a:.2f},d={dist:.1f}m)+{gain:.2f} "
 
-        # ── 層 5：Zone affinity 分 ───────────────────────────────────
         W_ZONE = _beh_reg.get('weights', {}).get('zone', 0.25)
         if nearest_zone:
-            for b in BEHAVIOR_LABELS:
-                if scores.get(b, -999) <= -999 or b in NO_WEIGHT_ACTIONS:
-                    continue
-                aff = self.scene_engine.get_zone_affinity(nearest_zone, b)
-                if aff > 0:
-                    gain = W_ZONE * aff
-                    scores[b]  += gain
-                    reasons[b] += f"zone:{nearest_zone['zone_name']}({aff:.2f})+{gain:.2f} "
+            for b in scores:
+                if b not in NO_WEIGHT_ACTIONS:
+                    aff = self.scene_engine.get_zone_affinity(nearest_zone, b)
+                    if aff > 0:
+                        gain = W_ZONE * aff
+                        scores[b]  += gain
+                        reasons[b] += f"zone:{nearest_zone['zone_name']}({aff:.2f})+{gain:.2f} "
 
-        # ── 層 6：VLM 加分（不跳過任何行為）────────────────────────
         W_VLM = (vlm_weight_override
                   if vlm_weight_override is not None
                   else _beh_reg.get('weights', {}).get('vlm', 0.20))
-        if activity_hint and activity_hint in BEHAVIOR_LABELS:
-            if (scores.get(activity_hint, -999) > -999
-                    and activity_hint not in NO_WEIGHT_ACTIONS):
-                gain = W_VLM * vlm_confidence
-                scores[activity_hint]  += gain
-                reasons[activity_hint] += f"vlm({vlm_confidence:.2f})+{gain:.2f} "
+        if activity_hint and activity_hint in scores and activity_hint not in NO_WEIGHT_ACTIONS:
+            gain = W_VLM * vlm_confidence
+            scores[activity_hint]  += gain
+            reasons[activity_hint] += f"vlm({vlm_confidence:.2f})+{gain:.2f} "
 
-        # ── 層 7：時間先驗分 ─────────────────────────────────────────
         W_TIME = _beh_reg.get('weights', {}).get('time', 0.10)
         virtual_hour = float(payload.get("virtual_hour", -1)) if payload else -1
         if virtual_hour >= 0:
             h = virtual_hour
             time_boosts = {}
             if skel_body == "sitting":
-                if 7 <= h < 10:
-                    time_boosts["Eating"]   = 0.25
-                if 12 <= h < 13:
-                    time_boosts["Eating"]   = 0.20
-                    time_boosts["Laying"]   = 0.15
-                if 19 <= h < 22:
-                    time_boosts["Watching"] = 0.30
-                    time_boosts["Eating"]   = 0.15
-                if h >= 23 or h < 6:
-                    time_boosts["Laying"]   = 0.25
+                if 7 <= h < 10:   time_boosts["Eating"]   = 0.25
+                if 12 <= h < 13:  time_boosts["Eating"]    = 0.20; time_boosts["Laying"] = 0.15
+                if 19 <= h < 22:  time_boosts["Watching"]  = 0.30; time_boosts["Eating"] = 0.15
+                if h >= 23 or h < 6: time_boosts["Laying"] = 0.25
             if skel_body == "lying":
-                if 12 <= h < 14:
-                    time_boosts["Laying"]   = 0.20
-                if h >= 23 or h < 6:
-                    time_boosts["Laying"]   = 0.30
+                if 12 <= h < 14:  time_boosts["Laying"]   = 0.20
+                if h >= 23 or h < 6: time_boosts["Laying"] = 0.30
             for b, boost in time_boosts.items():
-                if scores.get(b, -999) > -999:
+                if b in scores:
                     gain = W_TIME * boost
                     scores[b]  += gain
                     reasons[b] += f"time({h:.0f}h)+{gain:.2f} "
 
-        # ── 層 8：行為慣性分 ─────────────────────────────────────────
         W_TEMPORAL = _beh_reg.get('weights', {}).get('temporal', 0.10)
-        prev_doc = self.col_activity.find_one(
-            {"user": user_id}, sort=[("date", -1)])
+        prev_doc = self.col_activity.find_one({"user": user_id}, sort=[("date", -1)])
         if prev_doc and prev_doc.get("sequence"):
             seq = prev_doc["sequence"]
             if seq:
                 prev_action = seq[-1].get("action", "")
-                n_consec = sum(
-                    1 for e in reversed(seq)
-                    if e.get("action") == prev_action
-                )
+                n_consec = sum(1 for e in reversed(seq) if e.get("action") == prev_action)
                 inertia = min(W_TEMPORAL * n_consec * 0.3, W_TEMPORAL)
-                if prev_action in scores and scores[prev_action] > -999:
+                if prev_action in scores:
                     scores[prev_action]  += inertia
                     reasons[prev_action] += f"inertia(n={n_consec})+{inertia:.2f} "
-
                 trans_matrix = getattr(self.scene_engine, "_transition_matrix", {})
-                for b in BEHAVIOR_LABELS:
-                    if scores.get(b, -999) <= -999:
-                        continue
+                for b in scores:
                     prob = trans_matrix.get(prev_action, {}).get(b, 0.0)
                     if prob > 0:
-                        gain = W_TEMPORAL * prob * 0.5
-                        scores[b] += gain
+                        scores[b] += W_TEMPORAL * prob * 0.5
 
-        # ── 最終決策：選最高分 ───────────────────────────────────────
-        valid = {b: s for b, s in scores.items()
-                 if s > -999 and b not in NO_WEIGHT_ACTIONS}
-        if not valid:
-            return "Standing", "MinPrior:no_valid", zone_label
+        if not scores:
+            return "Standing", "no_valid_candidates", zone_label
 
-        best_action = max(valid, key=valid.get)
-        best_score  = valid[best_action]
-
-        reason_str = reasons.get(best_action, "").strip()[:60]
+        best_action = max(scores, key=scores.get)
+        reason_str  = reasons.get(best_action, "").strip()[:60]
         if not reason_str:
-            reason_str = f"score:{best_score:.2f}"
+            reason_str = f"score:{scores[best_action]:.2f}"
 
         return best_action, reason_str, zone_label
 
-
-    def _emit_edge(self, user_id: str, action: str,
-                   bound_label: str, confidence: float,
-                   user_pos: dict):
+    def _emit_edge(self, user_id: str, action: str, bound_label: str,
+                   confidence: float, user_pos: dict):
         if confidence < 0.55:
             return
         relation = ACTION_TO_RELATION.get(action, "near")
         now      = int(datetime.datetime.utcnow().timestamp())
-
         agent_node = {
-            "id":             user_id,
-            "type":           "agent",
-            "label":          user_id,
-            "pos":            [user_pos.get("x", 0), user_pos.get("z", 0)],
-            "current_action": action,
-            "status":         "active",
-            "timestamp":      now,
+            "id": user_id, "type": "agent", "label": user_id,
+            "pos": [user_pos.get("x", 0), user_pos.get("z", 0)],
+            "current_action": action, "status": "active", "timestamp": now,
         }
-
-        furniture_doc = self.col_scene.find_one(
-            {"label": bound_label}, {"pos": 1, "room": 1})
+        furniture_doc = self.col_scene.find_one({"label": bound_label}, {"pos": 1, "room": 1})
         furniture_node = {
-            "id":     bound_label,
-            "type":   "furniture",
-            "label":  bound_label,
-            "pos":    furniture_doc.get("pos", [0, 0]) if furniture_doc else [0, 0],
-            "room":   furniture_doc.get("room", "") if furniture_doc else "",
+            "id": bound_label, "type": "furniture", "label": bound_label,
+            "pos":  furniture_doc.get("pos", [0, 0]) if furniture_doc else [0, 0],
+            "room": furniture_doc.get("room", "") if furniture_doc else "",
             "status": "active",
         }
-
         edge = {
-            "from":       user_id,
-            "relation":   relation,
-            "to":         bound_label,
-            "confidence": round(confidence, 3),
-            "source":     "spatial_reasoning",
-            "timestamp":  now,
+            "from": user_id, "relation": relation, "to": bound_label,
+            "confidence": round(confidence, 3), "source": "spatial_reasoning",
+            "timestamp": now,
         }
-
         try:
             self.db.scene_graph.update_one(
                 {"agent_id": user_id},
                 {"$set": {
-                    "agent_id":       user_id,
-                    "agent_node":     agent_node,
-                    "furniture_node": furniture_node,
-                    "edges":          [edge],
-                    "updated_at":     datetime.datetime.utcnow(),
+                    "agent_id": user_id, "agent_node": agent_node,
+                    "furniture_node": furniture_node, "edges": [edge],
+                    "updated_at": datetime.datetime.utcnow(),
                 }},
                 upsert=True
             )
@@ -1472,8 +1077,7 @@ class PerceptionEngine:
             img   = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
             faces = self.face_app.get(img)
             if not faces: return hint
-            face = sorted(
-                faces,
+            face = sorted(faces,
                 key=lambda x: (x.bbox[2]-x.bbox[0])*(x.bbox[3]-x.bbox[1]),
                 reverse=True)[0]
             best, max_sim = hint, 0.0
@@ -1546,8 +1150,7 @@ class PerceptionEngine:
         n = len(image_list)
         if n <= max_samples: return list(range(n))
         if node_scores and len(node_scores) == n:
-            return sorted(range(n),
-                          key=lambda i: node_scores[i], reverse=True)[:max_samples]
+            return sorted(range(n), key=lambda i: node_scores[i], reverse=True)[:max_samples]
         step = n / max_samples
         return [int(i * step) for i in range(max_samples)]
 
@@ -1557,26 +1160,6 @@ class PerceptionEngine:
             "items": [], "all_items": [], "spatial": [],
             "bound_instance": "Unknown_Area", "bound_room": "", "confidence": "unknown",
         }
-
-    def _extract_json(self, raw):
-        cleaned = re.sub(r'```(?:json)?\s*', '', raw).strip()
-        m = re.search(r'\{.*\}', cleaned, re.DOTALL)
-        if not m: return cleaned
-        text = m.group(0)
-        try:
-            json.loads(text)
-            return text
-        except json.JSONDecodeError:
-            for i in range(len(text)-1, 0, -1):
-                if text[i] in (',', '{'):
-                    candidate = text[:i].rstrip(',') + '}}'
-                    try:
-                        json.loads(candidate)
-                        return candidate
-                    except Exception:
-                        continue
-            return text
-
 
     def _compute_vote_entropy(self, votes: list) -> float:
         import math
@@ -1599,8 +1182,6 @@ class PerceptionEngine:
         node_scores  = payload.get("node_scores", [])
         user_pos     = payload.get("user_pos", None)
         user_forward = payload.get("user_forward", None)
-        # Fallback: read user_forward from user_positions (DynamicSyncManager)
-        # unity_user records are stored in user_positions, not dynamic_objects
         if not user_forward or (
             float(user_forward.get("x", 0)) == 0 and
             float(user_forward.get("z", 0)) == 0
@@ -1620,7 +1201,6 @@ class PerceptionEngine:
                     user_forward = {"x": fwd[0], "y": fwd[1], "z": fwd[2]}
                 elif isinstance(fwd, dict):
                     user_forward = fwd
-            # Also update user_pos if not in payload
             if not user_pos and _udoc:
                 user_pos = {"x": float(_udoc.get("x", 0)),
                             "z": float(_udoc.get("z", 0))}
@@ -1719,39 +1299,38 @@ class PerceptionEngine:
             _infer_source  = "low_conf_facing_away"
             if held_object in ("none", "unknown"):
                 _inferred = self._infer_held_object(
-                    nearest_furniture = coord_label,
-                    zone_name         = _zone_name_tmp,
-                    room_name         = room_name,
-                    user_pos          = user_pos,
-                    user_id           = final_user,
+                    nearest_furniture=coord_label, zone_name=_zone_name_tmp,
+                    room_name=room_name, user_pos=user_pos, user_id=final_user,
                 )
                 if _inferred and _inferred != "none":
-                    held_object   = _inferred
-                    _infer_source = "three_layer_facing_away"
+                    _inferred_action = ITEM_TO_ACTION.get(_inferred.lower(), "")
+                    _body_check = body_position.lower() if body_position else "standing"
+                    if not _inferred_action or \
+                            (_body_check, _inferred_action) not in BODY_IMPOSSIBLE:
+                        held_object   = _inferred
+                        _infer_source = "three_layer_facing_away"
 
         elif held_object in ("none", "unknown") and \
                 vlm_confidence < VLM_CONFIDENCE_THRESHOLD:
             _inferred = self._infer_held_object(
-                nearest_furniture = coord_label,
-                zone_name         = _zone_name_tmp,
-                room_name         = room_name,
-                user_pos          = user_pos,
-                user_id           = final_user,
+                nearest_furniture=coord_label, zone_name=_zone_name_tmp,
+                room_name=room_name, user_pos=user_pos, user_id=final_user,
             )
             if _inferred and _inferred != "none":
-                held_object   = _inferred
-                _infer_source = "three_layer_low_conf"
+                _inferred_action = ITEM_TO_ACTION.get(_inferred.lower(), "")
+                _body_check = body_position.lower() if body_position else "standing"
+                if not _inferred_action or \
+                        (_body_check, _inferred_action) not in BODY_IMPOSSIBLE:
+                    held_object   = _inferred
+                    _infer_source = "three_layer_low_conf"
 
         print(f"[VLM] activity={activity_hint} body={body_position} "
               f"orient={body_orientation} held={held_object} "
               f"conf={vlm_confidence:.2f} src={_infer_source}")
 
-        # Dynamic W_VLM based on multi-view voting entropy
-        # High entropy → VLM votes disagree → lower W_VLM
-        # Low entropy  → VLM votes agree    → higher W_VLM
-        _act_entropy = self._compute_vote_entropy(activity_votes)
-        _body_entropy = self._compute_vote_entropy(body_votes)
-        _held_entropy = self._compute_vote_entropy(held_votes)
+        _act_entropy     = self._compute_vote_entropy(activity_votes)
+        _body_entropy    = self._compute_vote_entropy(body_votes)
+        _held_entropy    = self._compute_vote_entropy(held_votes)
         _overall_entropy = _act_entropy * 0.6 + _body_entropy * 0.2 + _held_entropy * 0.2
         _sys_cfg_vlm = _load_config("config/system_config.yaml").get("entropy", {})
         _e_high = float(_sys_cfg_vlm.get("high_threshold", 1.2))
@@ -1767,15 +1346,15 @@ class PerceptionEngine:
             _dynamic_vlm_w = round(_w_low + _ratio * (_w_high - _w_low), 3)
 
         spatial_action, upgrade_reason, zone_label = self._spatial_reasoning(
-            activity_hint      = activity_hint,
-            body_position      = body_position,
-            held_obj           = held_object,
-            user_pos           = user_pos,
-            user_forward       = user_forward,
-            room_name          = room_name,
-            user_id            = final_user,
-            vlm_confidence     = vlm_confidence,
-            payload            = payload,
+            activity_hint       = activity_hint,
+            body_position       = body_position,
+            held_obj            = held_object,
+            user_pos            = user_pos,
+            user_forward        = user_forward,
+            room_name           = room_name,
+            user_id             = final_user,
+            vlm_confidence      = vlm_confidence,
+            payload             = payload,
             vlm_weight_override = _dynamic_vlm_w,
         )
 
@@ -1811,35 +1390,27 @@ class PerceptionEngine:
 
         self._update_scene_snapshot(bound_doc, interacting_items, nearby_objs, [])
         self._update_dynamic_objects(
-            user_id=final_user,
-            interacting_items=interacting_items,
-            scene_items=nearby_objs,
-            spatial_relations=[],
-            bound_doc=bound_doc,
-            room_name=bound_room,
-            user_pos=user_pos)
+            user_id=final_user, interacting_items=interacting_items,
+            scene_items=nearby_objs, spatial_relations=[],
+            bound_doc=bound_doc, room_name=bound_room, user_pos=user_pos)
         self._write_semantic_memory(final_user, spatial_action, bound_doc, confidence, result, source_nodes)
         self._update_activity_sequence(final_user, spatial_action, bound_label)
 
         ground_truth_activity = payload.get("activity", None)
-
         log_action = spatial_action if spatial_action not in ("Unknown", "none", "") \
                      else activity_hint or "Unknown"
 
         if vlm_confidence >= MIN_WRITE_CONFIDENCE:
             self._update_observation_log(
-                final_user, log_action, bound_doc,
-                interacting_items, [],
+                final_user, log_action, bound_doc, interacting_items, [],
                 result["context"], virtual_hour, virtual_day,
                 ground_truth_activity=ground_truth_activity,
-                user_pos=user_pos,
-                room_name=room_name)
+                user_pos=user_pos, room_name=room_name)
         else:
             print(f"[Gate] conf={vlm_confidence:.2f} < {MIN_WRITE_CONFIDENCE} skip obs_log")
 
-        mem_doc  = self.col_memory.find_one(
-            {"user": final_user, "action": log_action},
-            sort=[("timestamp", -1)])
+        mem_doc  = self.col_memory.find_one({"user": final_user, "action": log_action},
+                                             sort=[("timestamp", -1)])
         mongo_id = str(mem_doc["_id"]) if mem_doc else ""
         self._index_to_faiss(final_user, log_action, bound_doc, result, mongo_id)
 
@@ -1867,14 +1438,12 @@ class PerceptionEngine:
             })
 
         if (spatial_action not in ("Unknown", "none", "") and
-                bound_label != "Unknown_Area" and
-                user_pos):
+                bound_label != "Unknown_Area" and user_pos):
             self._emit_edge(
-                user_id     = final_user,
-                action      = spatial_action,
-                bound_label = bound_label,
-                confidence  = float(result.get("_vlm_confidence", 0.5)),
-                user_pos    = user_pos,
+                user_id=final_user, action=spatial_action,
+                bound_label=bound_label,
+                confidence=float(result.get("_vlm_confidence", 0.5)),
+                user_pos=user_pos,
             )
 
         print(f"[Done] {final_user} | hint={activity_hint} | "
@@ -1929,24 +1498,17 @@ class PerceptionEngine:
             if self.col_scene.find_one({"label": label}):
                 return
             base_set = {
-                "last_seen_on": bound_label,
-                "spatial_rel":  "near",
-                "room":         room_name,
-                "last_seen":    now,
-                "source":       "vlm",
-                "status":       "active",
-                "status_since": now,
+                "last_seen_on": bound_label, "spatial_rel": "near",
+                "room": room_name, "last_seen": now,
+                "source": "vlm", "status": "active", "status_since": now,
             }
             if bound_pos:
                 base_set["furniture_pos"] = bound_pos
             inc_ops = {"seen_count": 1}
             if is_interacting: inc_ops["interact_count"] = 1
             update_op = {
-                "$inc":         inc_ops,
-                "$set":         base_set,
-                "$setOnInsert": {
-                    "first_seen": now,
-                },
+                "$inc": inc_ops, "$set": base_set,
+                "$setOnInsert": {"first_seen": now},
             }
             if is_interacting:
                 update_op["$addToSet"] = {"interacted_by": user_id}
@@ -1960,14 +1522,10 @@ class PerceptionEngine:
         instance = bound_doc.get("label", "Unknown_Area") if bound_doc else "Unknown_Area"
         room     = bound_doc.get("room", "") if bound_doc else ""
         self.col_memory.insert_one({
-            "user":         user,
-            "action":       action,
-            "bound_to":     instance,
-            "bound_room":   room,
-            "confidence":   confidence,
-            "details":      result,
-            "source_nodes": source_nodes,
-            "timestamp":    datetime.datetime.utcnow(),
+            "user": user, "action": action, "bound_to": instance,
+            "bound_room": room, "confidence": confidence,
+            "details": result, "source_nodes": source_nodes,
+            "timestamp": datetime.datetime.utcnow(),
         })
 
     def _index_to_faiss(self, user, action, bound_doc, result, mongo_id):
@@ -1981,15 +1539,12 @@ class PerceptionEngine:
             all_items=result.get("all_items", []),
             spatial_relations=result.get("spatial_relations", []))
         self.faiss_store.add(text, {
-            "user":              user,
-            "action":            action,
-            "instance":          instance,
+            "user": user, "action": action, "instance": instance,
             "interacting_items": result.get("interacting_items", []),
-            "all_items":         result.get("all_items", []),
+            "all_items": result.get("all_items", []),
             "spatial_relations": result.get("spatial_relations", []),
-            "furniture_pos":     pos_xy,
-            "mongo_id":          mongo_id,
-            "timestamp":         datetime.datetime.utcnow().isoformat(),
+            "furniture_pos": pos_xy, "mongo_id": mongo_id,
+            "timestamp": datetime.datetime.utcnow().isoformat(),
         })
 
     def _find_nearest_zone(self, user_pos, room_name=""):
@@ -2007,8 +1562,7 @@ class PerceptionEngine:
             {"user": user, "date": today},
             {
                 "$push": {"sequence": {
-                    "action":    action,
-                    "instance":  instance,
+                    "action": action, "instance": instance,
                     "timestamp": datetime.datetime.utcnow().isoformat(),
                 }},
                 "$setOnInsert": {"user": user, "date": today},
@@ -2022,29 +1576,25 @@ class PerceptionEngine:
                                  user_pos=None, room_name=""):
         if not bound_doc: return
         if action in NO_WEIGHT_ACTIONS: return
-
         instance  = bound_doc.get("label", "Unknown")
         pos_raw   = bound_doc.get("pos")
         pos_xy    = pos_raw if isinstance(pos_raw, list) else \
                     [bound_doc.get("x", 0), bound_doc.get("z", 0)]
         time_slot = _get_time_slot(virtual_hour)
         today     = _virtual_day_to_date(virtual_day)
-
         try:
             nz = self._find_nearest_zone(user_pos, room_name)
             zone_name_for_log = nz["zone_name"] if nz else ""
         except Exception:
             zone_name_for_log = ""
-
         canonical_key = zone_name_for_log if zone_name_for_log else instance
-
         self.col_obs.find_one_and_update(
             {"user": user, "zone_name": canonical_key,
              "action": action, "time_slot": time_slot},
             {
-                "$inc":         {"weight": 1},
-                "$addToSet":    {"interacting_items": {"$each": interacting_items}},
-                "$set":         {
+                "$inc":      {"weight": 1},
+                "$addToSet": {"interacting_items": {"$each": interacting_items}},
+                "$set": {
                     "observed_relations": spatial_relations,
                     "pos":               pos_xy,
                     "room":              bound_doc.get("room", "").strip() if bound_doc else "",
@@ -2054,10 +1604,8 @@ class PerceptionEngine:
                     "raw_vlm_desc":      raw_desc,
                 },
                 "$setOnInsert": {
-                    "user":      user,
-                    "zone_name": canonical_key,
-                    "action":    action,
-                    "time_slot": time_slot,
+                    "user": user, "zone_name": canonical_key,
+                    "action": action, "time_slot": time_slot,
                 },
             },
             upsert=True, return_document=ReturnDocument.AFTER,
