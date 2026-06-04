@@ -484,6 +484,18 @@ def _process_predict(episode_id, data):
                 "z": float(user_fwd_raw.get("z", 0)),
             }
 
+        # Fallback: read forward from user_positions if not in payload
+        if est_forward is None and hint_user_id:
+            _pos_doc = db.user_positions.find_one({"user_id": hint_user_id})
+            if _pos_doc and _pos_doc.get("forward"):
+                _fwd = _pos_doc["forward"]
+                if isinstance(_fwd, list) and len(_fwd) >= 3:
+                    est_forward = {"x": _fwd[0], "y": 0.0, "z": _fwd[2]}
+                elif isinstance(_fwd, dict):
+                    est_forward = {"x": float(_fwd.get("x", 0)),
+                                   "y": 0.0,
+                                   "z": float(_fwd.get("z", 0))}
+
         if est_pos and hint_user_id:
             db.user_positions.update_one(
                 {"user_id": hint_user_id},
@@ -725,6 +737,8 @@ def _process_predict(episode_id, data):
                 "zone_label":      result.get("zone_label", ""),
                 "sbert_sim":       result.get("sbert_sim", 0.0),
                 "entropy":         _entropy_info["overall_entropy"],
+                "forward_x":       est_forward.get("x", 0) if est_forward else None,
+                "forward_z":       est_forward.get("z", 0) if est_forward else None,
                 "t_capture":       t_capture,
                 "vlm_ms":          vlm_ms,
                 "timestamp":       datetime.datetime.utcnow(),
@@ -1131,8 +1145,7 @@ def track_position():
             "room":       room_name,
             "updated_at": datetime.datetime.utcnow(),
         }
-        if forward_x != 0 or forward_z != 0:
-            update["forward"] = [forward_x, 0.0, forward_z]
+        update["forward"] = [forward_x, 0.0, forward_z]
 
         db.user_positions.update_one(
             {"user_id": user_id},

@@ -1256,6 +1256,7 @@ class PerceptionEngine:
 
         # ── 層 4：Ray-cast 朝向分 ────────────────────────────────────
         W_RAYCAST = _beh_reg.get('weights', {}).get('raycast', 0.25)
+        print(f"[RAY_DEBUG] user_pos={user_pos} user_forward={user_forward}")
         if user_pos and user_forward:
             ux    = float(user_pos.get("x", 0))
             uz    = float(user_pos.get("z", 0))
@@ -1282,14 +1283,18 @@ class PerceptionEngine:
                 target_map = {}
                 for _re in _ray_entries:
                     _lbl = _re["label"]
-                    _act = _re["action"]
-                    if _lbl in ("tv", "television"):
-                        target_map[_lbl] = (_act, _tv_boost)
+                    if "actions" in _re:
+                        _acts = {}
+                        for _a, _w in _re["actions"].items():
+                            _tf = _tv_boost if _lbl in ("tv", "television") else 1.0
+                            _acts[_a] = _w * _tf
+                        target_map[_lbl] = _acts
                     else:
-                        target_map[_lbl] = (_act, 1.0)
-                for label, (action, tv_factor) in target_map.items():
-                    if scores.get(action, -999) <= -999:
-                        continue
+                        _act = _re.get("action", "")
+                        _tf  = _tv_boost if _lbl in ("tv", "television") else 1.0
+                        target_map[_lbl] = {_act: _tf}
+
+                for label, action_weights in target_map.items():
                     doc = self.col_scene.find_one({"label": label}, {"pos": 1})
                     if not doc:
                         continue
@@ -1299,15 +1304,18 @@ class PerceptionEngine:
                     dx   = pos[0] - ux
                     dz   = pos[1] - uz
                     dist = math.sqrt(dx**2 + dz**2)
-                    if dist < 0.01 or dist > 5.0:
+                    if dist < 0.01 or dist > 8.0:
                         continue
                     dx /= dist
                     dz /= dist
                     cos_a = fwd_x * dx + fwd_z * dz
                     if cos_a > 0.50:
-                        gain = W_RAYCAST * cos_a * tv_factor
-                        scores[action]  += gain
-                        reasons[action] += f"ray:{label}(cos={cos_a:.2f})+{gain:.2f} "
+                        for action, weight in action_weights.items():
+                            if (body_position.lower(), action) in BODY_IMPOSSIBLE:
+                                continue
+                            gain = W_RAYCAST * cos_a * weight
+                            scores[action]  += gain
+                            reasons[action] += f"ray:{label}(cos={cos_a:.2f})+{gain:.2f} "
 
         # ── 層 5：Zone affinity 分 ───────────────────────────────────
         W_ZONE = _beh_reg.get('weights', {}).get('zone', 0.25)
