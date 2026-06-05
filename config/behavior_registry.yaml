@@ -1,13 +1,29 @@
 weights:
-  head:      0.45
-  held:      0.55
-  nearby:    0.25
-  proximity: 0.30
-  raycast:   0.30
-  zone:      0.25
-  vlm:       0.20
-  time:      0.10
-  temporal:  0.10
+  head:        0.45
+  held:        0.55
+  nearby:      0.25
+  proximity:   0.30
+  raycast:     0.30
+  zone:        0.25
+  affordance:  0.20
+  vlm:         0.20
+  time:        0.10
+  temporal:    0.10
+
+affordance_map:
+  bottle:   [SittingDrink, Drinking]
+  cup:      [SittingDrink, Drinking]
+  cola:     [SittingDrink, Drinking]
+  juice:    [SittingDrink, Drinking]
+  plate:    [Eating]
+  bowl:     [Eating]
+  apple:    [Eating]
+  banana:   [Eating]
+  book:     [Reading]
+  magazine: [Reading]
+  remote:   [Watching]
+  keyboard: [Typing]
+  mouse:    [Typing]
 
 raycast_targets:
   - label: tv
@@ -30,8 +46,6 @@ raycast_targets:
 strong_held_items:
   broom:    Cleaning
   mop:      Cleaning
-  book:     Reading
-  magazine: Reading
   pan:      Cooking
   spatula:  Cooking
 

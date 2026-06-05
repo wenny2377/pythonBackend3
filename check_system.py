@@ -1,21 +1,10 @@
-"""
-check_system.py
-執行中的系統健康檢查 + 即時監控模式。
-
-Usage:
-  python3 check_system.py              # 完整檢查
-  python3 check_system.py --quick      # 只看關鍵指標
-  python3 check_system.py --watch      # 即時監控（每 3s 刷新）
-  python3 check_system.py --watch --n 20  # 監控最新 20 筆
-"""
-
 import argparse
 import math
 import datetime
 import os
 import time
 import sys
-from collections import Counter
+from collections import Counter, deque
 from pymongo import MongoClient
 
 MONGO_URI = "mongodb://127.0.0.1:27017/"
@@ -54,39 +43,77 @@ def _match_debug_image(t_capture: str, user_id: str, activity: str) -> list:
         return []
 
 
-def check_watch(db, n=15, interval=3):
+def _dominant_layer(reason: str) -> str:
+    r = (reason or "").lower()
+    if "strong:skeleton_lying" in r:
+        return "skeleton"
+    if any(k in r for k in ("strong:held:", "strong:head(")):
+        return "strong"
+    if any(k in r for k in ("skeleton_lying", "head(", "skeleton")):
+        return "skeleton"
+    if "held:" in r:
+        return "held"
+    if "affordance:" in r:
+        return "affordance"
+    if "nearby:" in r:
+        return "nearby"
+    if any(k in r for k in ("prox:", "ray:", "zone:")):
+        return "geometry"
+    if "vlm(" in r:
+        return "vlm"
+    if "inertia(" in r:
+        return "temporal"
+    return "other"
+
+
+def check_watch(db, n=15, interval=3, acc_threshold=0.50, window=20):
     print(f"\n[Watch Mode] Refreshing every {interval}s | showing last {n} episodes")
+    print(f"  Auto-pause suggestion if acc < {acc_threshold:.0%} over last {window} episodes")
     print("Press Ctrl+C to stop.\n")
 
-    seen_ids = set()
+    seen_ids       = set()
+    acc_window     = deque(maxlen=window)
+    pause_alerted  = False
+
     while True:
         try:
-            docs = list(
-                db.eval_logs.find({}).sort("timestamp", -1).limit(n)
-            )
+            docs = list(db.eval_logs.find({}).sort("timestamp", -1).limit(n))
+            all_docs = list(db.eval_logs.find({}).sort("timestamp", -1).limit(window))
 
             os.system("clear")
             now_str = datetime.datetime.now().strftime("%H:%M:%S")
             total   = db.eval_logs.count_documents({})
-            correct = sum(
-                1 for d in docs
+
+            correct_window = sum(
+                1 for d in all_docs
                 if (d.get("spatial_action") or d.get("vlm_output", "")) == d.get("ground_truth", "")
             )
-            acc = correct / len(docs) if docs else 0.0
+            acc_window_val = correct_window / len(all_docs) if all_docs else 0.0
 
-            print(f"[{now_str}] eval_logs total={total} | "
-                  f"last {len(docs)} acc={acc:.0%} | Ctrl+C to stop")
-            print("-" * 80)
+            correct_total = sum(
+                1 for d in db.eval_logs.find({})
+                if (d.get("spatial_action") or d.get("vlm_output", "")) == d.get("ground_truth", "")
+            )
+            acc_total = correct_total / total if total > 0 else 0.0
+
+            pause_flag = acc_window_val < acc_threshold and len(all_docs) >= window
+
+            print(f"[{now_str}] total={total} | "
+                  f"overall={acc_total:.0%} | "
+                  f"last{window}={acc_window_val:.0%} | "
+                  f"{'⚠️  CONSIDER PAUSING' if pause_flag else '✅ running'}")
+            print("-" * 95)
             print(f"  {'GT':12} {'VLM':12} {'Spatial':12} {'OK':3} "
-                  f"{'Reason':22} {'Zone':20} {'img'}")
-            print("-" * 80)
+                  f"{'Layer':10} {'Reason':30} {'img'}")
+            print("-" * 95)
 
             for d in reversed(docs):
                 gt      = d.get("ground_truth", "?")
                 vlm     = d.get("vlm_output", "?")
                 spatial = d.get("spatial_action", "?") or vlm
-                reason  = d.get("upgrade_reason", "")[:22]
-                zone    = (d.get("zone_label", "") or "")[:20]
+                reason  = d.get("upgrade_reason", "") or ""
+                layer   = _dominant_layer(reason)
+                reason_s = reason[:30]
                 t_cap   = d.get("t_capture", "")
                 user    = d.get("user", "")
 
@@ -100,31 +127,63 @@ def check_watch(db, n=15, interval=3):
                 img_str = imgs[0] if imgs else ""
 
                 print(f"{new_tag} {gt:12} {vlm:12} {spatial:12} {ok_tag:3} "
-                      f"{reason:22} {zone:20} {img_str}")
+                      f"{layer:10} {reason_s:30} {img_str}")
 
-            print("-" * 80)
+            print("-" * 95)
 
             wrong_docs = [
                 d for d in docs
                 if (d.get("spatial_action") or d.get("vlm_output", "")) != d.get("ground_truth", "")
             ]
+
             if wrong_docs:
-                print(f"\n  Wrong predictions breakdown ({len(wrong_docs)}):")
-                reason_cnt = Counter(
-                    d.get("upgrade_reason", "none")[:30]
-                    for d in wrong_docs
-                )
-                for r, c in reason_cnt.most_common(5):
-                    print(f"    {c}x  reason={r}")
+                print(f"\n  ── 錯誤分析（最近 {n} 筆）──")
+
+                layer_wrong = Counter(_dominant_layer(d.get("upgrade_reason", "")) for d in wrong_docs)
+                print(f"  錯誤來自哪一層：")
+                for layer, c in layer_wrong.most_common():
+                    print(f"    {c}x  [{layer}]")
 
                 gt_cnt = Counter(d.get("ground_truth", "?") for d in wrong_docs)
-                print(f"  Most confused GT labels:")
+                print(f"  最常誤判的 GT：")
                 for gt_l, c in gt_cnt.most_common(5):
                     preds = Counter(
                         d.get("spatial_action") or d.get("vlm_output", "?")
                         for d in wrong_docs if d.get("ground_truth") == gt_l
                     )
-                    print(f"    GT={gt_l:12} misclassified as: {dict(preds.most_common(3))}")
+                    print(f"    GT={gt_l:12} → {dict(preds.most_common(3))}")
+
+                reason_wrong = Counter(
+                    _dominant_layer(d.get("upgrade_reason", ""))
+                    for d in wrong_docs
+                )
+                print(f"  錯誤 reason 樣本：")
+                shown = set()
+                for d in wrong_docs[:5]:
+                    r = d.get("upgrade_reason", "")[:50]
+                    if r not in shown:
+                        shown.add(r)
+                        gt  = d.get("ground_truth", "?")
+                        sp  = d.get("spatial_action", "?")
+                        print(f"    GT={gt:12} Spatial={sp:12} reason={r}")
+
+            if pause_flag:
+                print(f"\n  ⚠️  最近 {window} 筆準確率 {acc_window_val:.0%} < {acc_threshold:.0%}")
+                print(f"     建議暫停，檢查以下問題：")
+                if wrong_docs:
+                    top_layer = layer_wrong.most_common(1)[0][0] if wrong_docs else "unknown"
+                    if top_layer == "geometry":
+                        print(f"     → proximity/zone 加分方向錯誤，檢查 affinity_matrix")
+                    elif top_layer == "skeleton":
+                        print(f"     → head_pitch 判斷失準，檢查 Unity 骨架傳送")
+                    elif top_layer == "held":
+                        print(f"     → held_object 推斷錯誤，檢查 strong_held_items")
+                    elif top_layer == "nearby":
+                        print(f"     → nearby 物件誤導，檢查 STRONG_NEARBY whitelist")
+                    elif top_layer == "affordance":
+                        print(f"     → affordance 加分錯誤，檢查 current_contents 更新")
+                    else:
+                        print(f"     → 主要錯誤層：{top_layer}")
 
             obs_total = db.observation_logs.count_documents({})
             man_total = db.manifold_training_data.count_documents({})
@@ -272,12 +331,10 @@ def check_eval(db):
     print(f"    Full system (Stage 2): {s2_correct}/{total} = {s2_correct/total:.0%}")
     print(f"    Improvement: +{(s2_correct-s1_correct)/total:.0%}")
 
-    reasons = Counter(
-        d.get("upgrade_reason", "").split(":")[0]
-        for d in db.eval_logs.find({"upgrade_reason": {"$ne": "", "$exists": True}})
-    )
+    all_docs = list(db.eval_logs.find({}, {"upgrade_reason": 1}))
+    reasons = Counter(_dominant_layer(d.get("upgrade_reason", "")) for d in all_docs)
     if reasons:
-        print(f"\n  Override layer breakdown:")
+        print(f"\n  Layer distribution (dominant):")
         for r, n in reasons.most_common():
             print(f"    {n:3}x | {r}")
 
@@ -297,20 +354,23 @@ def check_eval(db):
             )
             print(f"    GT={gt_l:12}: {c}x wrong → {dict(preds.most_common(3))}")
 
+        print(f"\n  Wrong predictions by layer:")
+        layer_wrong = Counter(_dominant_layer(d.get("upgrade_reason", "")) for d in wrong)
+        for layer, c in layer_wrong.most_common():
+            pct = c / len(wrong) * 100
+            print(f"    {c:3}x ({pct:.0f}%) | [{layer}]")
+
     print(f"\n  Latest 10 decisions:")
-    print(f"  {'GT':12} {'VLM':12} {'Spatial':12} {'OK':3} {'Reason':25} {'debug_img'}")
-    print(f"  {'-'*80}")
+    print(f"  {'GT':12} {'VLM':12} {'Spatial':12} {'OK':3} {'Layer':10} {'Reason':25}")
+    print(f"  {'-'*85}")
     for d in db.eval_logs.find({}).sort("timestamp", -1).limit(10):
         gt      = d.get("ground_truth", "?")
         vlm     = d.get("vlm_output", "?")
         spatial = d.get("spatial_action", "?") or vlm
         reason  = (d.get("upgrade_reason", "") or "")[:25]
-        t_cap   = d.get("t_capture", "")
-        user    = d.get("user", "")
+        layer   = _dominant_layer(d.get("upgrade_reason", ""))
         ok_tag  = "✅" if spatial == gt else "❌"
-        imgs    = _match_debug_image(t_cap, user, spatial)
-        img_str = imgs[0] if imgs else ""
-        print(f"  {ok_tag} {gt:12} {vlm:12} {spatial:12}     {reason:25} {img_str}")
+        print(f"  {ok_tag} {gt:12} {vlm:12} {spatial:12}     {layer:10} {reason:25}")
 
     print(f"\n  debug_images folder:")
     debug_dir = "debug_images"
@@ -371,16 +431,19 @@ def summary(db):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--quick",    action="store_true", help="Only summary")
-    parser.add_argument("--watch",    action="store_true", help="Live monitor mode")
-    parser.add_argument("--n",        type=int, default=15, help="Lines in watch mode")
-    parser.add_argument("--interval", type=int, default=3,  help="Refresh seconds")
+    parser.add_argument("--quick",     action="store_true", help="Only summary")
+    parser.add_argument("--watch",     action="store_true", help="Live monitor mode")
+    parser.add_argument("--n",         type=int,   default=15,   help="Lines in watch mode")
+    parser.add_argument("--interval",  type=int,   default=3,    help="Refresh seconds")
+    parser.add_argument("--threshold", type=float, default=0.50, help="Acc threshold for pause alert")
+    parser.add_argument("--window",    type=int,   default=20,   help="Window size for rolling acc")
     args = parser.parse_args()
 
     db = connect()
 
     if args.watch:
-        check_watch(db, n=args.n, interval=args.interval)
+        check_watch(db, n=args.n, interval=args.interval,
+                    acc_threshold=args.threshold, window=args.window)
         return
 
     print(f"\nSystem check: {DB_NAME}")

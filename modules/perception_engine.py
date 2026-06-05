@@ -753,7 +753,8 @@ class PerceptionEngine:
                             room_name: str, user_id: str,
                             vlm_confidence: float = 0.0,
                             payload: dict = None,
-                            vlm_weight_override: float = None) -> tuple:
+                            vlm_weight_override: float = None,
+                            coord_label: str = "") -> tuple:
 
         if not self.scene_engine.is_ready():
             return activity_hint or "Unknown", "zone_not_ready", ""
@@ -793,19 +794,18 @@ class PerceptionEngine:
         if skel_body == "lying" and "Laying" in candidates:
             return "Laying", "strong:skeleton_lying", zone_label
 
-        if norm_held and norm_held != "none":
-            strong_action = STRONG_HELD_ITEMS.get(norm_held.lower(), "")
-            if strong_action and strong_action in candidates:
-                return strong_action, f"strong:held:{norm_held}→{strong_action}", zone_label
-
-        if skel_body == "sitting" and head_pitch > 55 and "Reading" in candidates:
-            return "Reading", f"strong:head({head_pitch:.0f}°)→Reading", zone_label
-
-        # ══════════════════════════════════════════════════════
-        # 階段 3：軟證據投票（只在 candidates 裡投票）
-        # ══════════════════════════════════════════════════════
         scores  = {b: 0.0 for b in candidates}
         reasons = {b: ""  for b in candidates}
+
+        if norm_held and norm_held != "none":
+            strong_action = STRONG_HELD_ITEMS.get(norm_held.lower(), "")
+            if strong_action and strong_action in scores:
+                scores[strong_action]  += 3.0
+                reasons[strong_action] += f"strong:held:{norm_held}→{strong_action} "
+
+        if skel_body == "sitting" and head_pitch > 55 and "Reading" in scores:
+            scores["Reading"]  += 2.0
+            reasons["Reading"] += f"strong:head({head_pitch:.0f}°)→Reading "
 
         HEAD_PITCH_PROFILE = {
             b: (
@@ -877,8 +877,13 @@ class PerceptionEngine:
                 _ndist = math.sqrt((_ux - _npos[0])**2 + (_uz - _npos[1])**2)
                 if _ndist > 1.5:
                     continue
-                _nlabel  = self._normalize_object(_ndoc.get("label", "").lower())
+                _nlabel = self._normalize_object(_ndoc.get("label", "").lower())
+                _STRONG_NEARBY = set(_beh_reg.get("strong_held_items", {}).keys())
+                if _nlabel not in _STRONG_NEARBY:
+                    continue
                 _naction = ITEM_TO_ACTION.get(_nlabel, "")
+                if _naction == "Drinking" and body_position == "sitting":
+                    _naction = "SittingDrink"
                 if (_naction and _naction in scores and _naction not in NO_WEIGHT_ACTIONS):
                     _proximity_factor = max(0.0, 1.0 - _ndist / 1.5)
                     _gain = W_NEARBY * _proximity_factor
@@ -907,9 +912,21 @@ class PerceptionEngine:
                 furn_label    = doc.get("label", "").lower().strip()
                 action_scores = self.scene_engine._affinity_matrix.get(furn_label, {})
                 proximity_factor = max(0.0, 1.0 - dist / INTERACTION_RADIUS)
+                orientation_factor = 1.0
+                if user_forward and dist > 0.01:
+                    _fwd_x = float(user_forward.get("x", 0))
+                    _fwd_z = float(user_forward.get("z", 0))
+                    _flen  = math.sqrt(_fwd_x**2 + _fwd_z**2)
+                    if _flen > 0.01:
+                        _fwd_x /= _flen
+                        _fwd_z /= _flen
+                        _dx = (pos[0] - ux) / dist
+                        _dz = (pos[1] - uz) / dist
+                        _cos = _fwd_x * _dx + _fwd_z * _dz
+                        orientation_factor = max(0.3, _cos)
                 for b, aff in action_scores.items():
                     if b in scores and b not in NO_WEIGHT_ACTIONS:
-                        gain = W_PROXIMITY * aff * proximity_factor
+                        gain = W_PROXIMITY * aff * proximity_factor * orientation_factor
                         scores[b]  += gain
                         reasons[b] += f"prox:{furn_label}({aff:.2f})+{gain:.2f} "
 
@@ -978,10 +995,37 @@ class PerceptionEngine:
                         scores[b]  += gain
                         reasons[b] += f"zone:{nearest_zone['zone_name']}({aff:.2f})+{gain:.2f} "
 
+        W_AFFORDANCE = _beh_reg.get('weights', {}).get('affordance', 0.20)
+        if coord_label and coord_label != "Unknown_Area":
+            try:
+                _affordance_map = _beh_reg.get("affordance_map", {})
+                _nearby_dynamic = list(self.col_dynamic.find(
+                    {"last_seen_on": coord_label},
+                    {"label": 1}
+                ))
+                _aff_boosts = {}
+                for _doc in _nearby_dynamic:
+                    _item = _doc.get("label", "").lower()
+                    _behaviors = _affordance_map.get(_item, [])
+                    for _b in _behaviors:
+                        _aff_boosts[_b] = _aff_boosts.get(_b, 0.0) + 0.15
+                for _b, _boost in _aff_boosts.items():
+                    if _b in scores and _b not in NO_WEIGHT_ACTIONS:
+                        gain = W_AFFORDANCE * _boost
+                        scores[_b]  += gain
+                        reasons[_b] += f"affordance:{_b}+{gain:.2f} "
+            except Exception as _e:
+                print(f"[Affordance] {_e}")
+
         W_VLM = (vlm_weight_override
                   if vlm_weight_override is not None
                   else _beh_reg.get('weights', {}).get('vlm', 0.20))
         if activity_hint and activity_hint in scores and activity_hint not in NO_WEIGHT_ACTIONS:
+            _expected_body = _beh_reg.get("behaviours", {}).get(
+                activity_hint, {}).get("body_position", "")
+            if _expected_body and skel_body and _expected_body != skel_body:
+                W_VLM = min(W_VLM, 0.10)
+                print(f"[VLM] skeleton conflict: {activity_hint} needs {_expected_body} but got {skel_body}, vlm_w→0.10")
             gain = W_VLM * vlm_confidence
             scores[activity_hint]  += gain
             reasons[activity_hint] += f"vlm({vlm_confidence:.2f})+{gain:.2f} "
@@ -1356,6 +1400,7 @@ class PerceptionEngine:
             vlm_confidence      = vlm_confidence,
             payload             = payload,
             vlm_weight_override = _dynamic_vlm_w,
+            coord_label         = coord_label,
         )
 
         bound_doc, confidence = self._bind_furniture(coord_label, user_pos, room_name)

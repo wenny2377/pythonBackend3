@@ -5,7 +5,7 @@ from modules.manifold_engine import ManifoldEngine
 MONGO_URI = "mongodb://127.0.0.1:27017/"
 DB_NAME   = "robot_rag_db"
 USERS     = ["User_Mom", "User_Dad"]
-MIN_SAMPLES = 5
+MIN_SAMPLES = 20
 
 db    = MongoClient(MONGO_URI)[DB_NAME]
 sbert = SentenceTransformer("all-MiniLM-L6-v2")

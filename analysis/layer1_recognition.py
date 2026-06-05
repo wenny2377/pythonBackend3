@@ -41,12 +41,13 @@ NORMALIZE = {
 NO_WEIGHT = {"PickingUp", "PuttingDown", "Walking", "Standing", "StandUp"}
 
 LAYER_GROUPS = {
-    "skeleton":  ["skeleton"],
-    "held":      ["held"],
-    "nearby":    ["nearby"],
-    "geometry":  ["proximity", "raycast", "zone"],
-    "vlm":       ["vlm"],
-    "temporal":  ["time", "temporal"],
+    "skeleton":   ["skeleton"],
+    "held":       ["held", "strong"],
+    "nearby":     ["nearby"],
+    "affordance": ["affordance"],
+    "geometry":   ["proximity", "raycast", "zone"],
+    "vlm":        ["vlm"],
+    "temporal":   ["time", "temporal"],
 }
 
 
@@ -326,10 +327,16 @@ def plot_fig2_ablation(db):
 def _plot_fig2_fallback(docs, total):
     def dominant_layer(reason):
         r = (reason or "").lower()
+        if "strong:skeleton_lying" in r:
+            return "skeleton"
+        if any(k in r for k in ("strong:held:", "strong:head(")):
+            return "held"
         if any(k in r for k in ("skeleton_lying", "head(", "skeleton")):
             return "skeleton"
         if "held:" in r:
             return "held"
+        if "affordance:" in r:
+            return "affordance"
         if "nearby:" in r:
             return "nearby"
         if any(k in r for k in ("prox:", "ray:", "zone:")):
