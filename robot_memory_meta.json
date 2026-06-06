@@ -7056,5 +7056,828 @@
     "description": "User_Dad SittingDrink near table",
     "memory_text": "User_Dad SittingDrink near table with nothing. User_Dad SittingDrink near table",
     "timestamp": "2026-06-05T16:18:28.801360"
+  },
+  {
+    "faiss_idx": 392,
+    "user": "User_Mom",
+    "action": "PhoneUse",
+    "instance": "Cooking_Zone",
+    "interacting_items": [
+      "phone"
+    ],
+    "all_items": [
+      "phone"
+    ],
+    "spatial_relations": [],
+    "furniture_pos": null,
+    "mongo_id": null,
+    "description": "User_Mom Evening Kitchen PhoneUse near Cooking_Zone with phone",
+    "memory_text": "User_Mom PhoneUse near Cooking_Zone with phone. User_Mom Evening Kitchen PhoneUse near Cooking_Zone with phone",
+    "timestamp": "2026-06-05T16:19:38.066260"
+  },
+  {
+    "faiss_idx": 393,
+    "user": "User_Mom",
+    "action": "PhoneUse",
+    "instance": "stove",
+    "interacting_items": [
+      "phone"
+    ],
+    "all_items": [
+      "phone",
+      "plate",
+      "pan"
+    ],
+    "spatial_relations": [],
+    "furniture_pos": [
+      6.161,
+      3.553
+    ],
+    "mongo_id": "6a226b4fdbec4efcfc99e2a1",
+    "description": "User_Mom PhoneUse near stove",
+    "memory_text": "User_Mom PhoneUse near stove with phone. User_Mom PhoneUse near stove",
+    "timestamp": "2026-06-05T16:19:38.083325"
+  },
+  {
+    "faiss_idx": 394,
+    "user": "User_Mom",
+    "action": "Eating",
+    "instance": "Watching_Zone",
+    "interacting_items": [],
+    "all_items": [],
+    "spatial_relations": [],
+    "furniture_pos": null,
+    "mongo_id": null,
+    "description": "User_Mom Evening LivingRoom Eating near Watching_Zone with",
+    "memory_text": "User_Mom Eating near Watching_Zone with nothing. User_Mom Evening LivingRoom Eating near Watching_Zone with",
+    "timestamp": "2026-06-05T16:20:47.866285"
+  },
+  {
+    "faiss_idx": 395,
+    "user": "User_Mom",
+    "action": "Eating",
+    "instance": "sofa side",
+    "interacting_items": [],
+    "all_items": [
+      "remote",
+      "book",
+      "cup",
+      "bottle",
+      "bowl"
+    ],
+    "spatial_relations": [],
+    "furniture_pos": [
+      3.352,
+      -2.739
+    ],
+    "mongo_id": "6a226b4fdbec4efcfc99e2a7",
+    "description": "User_Mom Eating near sofa side",
+    "memory_text": "User_Mom Eating near sofa side with nothing. User_Mom Eating near sofa side",
+    "timestamp": "2026-06-05T16:20:47.882765"
+  },
+  {
+    "faiss_idx": 396,
+    "user": "User_Mom",
+    "action": "Sitting",
+    "instance": "Sitting_Zone",
+    "interacting_items": [],
+    "all_items": [],
+    "spatial_relations": [],
+    "furniture_pos": null,
+    "mongo_id": null,
+    "description": "User_Mom Evening LivingRoom Sitting near Sitting_Zone with",
+    "memory_text": "User_Mom Sitting near Sitting_Zone with nothing. User_Mom Evening LivingRoom Sitting near Sitting_Zone with",
+    "timestamp": "2026-06-05T16:21:58.614528"
+  },
+  {
+    "faiss_idx": 397,
+    "user": "User_Mom",
+    "action": "Sitting",
+    "instance": "sofa",
+    "interacting_items": [],
+    "all_items": [
+      "remote",
+      "book",
+      "cup",
+      "bottle",
+      "bowl"
+    ],
+    "spatial_relations": [],
+    "furniture_pos": [
+      2.349,
+      -1.41300011
+    ],
+    "mongo_id": "6a226b4fdbec4efcfc99e2a5",
+    "description": "User_Mom Sitting near sofa",
+    "memory_text": "User_Mom Sitting near sofa with nothing. User_Mom Sitting near sofa",
+    "timestamp": "2026-06-05T16:21:58.626909"
+  },
+  {
+    "faiss_idx": 398,
+    "user": "User_Mom",
+    "action": "Reading",
+    "instance": "Sitting_Zone",
+    "interacting_items": [],
+    "all_items": [],
+    "spatial_relations": [],
+    "furniture_pos": null,
+    "mongo_id": null,
+    "description": "User_Mom Night LivingRoom Reading near Sitting_Zone with",
+    "memory_text": "User_Mom Reading near Sitting_Zone with nothing. User_Mom Night LivingRoom Reading near Sitting_Zone with",
+    "timestamp": "2026-06-05T16:23:02.317630"
+  },
+  {
+    "faiss_idx": 399,
+    "user": "User_Mom",
+    "action": "Reading",
+    "instance": "sofa",
+    "interacting_items": [],
+    "all_items": [
+      "remote",
+      "book",
+      "cup",
+      "bottle",
+      "bowl"
+    ],
+    "spatial_relations": [],
+    "furniture_pos": [
+      2.349,
+      -1.41300011
+    ],
+    "mongo_id": "6a226b4fdbec4efcfc99e2a5",
+    "description": "User_Mom Reading near sofa",
+    "memory_text": "User_Mom Reading near sofa with nothing. User_Mom Reading near sofa",
+    "timestamp": "2026-06-05T16:23:02.335593"
+  },
+  {
+    "faiss_idx": 400,
+    "user": "User_Dad",
+    "action": "PhoneUse",
+    "instance": "Watching_Zone_2",
+    "interacting_items": [
+      "phone"
+    ],
+    "all_items": [
+      "phone"
+    ],
+    "spatial_relations": [],
+    "furniture_pos": null,
+    "mongo_id": null,
+    "description": "User_Dad Night LivingRoom PhoneUse near Watching_Zone_2 with phone",
+    "memory_text": "User_Dad PhoneUse near Watching_Zone_2 with phone. User_Dad Night LivingRoom PhoneUse near Watching_Zone_2 with phone",
+    "timestamp": "2026-06-05T16:24:12.302808"
+  },
+  {
+    "faiss_idx": 401,
+    "user": "User_Dad",
+    "action": "PhoneUse",
+    "instance": "table",
+    "interacting_items": [
+      "phone"
+    ],
+    "all_items": [
+      "phone",
+      "remote",
+      "bowl",
+      "bottle"
+    ],
+    "spatial_relations": [],
+    "furniture_pos": [
+      3.557,
+      -0.924
+    ],
+    "mongo_id": "6a226b4fdbec4efcfc99e2a3",
+    "description": "User_Dad PhoneUse near table",
+    "memory_text": "User_Dad PhoneUse near table with phone. User_Dad PhoneUse near table",
+    "timestamp": "2026-06-05T16:24:12.321298"
+  },
+  {
+    "faiss_idx": 402,
+    "user": "User_Mom",
+    "action": "Laying",
+    "instance": "Laying_Zone",
+    "interacting_items": [],
+    "all_items": [],
+    "spatial_relations": [],
+    "furniture_pos": null,
+    "mongo_id": null,
+    "description": "User_Mom Night DadRoom Laying near Laying_Zone with",
+    "memory_text": "User_Mom Laying near Laying_Zone with nothing. User_Mom Night DadRoom Laying near Laying_Zone with",
+    "timestamp": "2026-06-05T16:25:19.050825"
+  },
+  {
+    "faiss_idx": 403,
+    "user": "User_Mom",
+    "action": "Laying",
+    "instance": "dad's bed",
+    "interacting_items": [],
+    "all_items": [],
+    "spatial_relations": [],
+    "furniture_pos": [
+      0.338000059,
+      -1.528
+    ],
+    "mongo_id": "6a226b4fdbec4efcfc99e293",
+    "description": "User_Mom Laying near dad's bed",
+    "memory_text": "User_Mom Laying near dad's bed with nothing. User_Mom Laying near dad's bed",
+    "timestamp": "2026-06-05T16:25:19.063768"
+  },
+  {
+    "faiss_idx": 404,
+    "user": "User_Dad",
+    "action": "Laying",
+    "instance": "Sitting_Zone",
+    "interacting_items": [],
+    "all_items": [],
+    "spatial_relations": [],
+    "furniture_pos": null,
+    "mongo_id": null,
+    "description": "User_Dad Night LivingRoom Laying near Sitting_Zone with",
+    "memory_text": "User_Dad Laying near Sitting_Zone with nothing. User_Dad Night LivingRoom Laying near Sitting_Zone with",
+    "timestamp": "2026-06-05T16:26:26.659525"
+  },
+  {
+    "faiss_idx": 405,
+    "user": "User_Dad",
+    "action": "Laying",
+    "instance": "sofa",
+    "interacting_items": [],
+    "all_items": [
+      "remote",
+      "book",
+      "cup",
+      "bottle",
+      "bowl"
+    ],
+    "spatial_relations": [],
+    "furniture_pos": [
+      2.349,
+      -1.41300011
+    ],
+    "mongo_id": "6a226b4fdbec4efcfc99e2a5",
+    "description": "User_Dad Laying near sofa",
+    "memory_text": "User_Dad Laying near sofa with nothing. User_Dad Laying near sofa",
+    "timestamp": "2026-06-05T16:26:26.677300"
+  },
+  {
+    "faiss_idx": 406,
+    "user": "User_Dad",
+    "action": "SittingDrink",
+    "instance": "Sitting_Zone",
+    "interacting_items": [],
+    "all_items": [],
+    "spatial_relations": [],
+    "furniture_pos": null,
+    "mongo_id": null,
+    "description": "User_Dad Morning LivingRoom SittingDrink near Sitting_Zone with",
+    "memory_text": "User_Dad SittingDrink near Sitting_Zone with nothing. User_Dad Morning LivingRoom SittingDrink near Sitting_Zone with",
+    "timestamp": "2026-06-05T16:27:39.878153"
+  },
+  {
+    "faiss_idx": 407,
+    "user": "User_Dad",
+    "action": "SittingDrink",
+    "instance": "table",
+    "interacting_items": [],
+    "all_items": [
+      "remote",
+      "book",
+      "cup",
+      "bottle",
+      "bowl"
+    ],
+    "spatial_relations": [],
+    "furniture_pos": [
+      3.557,
+      -0.924
+    ],
+    "mongo_id": "6a226b4fdbec4efcfc99e2a3",
+    "description": "User_Dad SittingDrink near table",
+    "memory_text": "User_Dad SittingDrink near table with nothing. User_Dad SittingDrink near table",
+    "timestamp": "2026-06-05T16:27:39.896910"
+  },
+  {
+    "faiss_idx": 408,
+    "user": "User_Mom",
+    "action": "Cleaning",
+    "instance": "Cleaning_Zone",
+    "interacting_items": [],
+    "all_items": [],
+    "spatial_relations": [],
+    "furniture_pos": null,
+    "mongo_id": null,
+    "description": "User_Mom Morning Kitchen Cleaning near Cleaning_Zone with",
+    "memory_text": "User_Mom Cleaning near Cleaning_Zone with nothing. User_Mom Morning Kitchen Cleaning near Cleaning_Zone with",
+    "timestamp": "2026-06-05T16:28:55.161125"
+  },
+  {
+    "faiss_idx": 409,
+    "user": "User_Mom",
+    "action": "Cleaning",
+    "instance": "chair2",
+    "interacting_items": [],
+    "all_items": [
+      "plate",
+      "pan"
+    ],
+    "spatial_relations": [],
+    "furniture_pos": [
+      3.23,
+      5.31
+    ],
+    "mongo_id": "6a226b4fdbec4efcfc99e2af",
+    "description": "User_Mom Cleaning near chair2",
+    "memory_text": "User_Mom Cleaning near chair2 with nothing. User_Mom Cleaning near chair2",
+    "timestamp": "2026-06-05T16:28:55.180260"
+  },
+  {
+    "faiss_idx": 410,
+    "user": "User_Mom",
+    "action": "Sitting",
+    "instance": "Sitting_Zone",
+    "interacting_items": [],
+    "all_items": [],
+    "spatial_relations": [],
+    "furniture_pos": null,
+    "mongo_id": null,
+    "description": "User_Mom Noon LivingRoom Sitting near Sitting_Zone with",
+    "memory_text": "User_Mom Sitting near Sitting_Zone with nothing. User_Mom Noon LivingRoom Sitting near Sitting_Zone with",
+    "timestamp": "2026-06-05T16:30:06.487481"
+  },
+  {
+    "faiss_idx": 411,
+    "user": "User_Mom",
+    "action": "Sitting",
+    "instance": "sofa",
+    "interacting_items": [],
+    "all_items": [
+      "remote",
+      "book",
+      "cup",
+      "bottle",
+      "bowl"
+    ],
+    "spatial_relations": [],
+    "furniture_pos": [
+      2.349,
+      -1.41300011
+    ],
+    "mongo_id": "6a226b4fdbec4efcfc99e2a5",
+    "description": "User_Mom Sitting near sofa",
+    "memory_text": "User_Mom Sitting near sofa with nothing. User_Mom Sitting near sofa",
+    "timestamp": "2026-06-05T16:30:06.508473"
+  },
+  {
+    "faiss_idx": 412,
+    "user": "User_Mom",
+    "action": "Reading",
+    "instance": "Sitting_Zone",
+    "interacting_items": [],
+    "all_items": [],
+    "spatial_relations": [],
+    "furniture_pos": null,
+    "mongo_id": null,
+    "description": "User_Mom Noon LivingRoom Reading near Sitting_Zone with",
+    "memory_text": "User_Mom Reading near Sitting_Zone with nothing. User_Mom Noon LivingRoom Reading near Sitting_Zone with",
+    "timestamp": "2026-06-05T16:31:19.721284"
+  },
+  {
+    "faiss_idx": 413,
+    "user": "User_Mom",
+    "action": "Reading",
+    "instance": "sofa",
+    "interacting_items": [],
+    "all_items": [
+      "remote",
+      "book",
+      "cup",
+      "bottle",
+      "bowl"
+    ],
+    "spatial_relations": [],
+    "furniture_pos": [
+      2.349,
+      -1.41300011
+    ],
+    "mongo_id": "6a226b4fdbec4efcfc99e2a5",
+    "description": "User_Mom Reading near sofa",
+    "memory_text": "User_Mom Reading near sofa with nothing. User_Mom Reading near sofa",
+    "timestamp": "2026-06-05T16:31:19.742703"
+  },
+  {
+    "faiss_idx": 414,
+    "user": "User_Dad",
+    "action": "Laying",
+    "instance": "Laying_Zone",
+    "interacting_items": [],
+    "all_items": [],
+    "spatial_relations": [],
+    "furniture_pos": null,
+    "mongo_id": null,
+    "description": "User_Dad Noon DadRoom Laying near Laying_Zone with",
+    "memory_text": "User_Dad Laying near Laying_Zone with nothing. User_Dad Noon DadRoom Laying near Laying_Zone with",
+    "timestamp": "2026-06-05T16:32:32.430005"
+  },
+  {
+    "faiss_idx": 415,
+    "user": "User_Dad",
+    "action": "Laying",
+    "instance": "dad's bed",
+    "interacting_items": [],
+    "all_items": [],
+    "spatial_relations": [],
+    "furniture_pos": [
+      0.338000059,
+      -1.528
+    ],
+    "mongo_id": "6a226b4fdbec4efcfc99e293",
+    "description": "User_Dad Laying near dad's bed",
+    "memory_text": "User_Dad Laying near dad's bed with nothing. User_Dad Laying near dad's bed",
+    "timestamp": "2026-06-05T16:32:32.448625"
+  },
+  {
+    "faiss_idx": 416,
+    "user": "User_Mom",
+    "action": "Sitting",
+    "instance": "Sitting_Zone",
+    "interacting_items": [],
+    "all_items": [],
+    "spatial_relations": [],
+    "furniture_pos": null,
+    "mongo_id": null,
+    "description": "User_Mom Noon LivingRoom Sitting near Sitting_Zone with",
+    "memory_text": "User_Mom Sitting near Sitting_Zone with nothing. User_Mom Noon LivingRoom Sitting near Sitting_Zone with",
+    "timestamp": "2026-06-05T16:33:49.052450"
+  },
+  {
+    "faiss_idx": 417,
+    "user": "User_Mom",
+    "action": "Sitting",
+    "instance": "sofa",
+    "interacting_items": [],
+    "all_items": [
+      "remote",
+      "book",
+      "cup",
+      "bottle",
+      "bowl"
+    ],
+    "spatial_relations": [],
+    "furniture_pos": [
+      2.349,
+      -1.41300011
+    ],
+    "mongo_id": "6a226b4fdbec4efcfc99e2a5",
+    "description": "User_Mom Sitting near sofa",
+    "memory_text": "User_Mom Sitting near sofa with nothing. User_Mom Sitting near sofa",
+    "timestamp": "2026-06-05T16:33:49.069859"
+  },
+  {
+    "faiss_idx": 418,
+    "user": "User_Mom",
+    "action": "Reading",
+    "instance": "Sitting_Zone",
+    "interacting_items": [],
+    "all_items": [],
+    "spatial_relations": [],
+    "furniture_pos": null,
+    "mongo_id": null,
+    "description": "User_Mom Noon LivingRoom Reading near Sitting_Zone with",
+    "memory_text": "User_Mom Reading near Sitting_Zone with nothing. User_Mom Noon LivingRoom Reading near Sitting_Zone with",
+    "timestamp": "2026-06-05T16:35:01.117200"
+  },
+  {
+    "faiss_idx": 419,
+    "user": "User_Mom",
+    "action": "Reading",
+    "instance": "table",
+    "interacting_items": [],
+    "all_items": [
+      "remote",
+      "book",
+      "cup",
+      "bottle",
+      "bowl"
+    ],
+    "spatial_relations": [],
+    "furniture_pos": [
+      3.557,
+      -0.924
+    ],
+    "mongo_id": "6a226b4fdbec4efcfc99e2a3",
+    "description": "User_Mom Reading near table",
+    "memory_text": "User_Mom Reading near table with nothing. User_Mom Reading near table",
+    "timestamp": "2026-06-05T16:35:01.136100"
+  },
+  {
+    "faiss_idx": 420,
+    "user": "User_Mom",
+    "action": "Sitting",
+    "instance": "Opening_Zone_2",
+    "interacting_items": [],
+    "all_items": [],
+    "spatial_relations": [],
+    "furniture_pos": null,
+    "mongo_id": null,
+    "description": "User_Mom Afternoon Kitchen Sitting near Opening_Zone_2 with",
+    "memory_text": "User_Mom Sitting near Opening_Zone_2 with nothing. User_Mom Afternoon Kitchen Sitting near Opening_Zone_2 with",
+    "timestamp": "2026-06-05T16:36:09.809431"
+  },
+  {
+    "faiss_idx": 421,
+    "user": "User_Mom",
+    "action": "Sitting",
+    "instance": "chair2",
+    "interacting_items": [],
+    "all_items": [
+      "plate"
+    ],
+    "spatial_relations": [],
+    "furniture_pos": [
+      3.23,
+      5.31
+    ],
+    "mongo_id": "6a226b4fdbec4efcfc99e2af",
+    "description": "User_Mom Sitting near chair2",
+    "memory_text": "User_Mom Sitting near chair2 with nothing. User_Mom Sitting near chair2",
+    "timestamp": "2026-06-05T16:36:09.826807"
+  },
+  {
+    "faiss_idx": 422,
+    "user": "User_Mom",
+    "action": "Reading",
+    "instance": "Sitting_Zone",
+    "interacting_items": [],
+    "all_items": [],
+    "spatial_relations": [],
+    "furniture_pos": null,
+    "mongo_id": null,
+    "description": "User_Mom Afternoon LivingRoom Reading near Sitting_Zone with",
+    "memory_text": "User_Mom Reading near Sitting_Zone with nothing. User_Mom Afternoon LivingRoom Reading near Sitting_Zone with",
+    "timestamp": "2026-06-05T16:37:15.718089"
+  },
+  {
+    "faiss_idx": 423,
+    "user": "User_Mom",
+    "action": "Reading",
+    "instance": "sofa",
+    "interacting_items": [],
+    "all_items": [
+      "remote",
+      "book",
+      "cup",
+      "bottle",
+      "bowl"
+    ],
+    "spatial_relations": [],
+    "furniture_pos": [
+      2.349,
+      -1.41300011
+    ],
+    "mongo_id": "6a226b4fdbec4efcfc99e2a5",
+    "description": "User_Mom Reading near sofa",
+    "memory_text": "User_Mom Reading near sofa with nothing. User_Mom Reading near sofa",
+    "timestamp": "2026-06-05T16:37:15.736519"
+  },
+  {
+    "faiss_idx": 424,
+    "user": "User_Dad",
+    "action": "Typing",
+    "instance": "Typing_Zone",
+    "interacting_items": [],
+    "all_items": [],
+    "spatial_relations": [],
+    "furniture_pos": null,
+    "mongo_id": null,
+    "description": "User_Dad Afternoon DadRoom Typing near Typing_Zone with",
+    "memory_text": "User_Dad Typing near Typing_Zone with nothing. User_Dad Afternoon DadRoom Typing near Typing_Zone with",
+    "timestamp": "2026-06-05T16:38:26.825682"
+  },
+  {
+    "faiss_idx": 425,
+    "user": "User_Dad",
+    "action": "Typing",
+    "instance": "chair",
+    "interacting_items": [],
+    "all_items": [],
+    "spatial_relations": [],
+    "furniture_pos": [
+      -0.848,
+      0.79
+    ],
+    "mongo_id": "6a226b4fdbec4efcfc99e29d",
+    "description": "User_Dad Typing near chair",
+    "memory_text": "User_Dad Typing near chair with nothing. User_Dad Typing near chair",
+    "timestamp": "2026-06-05T16:38:26.840603"
+  },
+  {
+    "faiss_idx": 426,
+    "user": "User_Dad",
+    "action": "PhoneUse",
+    "instance": "Opening_Zone_2",
+    "interacting_items": [],
+    "all_items": [],
+    "spatial_relations": [],
+    "furniture_pos": null,
+    "mongo_id": null,
+    "description": "User_Dad Afternoon Kitchen PhoneUse near Opening_Zone_2 with",
+    "memory_text": "User_Dad PhoneUse near Opening_Zone_2 with nothing. User_Dad Afternoon Kitchen PhoneUse near Opening_Zone_2 with",
+    "timestamp": "2026-06-05T16:39:43.327953"
+  },
+  {
+    "faiss_idx": 427,
+    "user": "User_Dad",
+    "action": "PhoneUse",
+    "instance": "chair2",
+    "interacting_items": [],
+    "all_items": [
+      "banana",
+      "apple"
+    ],
+    "spatial_relations": [],
+    "furniture_pos": [
+      3.23,
+      5.31
+    ],
+    "mongo_id": "6a226b4fdbec4efcfc99e2af",
+    "description": "User_Dad PhoneUse near chair2",
+    "memory_text": "User_Dad PhoneUse near chair2 with nothing. User_Dad PhoneUse near chair2",
+    "timestamp": "2026-06-05T16:39:43.346314"
+  },
+  {
+    "faiss_idx": 428,
+    "user": "User_Dad",
+    "action": "Sitting",
+    "instance": "Sitting_Zone",
+    "interacting_items": [],
+    "all_items": [],
+    "spatial_relations": [],
+    "furniture_pos": null,
+    "mongo_id": null,
+    "description": "User_Dad Evening LivingRoom Sitting near Sitting_Zone with",
+    "memory_text": "User_Dad Sitting near Sitting_Zone with nothing. User_Dad Evening LivingRoom Sitting near Sitting_Zone with",
+    "timestamp": "2026-06-05T16:40:59.167700"
+  },
+  {
+    "faiss_idx": 429,
+    "user": "User_Dad",
+    "action": "Sitting",
+    "instance": "sofa",
+    "interacting_items": [],
+    "all_items": [
+      "remote",
+      "book",
+      "cup",
+      "bottle",
+      "bowl"
+    ],
+    "spatial_relations": [],
+    "furniture_pos": [
+      2.349,
+      -1.41300011
+    ],
+    "mongo_id": "6a226b4fdbec4efcfc99e2a5",
+    "description": "User_Dad Sitting near sofa",
+    "memory_text": "User_Dad Sitting near sofa with nothing. User_Dad Sitting near sofa",
+    "timestamp": "2026-06-05T16:40:59.188442"
+  },
+  {
+    "faiss_idx": 430,
+    "user": "User_Dad",
+    "action": "PhoneUse",
+    "instance": "Watching_Zone_2",
+    "interacting_items": [],
+    "all_items": [],
+    "spatial_relations": [],
+    "furniture_pos": null,
+    "mongo_id": null,
+    "description": "User_Dad Evening LivingRoom PhoneUse near Watching_Zone_2 with",
+    "memory_text": "User_Dad PhoneUse near Watching_Zone_2 with nothing. User_Dad Evening LivingRoom PhoneUse near Watching_Zone_2 with",
+    "timestamp": "2026-06-05T16:42:16.441851"
+  },
+  {
+    "faiss_idx": 431,
+    "user": "User_Dad",
+    "action": "PhoneUse",
+    "instance": "table",
+    "interacting_items": [],
+    "all_items": [
+      "remote",
+      "bowl",
+      "cup",
+      "bottle"
+    ],
+    "spatial_relations": [],
+    "furniture_pos": [
+      3.557,
+      -0.924
+    ],
+    "mongo_id": "6a226b4fdbec4efcfc99e2a3",
+    "description": "User_Dad PhoneUse near table",
+    "memory_text": "User_Dad PhoneUse near table with nothing. User_Dad PhoneUse near table",
+    "timestamp": "2026-06-05T16:42:16.456898"
+  },
+  {
+    "faiss_idx": 432,
+    "user": "User_Dad",
+    "action": "Eating",
+    "instance": "Watching_Zone_2",
+    "interacting_items": [],
+    "all_items": [],
+    "spatial_relations": [],
+    "furniture_pos": null,
+    "mongo_id": null,
+    "description": "User_Dad Evening LivingRoom Eating near Watching_Zone_2 with",
+    "memory_text": "User_Dad Eating near Watching_Zone_2 with nothing. User_Dad Evening LivingRoom Eating near Watching_Zone_2 with",
+    "timestamp": "2026-06-05T16:43:35.353388"
+  },
+  {
+    "faiss_idx": 433,
+    "user": "User_Dad",
+    "action": "Eating",
+    "instance": "sofa side 2",
+    "interacting_items": [],
+    "all_items": [
+      "remote",
+      "bowl",
+      "bottle"
+    ],
+    "spatial_relations": [],
+    "furniture_pos": [
+      3.746,
+      1.096
+    ],
+    "mongo_id": "6a226b4fdbec4efcfc99e2a9",
+    "description": "User_Dad Eating near sofa side 2",
+    "memory_text": "User_Dad Eating near sofa side 2 with nothing. User_Dad Eating near sofa side 2",
+    "timestamp": "2026-06-05T16:43:35.371307"
+  },
+  {
+    "faiss_idx": 434,
+    "user": "User_Dad",
+    "action": "SittingDrink",
+    "instance": "Watching_Zone_2",
+    "interacting_items": [],
+    "all_items": [],
+    "spatial_relations": [],
+    "furniture_pos": null,
+    "mongo_id": null,
+    "description": "User_Dad Evening LivingRoom SittingDrink near Watching_Zone_2 with",
+    "memory_text": "User_Dad SittingDrink near Watching_Zone_2 with nothing. User_Dad Evening LivingRoom SittingDrink near Watching_Zone_2 with",
+    "timestamp": "2026-06-05T16:44:56.197584"
+  },
+  {
+    "faiss_idx": 435,
+    "user": "User_Dad",
+    "action": "SittingDrink",
+    "instance": "table",
+    "interacting_items": [],
+    "all_items": [
+      "remote",
+      "book",
+      "cup",
+      "bottle",
+      "bowl"
+    ],
+    "spatial_relations": [],
+    "furniture_pos": [
+      3.557,
+      -0.924
+    ],
+    "mongo_id": "6a226b4fdbec4efcfc99e2a3",
+    "description": "User_Dad SittingDrink near table",
+    "memory_text": "User_Dad SittingDrink near table with nothing. User_Dad SittingDrink near table",
+    "timestamp": "2026-06-05T16:44:56.216756"
+  },
+  {
+    "faiss_idx": 436,
+    "user": "User_Mom",
+    "action": "Laying",
+    "instance": "Laying_Zone",
+    "interacting_items": [],
+    "all_items": [],
+    "spatial_relations": [],
+    "furniture_pos": null,
+    "mongo_id": null,
+    "description": "User_Mom Night DadRoom Laying near Laying_Zone with",
+    "memory_text": "User_Mom Laying near Laying_Zone with nothing. User_Mom Night DadRoom Laying near Laying_Zone with",
+    "timestamp": "2026-06-05T16:46:13.915300"
+  },
+  {
+    "faiss_idx": 437,
+    "user": "User_Mom",
+    "action": "Laying",
+    "instance": "dad's bed",
+    "interacting_items": [],
+    "all_items": [],
+    "spatial_relations": [],
+    "furniture_pos": [
+      0.338000059,
+      -1.528
+    ],
+    "mongo_id": "6a226b4fdbec4efcfc99e293",
+    "description": "User_Mom Laying near dad's bed",
+    "memory_text": "User_Mom Laying near dad's bed with nothing. User_Mom Laying near dad's bed",
+    "timestamp": "2026-06-05T16:46:13.934107"
   }
 ]
