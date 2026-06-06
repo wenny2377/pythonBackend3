@@ -57,6 +57,8 @@ def _dominant_layer(reason: str) -> str:
         return "affordance"
     if "nearby:" in r:
         return "nearby"
+    if "llm:" in r:
+        return "llm"
     if any(k in r for k in ("prox:", "ray:", "zone:")):
         return "geometry"
     if "vlm(" in r:

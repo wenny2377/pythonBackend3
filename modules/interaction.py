@@ -7,6 +7,7 @@ import threading
 from collections import defaultdict
 
 from config import Config
+from modules.scene_graph import build_scene_text
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +57,10 @@ CONFIRM_PATTERNS = [
 
 ONE_SHOT_SYSTEM = """You are a home service robot assistant.
 
-## Environment snapshot
+## Current Scene Graph
+{scene_graph}
+
+## Environment snapshot (all objects at home)
 {env_snapshot}
 
 ## User skill profile
@@ -67,6 +71,7 @@ ONE_SHOT_SYSTEM = """You are a home service robot assistant.
 - If an item the user wants is NOT in the snapshot, say so honestly.
 - CATEGORY: if the user is hungry, only recommend [food] items. If thirsty, only [drink] items.
 - Always mention SPECIFIC item names from the snapshot.
+- Use the Scene Graph to understand what the user is currently doing and where they are.
 - If the requested item does not exist in the snapshot, say it is not available.
 
 ## Output format
@@ -144,6 +149,7 @@ class SessionState:
         self.excluded_items   = set()
         self.last_intent      = ""
         self.pending_confirm  = False
+        self.last_scene_graph = ""
 
     def reset(self):
         self.__init__()
@@ -201,15 +207,60 @@ class InteractionEngine:
     def _reset_session(self, user_id: str):
         self._sessions[user_id] = SessionState()
 
+    def _build_current_scene_graph(self, user_id: str, room: str,
+                                    user_pos=None) -> str:
+        try:
+            pos_doc = self.db.user_positions.find_one(
+                {"$or": [{"user_id": user_id},
+                         {"user_id": user_id.lower()}]},
+                {"x": 1, "z": 1, "forward": 1}
+            )
+            if pos_doc and not user_pos:
+                user_pos = {"x": float(pos_doc.get("x", 0)),
+                            "z": float(pos_doc.get("z", 0))}
+
+            user_forward = None
+            if pos_doc and pos_doc.get("forward"):
+                fwd = pos_doc["forward"]
+                if isinstance(fwd, list) and len(fwd) >= 3:
+                    user_forward = {"x": fwd[0], "z": fwd[2]}
+                elif isinstance(fwd, dict):
+                    user_forward = fwd
+
+            latest_eval = self.db.eval_logs.find_one(
+                {"user": user_id},
+                sort=[("timestamp", -1)],
+                projection={"body_position": 1, "held_object": 1}
+            )
+            skel_body   = latest_eval.get("body_position", "unknown") if latest_eval else "unknown"
+            held_object = latest_eval.get("held_object", "none") if latest_eval else "none"
+
+            vh_doc       = self.db.system_config.find_one({"key": "virtual_hour"})
+            virtual_hour = vh_doc.get("value") if vh_doc else None
+
+            scene_text = build_scene_text(
+                user_pos     = user_pos,
+                user_forward = user_forward,
+                room_name    = room,
+                skel_body    = skel_body,
+                head_pitch   = -999,
+                held_object  = held_object,
+                db           = self.db,
+                user_id      = user_id,
+                virtual_hour = virtual_hour,
+            )
+            return scene_text
+        except Exception as e:
+            logger.warning(f"[SceneGraph] build failed: {e}")
+            return "(Scene graph unavailable)"
+
     def _classify_intent(self, query: str) -> str:
         q = query.lower().strip()
 
         if any(kw in q for kw in INTERRUPT_KEYWORDS):
             return "interrupt"
-
         if any(kw in q for kw in LOCATE_KEYWORDS):
             return "locate"
-
         if any(kw in q for kw in NEED_KEYWORDS):
             return "need"
 
@@ -261,10 +312,8 @@ class InteractionEngine:
 
         if any(p in query_lower for p in CONFIRM_PATTERNS) and session.last_nav_label:
             return f"get {session.last_nav_label}"
-
         if any(p in query_lower for p in REFERENCE_PATTERNS) and session.last_nav_label:
             return f"{query} ({session.last_nav_label})"
-
         return query
 
     def process(self, query, user_id="Unknown", robot_pos=None,
@@ -286,16 +335,20 @@ class InteractionEngine:
                 answer=result["answer"], env_snapshot="", rec_items=[])
             return result
 
-        query = self._resolve_reference(query, session)
+        query  = self._resolve_reference(query, session)
         intent = self._classify_intent(query)
         print(f"[Classify] intent={intent}")
+
+        scene_graph = self._build_current_scene_graph(user_id, room, user_pos)
+        session.last_scene_graph = scene_graph
+        print(f"[SceneGraph] built for {user_id}")
 
         if intent == "interrupt":
             self._reset_session(user_id)
             return self._interrupt_response()
 
         if intent == "chat":
-            return self._chat_response(query, user_id)
+            return self._chat_response(query, user_id, scene_graph)
 
         if intent == "locate":
             if self.saycan:
@@ -315,12 +368,12 @@ class InteractionEngine:
 
         if intent == "need":
             if self.saycan:
-                virtual_hour = self.db.command("ping") and None
+                virtual_hour = None
                 try:
                     vh_doc = self.db.system_config.find_one({"key": "virtual_hour"})
                     virtual_hour = vh_doc.get("value") if vh_doc else None
                 except Exception:
-                    virtual_hour = None
+                    pass
 
                 prev_doc = self.db.activity_sequences.find_one(
                     {"user": user_id}, sort=[("timestamp", -1)])
@@ -344,9 +397,9 @@ class InteractionEngine:
                     prev_action  = prev_action,
                 )
 
-                answer     = sc_result.get("explanation", "")
-                nav_target = sc_result.get("nav_target")
-                nav_label  = sc_result.get("nav_label", "")
+                answer      = sc_result.get("explanation", "")
+                nav_target  = sc_result.get("nav_target")
+                nav_label   = sc_result.get("nav_label", "")
                 best_action = sc_result.get("best_action", "")
 
                 skill_md = ""
@@ -365,9 +418,10 @@ class InteractionEngine:
                     "recommendations": [{"label": best_action}] if best_action else [],
                     "is_personalized": is_personalized,
                     "saycan_scores":   sc_result.get("final_scores", {}),
+                    "scene_graph":     scene_graph,
                 }
             else:
-                result = self._oneshot_fallback(query, user_id, room)
+                result = self._oneshot_fallback(query, user_id, room, scene_graph)
 
             session.last_nav_label   = result.get("nav_label", "")
             session.last_nav_target  = result.get("nav_target")
@@ -389,10 +443,10 @@ class InteractionEngine:
             )
             self._schedule_skill_update(
                 user_id=user_id, query=query,
-                answer=result["answer"], env_snapshot="", rec_items=[])
+                answer=result["answer"], env_snapshot=scene_graph, rec_items=[])
             return result
 
-        return self._oneshot_fallback(query, user_id, room)
+        return self._oneshot_fallback(query, user_id, room, scene_graph)
 
     def _interrupt_response(self):
         return {
@@ -407,13 +461,25 @@ class InteractionEngine:
             "is_personalized": False,
         }
 
-    def _chat_response(self, query, user_id):
-        answer = self._call_llm_with_buffer(user_id, CHAT_SYSTEM, query) \
+    def _chat_response(self, query, user_id, scene_graph=""):
+        system = CHAT_SYSTEM
+        if scene_graph:
+            system = (
+                "You are a friendly home robot companion.\n"
+                "You are aware of the current scene:\n"
+                f"{scene_graph}\n\n"
+                "Reply warmly and briefly. 1-2 sentences max.\n"
+                "RULES:\n"
+                "- Do NOT promise to fetch anything unless asked.\n"
+                "- Do NOT wrap your response in quotation marks."
+            )
+
+        answer = self._call_llm_with_buffer(user_id, system, query) \
                  or "I am here for you!"
         answer = answer.strip().strip('"').strip("'")
         self._schedule_skill_update(
             user_id=user_id, query=query,
-            answer=answer, env_snapshot="", rec_items=[])
+            answer=answer, env_snapshot=scene_graph, rec_items=[])
         return {
             "status":          "Success",
             "answer":          answer,
@@ -430,10 +496,10 @@ class InteractionEngine:
         from datetime import timedelta
 
         if self._is_person_query(query):
-            users  = list(self.db.user_positions.find(
+            users = list(self.db.user_positions.find(
                 {"room": {"$exists": True, "$ne": ""}},
                 {"user_id": 1, "room": 1}))
-            seen   = {}
+            seen = {}
             for u in users:
                 key = u.get("user_id", "").lower()
                 if key not in seen:
@@ -460,25 +526,24 @@ class InteractionEngine:
                 return {
                     "status":          "Success",
                     "answer":          f"I don't see any {specific_item} at home right now.",
-                    "nav_target":      None,
-                    "nav_label":       None,
+                    "nav_target":      None, "nav_label": None,
                     "options":         [{"id": 3, "label": "Close"}],
-                    "confidence":      0.9,
-                    "intent_type":     "query",
-                    "recommendations": [],
-                    "is_personalized": False,
+                    "confidence":      0.9, "intent_type": "query",
+                    "recommendations": [], "is_personalized": False,
                 }
 
         cutoff = datetime.datetime.utcnow() - timedelta(hours=2)
         docs   = list(self.db.dynamic_objects.find(
             {"last_seen": {"$gte": cutoff}},
-            {"label": 1, "room": 1, "last_seen_on": 1, "interact_count": 1, "category": 1},
+            {"label": 1, "room": 1, "last_seen_on": 1,
+             "interact_count": 1, "category": 1},
         ).sort("interact_count", -1))
 
         if not docs:
             docs = list(self.db.dynamic_objects.find(
                 {},
-                {"label": 1, "room": 1, "last_seen_on": 1, "interact_count": 1, "category": 1},
+                {"label": 1, "room": 1, "last_seen_on": 1,
+                 "interact_count": 1, "category": 1},
             ).sort("interact_count", -1).limit(15))
 
         EXCLUDE = {"user_mom", "user_dad", "user", "person", "people"}
@@ -501,7 +566,8 @@ class InteractionEngine:
                 q_vec  = self._sbert.encode(query, normalize_embeddings=True)
                 scored = sorted(
                     [(d, float(np.dot(q_vec,
-                        self._sbert.encode(d.get("label", ""), normalize_embeddings=True))))
+                        self._sbert.encode(d.get("label", ""),
+                                           normalize_embeddings=True))))
                      for d in docs],
                     key=lambda x: x[1], reverse=True,
                 )
@@ -532,7 +598,7 @@ class InteractionEngine:
             "is_personalized": False,
         }
 
-    def _oneshot_fallback(self, query, user_id, room):
+    def _oneshot_fallback(self, query, user_id, room, scene_graph=""):
         need_category = self._extract_need_category(query)
         env_snapshot  = self._build_env_snapshot(need_category)
 
@@ -549,8 +615,9 @@ class InteractionEngine:
         ]
 
         system = ONE_SHOT_SYSTEM.format(
-            env_snapshot=env_snapshot,
-            skill_md=skill_md,
+            scene_graph  = scene_graph or "(not available)",
+            env_snapshot = env_snapshot,
+            skill_md     = skill_md,
         )
 
         user_prompt = (
@@ -782,7 +849,7 @@ class InteractionEngine:
                         "input":  {"query": query},
                         "result": (
                             f"User: \"{query}\"\nRobot: \"{answer}\"\n"
-                            f"Objects:\n{env_snapshot}\nRecommended: {rec_items}"
+                            f"Scene:\n{env_snapshot}\nRecommended: {rec_items}"
                         ),
                     }])
             except Exception as e:

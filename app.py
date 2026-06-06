@@ -511,6 +511,8 @@ def _process_predict(episode_id, data):
 
         data['room_name']    = room_name
         data['user_forward'] = est_forward
+        print(f'[SKELcheck] hip={data.get("hip_height","MISS")} pitch={data.get("head_pitch","MISS")} spine={data.get("spine_angle","MISS")}')
+        print(f'[SKELcheck] hip={data.get("hip_height","MISS")} pitch={data.get("head_pitch","MISS")} spine={data.get("spine_angle","MISS")} h2h={data.get("hand_to_head","MISS")}')
         _wait_for_scene(max_wait=12.0)
 
         with _vlm_lock:

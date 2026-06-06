@@ -45,6 +45,7 @@ LAYER_GROUPS = {
     "held":       ["held", "strong"],
     "nearby":     ["nearby"],
     "affordance": ["affordance"],
+    "llm":        ["llm"],
     "geometry":   ["proximity", "raycast", "zone"],
     "vlm":        ["vlm"],
     "temporal":   ["time", "temporal"],
@@ -330,7 +331,7 @@ def _plot_fig2_fallback(docs, total):
         if "strong:skeleton_lying" in r:
             return "skeleton"
         if any(k in r for k in ("strong:held:", "strong:head(")):
-            return "held"
+            return "strong"
         if any(k in r for k in ("skeleton_lying", "head(", "skeleton")):
             return "skeleton"
         if "held:" in r:
@@ -339,13 +340,15 @@ def _plot_fig2_fallback(docs, total):
             return "affordance"
         if "nearby:" in r:
             return "nearby"
+        if "llm:" in r:
+            return "llm"
         if any(k in r for k in ("prox:", "ray:", "zone:")):
             return "geometry"
         if "vlm(" in r:
             return "vlm"
         if "inertia(" in r:
             return "temporal"
-        return "vlm_only"
+        return "other"
 
     for d in docs:
         d["_layer"] = dominant_layer(d.get("upgrade_reason", ""))

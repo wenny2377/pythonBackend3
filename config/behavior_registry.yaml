@@ -1,232 +1,212 @@
-weights:
-  head:        0.45
-  held:        0.55
-  nearby:      0.25
-  proximity:   0.30
-  raycast:     0.30
-  zone:        0.25
-  affordance:  0.20
-  vlm:         0.20
-  time:        0.10
-  temporal:    0.10
-
-affordance_map:
-  bottle:   [SittingDrink, Drinking]
-  cup:      [SittingDrink, Drinking]
-  cola:     [SittingDrink, Drinking]
-  juice:    [SittingDrink, Drinking]
-  plate:    [Eating]
-  bowl:     [Eating]
-  apple:    [Eating]
-  banana:   [Eating]
-  book:     [Reading]
-  magazine: [Reading]
-  remote:   [Watching]
-  keyboard: [Typing]
-  mouse:    [Typing]
-
-raycast_targets:
-  - label: tv
-    action: Watching
-    tv_on_factor:  1.0
-    tv_off_factor: 0.4
-    max_dist: 8.0
-  - label: television
-    action: Watching
-    tv_on_factor:  1.0
-    tv_off_factor: 0.4
-    max_dist: 8.0
-  - label: refrigerator
-    action: Opening
-    max_dist: 3.0
-  - label: fridge
-    action: Opening
-    max_dist: 3.0
-
-strong_held_items:
-  broom:    Cleaning
-  mop:      Cleaning
-  pan:      Cooking
-  spatula:  Cooking
-
-room_impossible:
-  BedRoom(dad):
-    - Cooking
-    - Cleaning
-  Kitchen:
-    - Laying
-    - Watching
-    - Reading
-    - Typing
-
 behaviours:
-  Drinking:
-    body_position: standing
-    head_pitch:
-      ideal:     24
-      tolerance: 10
-      req_body:  standing
-    specificity: medium
-
-  SittingDrink:
-    body_position: sitting
-    head_pitch:
-      ideal:    -25
-      tolerance:  8
-      req_body:  sitting
-    specificity: low
-
-  Sitting:
-    body_position: sitting
-    head_pitch:
-      ideal:     2
-      tolerance:  8
-      req_body:  sitting
-    specificity: low
-
-  Eating:
-    body_position: sitting
-    head_pitch:
-      ideal:     21
-      tolerance:  8
-      req_body:  sitting
-    specificity: medium
-
-  Cooking:
-    body_position: standing
-    head_pitch:
-      ideal:     25
-      tolerance:  8
-      req_body:  standing
-    specificity: high
-    ray_target:  stove
-
-  Opening:
-    body_position: standing
-    head_pitch:
-      ideal:     32
-      tolerance:  8
-      req_body:  standing
-    specificity: high
-    ray_target:  refrigerator
-
-  Laying:
-    body_position: lying
-    head_pitch:
-      ideal:    -83
-      tolerance: 10
-      req_body:  lying
-    specificity: high
-
-  Watching:
-    body_position: sitting
-    head_pitch:
-      ideal:     0
-      tolerance:  8
-      req_body:  sitting
-    specificity: low
-    ray_target:  tv
-
-  Reading:
-    body_position: sitting
-    head_pitch:
-      ideal:     70
-      tolerance: 12
-      req_body:  sitting
-    specificity: low
-
   Cleaning:
     body_position: standing
     head_pitch:
-      ideal:     75
+      ideal: 75
+      req_body: standing
       tolerance: 20
-      req_body:  standing
     specificity: high
-
+  Cooking:
+    body_position: standing
+    head_pitch:
+      ideal: 25
+      req_body: standing
+      tolerance: 8
+    ray_target: stove
+    specificity: high
+  Drinking:
+    body_position: standing
+    head_pitch:
+      ideal: 24
+      req_body: standing
+      tolerance: 10
+    specificity: medium
+  Eating:
+    body_position: sitting
+    head_pitch:
+      ideal: 21
+      req_body: sitting
+      tolerance: 8
+    specificity: medium
+  Laying:
+    body_position: lying
+    head_pitch:
+      ideal: -83
+      req_body: lying
+      tolerance: 10
+    specificity: high
+  Opening:
+    body_position: standing
+    head_pitch:
+      ideal: 32
+      req_body: standing
+      tolerance: 8
+    ray_target: refrigerator
+    specificity: high
   PhoneUse:
     body_position: standing
     head_pitch:
-      ideal:     36
+      ideal: 36
+      req_body: standing
       tolerance: 10
-      req_body:  standing
     specificity: high
-
-  Typing:
-    body_position: sitting
-    head_pitch:
-      ideal:     2
-      tolerance: 12
-      req_body:  sitting
-    specificity: high
-
-  StandUp:
-    body_position: standing
-    specificity: medium
-
   PickingUp:
     body_position: standing
     specificity: medium
-
   PuttingDown:
     body_position: standing
     specificity: medium
-
+  Reading:
+    body_position: sitting
+    head_pitch:
+      ideal: 70
+      req_body: sitting
+      tolerance: 12
+    specificity: low
+  Sitting:
+    body_position: sitting
+    head_pitch:
+      ideal: 2
+      req_body: sitting
+      tolerance: 8
+    specificity: low
+  SittingDrink:
+    body_position: sitting
+    head_pitch:
+      ideal: -25
+      req_body: sitting
+      tolerance: 8
+    specificity: low
+  StandUp:
+    body_position: standing
+    specificity: medium
   Standing:
     body_position: standing
     specificity: medium
-
+  Typing:
+    body_position: sitting
+    head_pitch:
+      ideal: 2
+      req_body: sitting
+      tolerance: 12
+    specificity: high
   Walking:
     body_position: standing
     specificity: medium
-
+  Watching:
+    body_position: sitting
+    head_pitch:
+      ideal: 0
+      req_body: sitting
+      tolerance: 8
+    ray_target: tv
+    specificity: low
 body_impossible:
-  sitting:
-    - Drinking
-    - Cooking
-    - Opening
-    - Cleaning
-    - PhoneUse
-    - Walking
-    - Standing
-    - StandUp
   lying:
-    - Drinking
-    - SittingDrink
-    - Sitting
-    - Eating
-    - Cooking
-    - Opening
-    - Watching
-    - Reading
-    - Cleaning
-    - PhoneUse
-    - Typing
-    - Walking
-    - Standing
-    - StandUp
-    - PickingUp
-    - PuttingDown
+  - Drinking
+  - SittingDrink
+  - Sitting
+  - Eating
+  - Cooking
+  - Opening
+  - Watching
+  - Reading
+  - Cleaning
+  - PhoneUse
+  - Typing
+  - Walking
+  - Standing
+  - StandUp
+  - PickingUp
+  - PuttingDown
+  sitting:
+  - Drinking
+  - Cooking
+  - Opening
+  - Cleaning
+  - PhoneUse
+  - Walking
+  - Standing
+  - StandUp
   standing:
-    - SittingDrink
-    - Sitting
-    - Eating
-    - Laying
-    - Watching
-    - Reading
-    - Typing
-
-time_prior:
-  sitting:
-    morning:    {hour_min: 7,  hour_max: 10, Eating: 0.25}
-    noon:       {hour_min: 12, hour_max: 13, Eating: 0.20, Laying: 0.15}
-    evening:    {hour_min: 19, hour_max: 22, Watching: 0.30, Eating: 0.15}
-    night:      {hour_min: 23, hour_max: 6,  Laying: 0.25}
-  lying:
-    noon:       {hour_min: 12, hour_max: 14, Laying: 0.20}
-    night:      {hour_min: 23, hour_max: 6,  Laying: 0.30}
-
+  - SittingDrink
+  - Sitting
+  - Eating
+  - Laying
+  - Watching
+  - Typing
 entropy:
-  high_threshold:   1.2
-  low_threshold:    0.4
-  vlm_weight_high:  0.10
-  vlm_weight_low:   0.30
+  high_threshold: 1.2
+  low_threshold: 0.4
+  vlm_weight_high: 0.1
+  vlm_weight_low: 0.3
+raycast_targets:
+- action: Watching
+  label: tv
+  max_dist: 8.0
+  tv_off_factor: 0.4
+  tv_on_factor: 1.0
+- action: Watching
+  label: television
+  max_dist: 8.0
+  tv_off_factor: 0.4
+  tv_on_factor: 1.0
+- action: Opening
+  label: refrigerator
+  max_dist: 3.0
+- action: Opening
+  label: fridge
+  max_dist: 3.0
+room_impossible:
+  BedRoom(dad):
+  - Cooking
+  - Cleaning
+  Kitchen:
+  - Laying
+  - Watching
+  - Typing
+strong_held_items:
+  broom: Cleaning
+  mop: Cleaning
+  pan: Cooking
+  spatula: Cooking
+time_prior:
+  lying:
+    night:
+      Laying: 0.3
+      hour_max: 6
+      hour_min: 23
+    noon:
+      Laying: 0.2
+      hour_max: 14
+      hour_min: 12
+  sitting:
+    evening:
+      Eating: 0.15
+      Watching: 0.3
+      hour_max: 22
+      hour_min: 19
+    morning:
+      Eating: 0.25
+      hour_max: 10
+      hour_min: 7
+    night:
+      Laying: 0.25
+      hour_max: 6
+      hour_min: 23
+    noon:
+      Eating: 0.2
+      Laying: 0.15
+      hour_max: 13
+      hour_min: 12
+weights:
+  affordance: 0.2
+  head: 0.45
+  held: 0.55
+  nearby: 0.25
+  proximity: 0.3
+  raycast: 0.3
+  temporal: 0.1
+  time: 0.1
+  vlm: 0.2
+  zone: 0.25
