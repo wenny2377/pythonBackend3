@@ -635,26 +635,22 @@ class PerceptionEngine:
         if hip_h < 0:
             if spine_angle >= 0 and spine_angle > 70:
                 skel_body = "lying"
-            elif head_pitch < -45:
+            elif head_pitch > -999 and head_pitch < -45:
                 skel_body = "lying"
             else:
                 skel_body = None
-        elif hip_h >= 0.45:
-            skel_body = "standing"
         elif hip_h < 0.20:
-            if spine_angle >= 0 and spine_angle > 70:
-                skel_body = "lying"
-            elif head_pitch < -45:
-                skel_body = "lying"
-            else:
-                skel_body = "sitting"
+            skel_body = "lying"
+        elif hip_h >= 0.60:
+            skel_body = "standing"
+        elif head_pitch > -999 and head_pitch > 60 and hip_h < 0.58:
+            skel_body = "sitting"
+        elif hip_h < 0.52 and spine_angle >= 0 and spine_angle < 15:
+            skel_body = "sitting"
+        elif hip_h < 0.58 and spine_angle >= 0 and spine_angle < 8:
+            skel_body = "sitting"
         else:
-            if spine_angle >= 0 and spine_angle > 25:
-                skel_body = "standing"
-            elif head_pitch > -999 and head_pitch > 45:
-                skel_body = "standing"
-            else:
-                skel_body = "sitting"
+            skel_body = "standing"
 
         head_hint = None
         if hand_to_head >= 0 and hand_to_head < 0.38:
@@ -751,19 +747,25 @@ class PerceptionEngine:
         try:
             from modules.scene_graph import build_scene_text
             _scene_text = build_scene_text(
-                user_pos      = user_pos,
-                user_forward  = user_forward,
-                room_name     = room_name,
-                skel_body     = skel_body,
-                head_pitch    = head_pitch,
-                held_object   = held_obj,
-                db            = self.db,
-                user_id       = user_id,
-                virtual_hour  = float(payload.get("virtual_hour", -1)) if payload else -1,
-                spine_angle   = float(payload.get("spine_angle",   -1)) if payload else -1,
-                arm_elevation = float(payload.get("arm_elevation", -1)) if payload else -1,
-                hand_to_head  = float(payload.get("hand_to_head",  -1)) if payload else -1,
-                wrist_height  = float(payload.get("wrist_height", -999)) if payload else -999,
+                user_pos           = user_pos,
+                user_forward       = user_forward,
+                room_name          = room_name,
+                skel_body          = skel_body,
+                head_pitch         = head_pitch,
+                held_object        = held_obj,
+                db                 = self.db,
+                user_id            = user_id,
+                virtual_hour       = float(payload.get("virtual_hour",        -1)) if payload else -1,
+                spine_angle        = float(payload.get("spine_angle",          -1)) if payload else -1,
+                arm_elevation      = float(payload.get("arm_elevation",        -1)) if payload else -1,
+                hand_to_head       = float(payload.get("hand_to_head",         -1)) if payload else -1,
+                wrist_height       = float(payload.get("wrist_height",       -999)) if payload else -999,
+                left_hand_to_head  = float(payload.get("left_hand_to_head",   -1)) if payload else -1,
+                left_wrist_height  = float(payload.get("left_wrist_height", -999)) if payload else -999,
+                wrist_x            = float(payload.get("wrist_x",           -999)) if payload else -999,
+                wrist_z            = float(payload.get("wrist_z",           -999)) if payload else -999,
+                left_wrist_x       = float(payload.get("left_wrist_x",     -999)) if payload else -999,
+                left_wrist_z       = float(payload.get("left_wrist_z",     -999)) if payload else -999,
             )
             _llm_action, _llm_reason, _llm_conf = self._llm_reason(
                 _scene_text, candidates, _llm_url, _llm_model)
@@ -1072,6 +1074,19 @@ class PerceptionEngine:
         held_object  = "none"
         _infer_source = "dynamic_objects"
 
+        # Read held_object from state set by ExperimentRunner
+        try:
+            _held_doc = self.db.user_held_objects.find_one(
+                {"user_id": final_user})
+            if _held_doc:
+                _held_from_state = _held_doc.get("held_object", "none")
+                if _held_from_state and _held_from_state != "none":
+                    held_object   = _held_from_state
+                    _infer_source = "experiment_state"
+                    print(f"[HeldState] {final_user} holding {held_object}")
+        except Exception:
+            pass
+
         _nearest_zone_tmp = self.scene_engine.find_nearest_zone(user_pos, room_name)
         _zone_name_tmp    = _nearest_zone_tmp["zone_name"] if _nearest_zone_tmp else ""
 
@@ -1202,11 +1217,19 @@ class PerceptionEngine:
                 "room_name":         room_name,
                 "user_pos":          user_pos,
                 "interacting_items": interacting_items,
-                "head_pitch":        float(payload.get("head_pitch",  -999)) if payload else -999,
-                "spine_angle":       float(payload.get("spine_angle",   -1)) if payload else -1,
-                "arm_elevation":     float(payload.get("arm_elevation", -1)) if payload else -1,
-                "hand_to_head":      float(payload.get("hand_to_head",  -1)) if payload else -1,
-                "wrist_height":      float(payload.get("wrist_height", -999)) if payload else -999,
+                "hip_height":        float(payload.get("hip_height",          -1)) if payload else -1,
+                "head_pitch":        float(payload.get("head_pitch",        -999)) if payload else -999,
+                "knee_height":       float(payload.get("knee_height",          -1)) if payload else -1,
+                "spine_angle":       float(payload.get("spine_angle",          -1)) if payload else -1,
+                "arm_elevation":     float(payload.get("arm_elevation",        -1)) if payload else -1,
+                "hand_to_head":      float(payload.get("hand_to_head",         -1)) if payload else -1,
+                "left_hand_to_head": float(payload.get("left_hand_to_head",   -1)) if payload else -1,
+                "wrist_height":      float(payload.get("wrist_height",       -999)) if payload else -999,
+                "left_wrist_height": float(payload.get("left_wrist_height", -999)) if payload else -999,
+                "wrist_x":           float(payload.get("wrist_x",           -999)) if payload else -999,
+                "wrist_z":           float(payload.get("wrist_z",           -999)) if payload else -999,
+                "left_wrist_x":      float(payload.get("left_wrist_x",     -999)) if payload else -999,
+                "left_wrist_z":      float(payload.get("left_wrist_z",     -999)) if payload else -999,
                 "skel_body":         skel_body_log,
                 "timestamp":         datetime.datetime.utcnow(),
             })

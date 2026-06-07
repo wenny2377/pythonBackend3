@@ -7,7 +7,7 @@ class Config:
 
     OLLAMA_URL = "http://localhost:11434"
     VLM_MODEL  = "gemma3:4b"
-    LLM_MODEL  = "llama3.1:8b-instruct-q4_K_M"
+    LLM_MODEL  = "llama3.1:8b"
 
     MONGO_URI = "mongodb://127.0.0.1:27017/"
     DB_NAME   = "robot_rag_db"

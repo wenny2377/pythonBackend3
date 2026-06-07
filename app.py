@@ -905,6 +905,33 @@ def dynamic_sync():
         print(f"[DynamicSync Error] {e}\n{traceback.format_exc()}")
         return jsonify({"error": str(e)}), 500
 
+@app.route('/set_device_state', methods=['POST'])
+def set_device_state():
+    data  = request.get_json()
+    label = data.get('label', '')
+    state = data.get('state', 'off')
+    if label:
+        db.device_states.update_one(
+            {'label': label},
+            {'$set': {'state': state,
+                      'updated_at': datetime.datetime.utcnow()}},
+            upsert=True
+        )
+    return jsonify({'status': 'ok'}), 200
+
+@app.route('/set_held_object', methods=['POST'])
+def set_held_object():
+    data        = request.get_json()
+    user_id     = data.get('user_id', '')
+    held_object = data.get('held_object', 'none')
+    if user_id:
+        db.user_held_objects.update_one(
+            {'user_id': user_id},
+            {'$set': {'held_object': held_object,
+                      'updated_at': datetime.datetime.utcnow()}},
+            upsert=True
+        )
+    return jsonify({'status': 'ok'}), 200
 
 @app.route('/set_virtual_hour', methods=['POST'])
 def set_virtual_hour():
@@ -1298,6 +1325,9 @@ def saycan():
         import traceback
         print(f"[SayCan Error] {e}\n{traceback.format_exc()}")
         return jsonify({"error": str(e)}), 500
+
+
+
 
 
 _predict_worker_thread = threading.Thread(target=_predict_worker, daemon=True)
