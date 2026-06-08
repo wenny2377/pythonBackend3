@@ -18,9 +18,9 @@ def section(title):
     print(f"  {title}")
     print(f"{'='*55}")
 
-def ok(msg):   print(f"  ✅ {msg}")
-def warn(msg): print(f"  ⚠️  {msg}")
-def err(msg):  print(f"  ❌ {msg}")
+def ok(msg):   print(f"  OK  {msg}")
+def warn(msg): print(f"  WARN  {msg}")
+def err(msg):  print(f"  ERR  {msg}")
 
 
 def _match_debug_image(t_capture: str, user_id: str, activity: str) -> list:
@@ -51,6 +51,8 @@ def _dominant_layer(reason: str) -> str:
         return "strong"
     if any(k in r for k in ("skeleton_lying", "head(", "skeleton")):
         return "skeleton"
+    if "pmi_llm" in r:
+        return "llm"
     if "held:" in r:
         return "held"
     if "affordance:" in r:
@@ -73,13 +75,12 @@ def check_watch(db, n=15, interval=3, acc_threshold=0.50, window=20):
     print(f"  Auto-pause suggestion if acc < {acc_threshold:.0%} over last {window} episodes")
     print("Press Ctrl+C to stop.\n")
 
-    seen_ids       = set()
-    acc_window     = deque(maxlen=window)
-    pause_alerted  = False
+    seen_ids      = set()
+    pause_alerted = False
 
     while True:
         try:
-            docs = list(db.eval_logs.find({}).sort("timestamp", -1).limit(n))
+            docs     = list(db.eval_logs.find({}).sort("timestamp", -1).limit(n))
             all_docs = list(db.eval_logs.find({}).sort("timestamp", -1).limit(window))
 
             os.system("clear")
@@ -96,14 +97,13 @@ def check_watch(db, n=15, interval=3, acc_threshold=0.50, window=20):
                 1 for d in db.eval_logs.find({})
                 if (d.get("spatial_action") or d.get("vlm_output", "")) == d.get("ground_truth", "")
             )
-            acc_total = correct_total / total if total > 0 else 0.0
-
+            acc_total  = correct_total / total if total > 0 else 0.0
             pause_flag = acc_window_val < acc_threshold and len(all_docs) >= window
 
             print(f"[{now_str}] total={total} | "
                   f"overall={acc_total:.0%} | "
                   f"last{window}={acc_window_val:.0%} | "
-                  f"{'⚠️  CONSIDER PAUSING' if pause_flag else '✅ running'}")
+                  f"{'CONSIDER PAUSING' if pause_flag else 'running'}")
             print("-" * 95)
             print(f"  {'GT':12} {'VLM':12} {'Spatial':12} {'OK':3} "
                   f"{'Layer':10} {'Reason':30} {'img'}")
@@ -122,10 +122,10 @@ def check_watch(db, n=15, interval=3, acc_threshold=0.50, window=20):
                 is_new  = str(d.get("_id", "")) not in seen_ids
                 seen_ids.add(str(d.get("_id", "")))
 
-                ok_tag  = "✅" if spatial == gt else "❌"
-                new_tag = "★" if is_new else " "
+                ok_tag  = "OK" if spatial == gt else "XX"
+                new_tag = "*" if is_new else " "
 
-                imgs = _match_debug_image(t_cap, user, spatial)
+                imgs    = _match_debug_image(t_cap, user, spatial)
                 img_str = imgs[0] if imgs else ""
 
                 print(f"{new_tag} {gt:12} {vlm:12} {spatial:12} {ok_tag:3} "
@@ -139,27 +139,22 @@ def check_watch(db, n=15, interval=3, acc_threshold=0.50, window=20):
             ]
 
             if wrong_docs:
-                print(f"\n  ── 錯誤分析（最近 {n} 筆）──")
-
+                print(f"\n  Error analysis (last {n})")
                 layer_wrong = Counter(_dominant_layer(d.get("upgrade_reason", "")) for d in wrong_docs)
-                print(f"  錯誤來自哪一層：")
+                print(f"  Wrong by layer:")
                 for layer, c in layer_wrong.most_common():
                     print(f"    {c}x  [{layer}]")
 
                 gt_cnt = Counter(d.get("ground_truth", "?") for d in wrong_docs)
-                print(f"  最常誤判的 GT：")
+                print(f"  Most confused GT:")
                 for gt_l, c in gt_cnt.most_common(5):
                     preds = Counter(
                         d.get("spatial_action") or d.get("vlm_output", "?")
                         for d in wrong_docs if d.get("ground_truth") == gt_l
                     )
-                    print(f"    GT={gt_l:12} → {dict(preds.most_common(3))}")
+                    print(f"    GT={gt_l:12} -> {dict(preds.most_common(3))}")
 
-                reason_wrong = Counter(
-                    _dominant_layer(d.get("upgrade_reason", ""))
-                    for d in wrong_docs
-                )
-                print(f"  錯誤 reason 樣本：")
+                print(f"  Wrong reason samples:")
                 shown = set()
                 for d in wrong_docs[:5]:
                     r = d.get("upgrade_reason", "")[:50]
@@ -169,23 +164,20 @@ def check_watch(db, n=15, interval=3, acc_threshold=0.50, window=20):
                         sp  = d.get("spatial_action", "?")
                         print(f"    GT={gt:12} Spatial={sp:12} reason={r}")
 
-            if pause_flag:
-                print(f"\n  ⚠️  最近 {window} 筆準確率 {acc_window_val:.0%} < {acc_threshold:.0%}")
-                print(f"     建議暫停，檢查以下問題：")
-                if wrong_docs:
-                    top_layer = layer_wrong.most_common(1)[0][0] if wrong_docs else "unknown"
-                    if top_layer == "geometry":
-                        print(f"     → proximity/zone 加分方向錯誤，檢查 affinity_matrix")
-                    elif top_layer == "skeleton":
-                        print(f"     → head_pitch 判斷失準，檢查 Unity 骨架傳送")
-                    elif top_layer == "held":
-                        print(f"     → held_object 推斷錯誤，檢查 strong_held_items")
-                    elif top_layer == "nearby":
-                        print(f"     → nearby 物件誤導，檢查 STRONG_NEARBY whitelist")
-                    elif top_layer == "affordance":
-                        print(f"     → affordance 加分錯誤，檢查 current_contents 更新")
-                    else:
-                        print(f"     → 主要錯誤層：{top_layer}")
+            if pause_flag and wrong_docs:
+                layer_wrong = Counter(_dominant_layer(d.get("upgrade_reason", "")) for d in wrong_docs)
+                top_layer   = layer_wrong.most_common(1)[0][0]
+                print(f"\n  Last {window} acc {acc_window_val:.0%} < {acc_threshold:.0%}")
+                if top_layer == "geometry":
+                    print(f"  -> Check affinity_matrix proximity/zone scores")
+                elif top_layer == "skeleton":
+                    print(f"  -> Check head_pitch thresholds in behavior_config.yaml")
+                elif top_layer == "held":
+                    print(f"  -> Check strong_held_items and held_by in dynamic_objects")
+                elif top_layer == "llm":
+                    print(f"  -> Check LLM prompt and scene_text quality")
+                else:
+                    print(f"  -> Main error layer: {top_layer}")
 
             obs_total = db.observation_logs.count_documents({})
             man_total = db.manifold_training_data.count_documents({})
@@ -199,13 +191,13 @@ def check_watch(db, n=15, interval=3, acc_threshold=0.50, window=20):
 
 
 def check_scene(db):
-    section("SceneEngine — Zone Graph")
+    section("SceneEngine Zone Graph")
 
     n_scene = db.scene_snapshots.count_documents({})
     n_aff   = db.affinity_matrix.count_documents({})
 
     if n_scene == 0:
-        err("scene_snapshots is EMPTY — Unity has not sent /scene yet")
+        err("scene_snapshots is EMPTY")
         return
     ok(f"scene_snapshots: {n_scene} furniture objects")
 
@@ -219,9 +211,9 @@ def check_scene(db):
         r    = requests.get("http://localhost:5000/ready", timeout=3)
         data = r.json()
         if data.get("ready"):
-            ok(f"Flask /ready = TRUE | zones={data.get('zone_count', 0)}")
+            ok(f"Flask /ready TRUE | zones={data.get('zone_count', 0)}")
         else:
-            warn(f"Flask /ready = FALSE | zones={data.get('zone_count', 0)}")
+            warn(f"Flask /ready FALSE | zones={data.get('zone_count', 0)}")
     except Exception as e:
         warn(f"/ready unreachable: {e}")
 
@@ -234,7 +226,7 @@ def check_scene(db):
 
 
 def check_observations(db):
-    section("HabitEngine — observation_logs")
+    section("HabitEngine observation_logs")
 
     total = db.observation_logs.count_documents({})
     if total == 0:
@@ -242,7 +234,7 @@ def check_observations(db):
         return
     ok(f"Total: {total}")
 
-    pipeline = [{"$group": {"_id": "$zone_name", "count": {"$sum": 1}}}]
+    pipeline    = [{"$group": {"_id": "$zone_name", "count": {"$sum": 1}}}]
     zone_groups = list(db.observation_logs.aggregate(pipeline))
 
     semantic = sum(g["count"] for g in zone_groups if g["_id"] and "_Zone" in str(g["_id"]))
@@ -263,7 +255,7 @@ def check_observations(db):
     print(f"\n  Top zones:")
     for g in sorted(zone_groups, key=lambda x: -x["count"])[:8]:
         zname = g["_id"] or "(empty)"
-        tag   = "✅" if "_Zone" in str(zname) else "❌"
+        tag   = "OK" if "_Zone" in str(zname) else "XX"
         print(f"    {tag} {g['count']:3}x | {zname}")
 
     print(f"\n  Per-user top habits:")
@@ -308,11 +300,11 @@ def check_manifold(db):
 
 
 def check_eval(db):
-    section("PerceptionEngine — eval_logs")
+    section("PerceptionEngine eval_logs")
 
     total = db.eval_logs.count_documents({})
     if total == 0:
-        warn("eval_logs is EMPTY — run RecognitionExp first")
+        warn("eval_logs is EMPTY")
         return
 
     upgraded = db.eval_logs.count_documents({
@@ -329,14 +321,14 @@ def check_eval(db):
     )
 
     print(f"\n  Accuracy:")
-    print(f"    VLM only  (Stage 1): {s1_correct}/{total} = {s1_correct/total:.0%}")
-    print(f"    Full system (Stage 2): {s2_correct}/{total} = {s2_correct/total:.0%}")
-    print(f"    Improvement: +{(s2_correct-s1_correct)/total:.0%}")
+    print(f"    VLM only   (L1-VLM) : {s1_correct}/{total} = {s1_correct/total:.0%}")
+    print(f"    Full system (L1-L3)  : {s2_correct}/{total} = {s2_correct/total:.0%}")
+    print(f"    Improvement          : +{(s2_correct-s1_correct)/total:.0%}")
 
     all_docs = list(db.eval_logs.find({}, {"upgrade_reason": 1}))
-    reasons = Counter(_dominant_layer(d.get("upgrade_reason", "")) for d in all_docs)
+    reasons  = Counter(_dominant_layer(d.get("upgrade_reason", "")) for d in all_docs)
     if reasons:
-        print(f"\n  Layer distribution (dominant):")
+        print(f"\n  Layer distribution:")
         for r, n in reasons.most_common():
             print(f"    {n:3}x | {r}")
 
@@ -346,7 +338,7 @@ def check_eval(db):
         if (d.get("spatial_action") or d.get("vlm_output", "")) != d.get("ground_truth", "")
     ]
     if not wrong:
-        ok("No wrong predictions!")
+        ok("No wrong predictions")
     else:
         gt_cnt = Counter(d.get("ground_truth", "?") for d in wrong)
         for gt_l, c in gt_cnt.most_common(8):
@@ -354,9 +346,9 @@ def check_eval(db):
                 d.get("spatial_action") or d.get("vlm_output", "?")
                 for d in wrong if d.get("ground_truth") == gt_l
             )
-            print(f"    GT={gt_l:12}: {c}x wrong → {dict(preds.most_common(3))}")
+            print(f"    GT={gt_l:12}: {c}x wrong -> {dict(preds.most_common(3))}")
 
-        print(f"\n  Wrong predictions by layer:")
+        print(f"\n  Wrong by layer:")
         layer_wrong = Counter(_dominant_layer(d.get("upgrade_reason", "")) for d in wrong)
         for layer, c in layer_wrong.most_common():
             pct = c / len(wrong) * 100
@@ -371,7 +363,7 @@ def check_eval(db):
         spatial = d.get("spatial_action", "?") or vlm
         reason  = (d.get("upgrade_reason", "") or "")[:25]
         layer   = _dominant_layer(d.get("upgrade_reason", ""))
-        ok_tag  = "✅" if spatial == gt else "❌"
+        ok_tag  = "OK" if spatial == gt else "XX"
         print(f"  {ok_tag} {gt:12} {vlm:12} {spatial:12}     {layer:10} {reason:25}")
 
     print(f"\n  debug_images folder:")
@@ -433,12 +425,12 @@ def summary(db):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--quick",     action="store_true", help="Only summary")
-    parser.add_argument("--watch",     action="store_true", help="Live monitor mode")
-    parser.add_argument("--n",         type=int,   default=15,   help="Lines in watch mode")
-    parser.add_argument("--interval",  type=int,   default=3,    help="Refresh seconds")
-    parser.add_argument("--threshold", type=float, default=0.50, help="Acc threshold for pause alert")
-    parser.add_argument("--window",    type=int,   default=20,   help="Window size for rolling acc")
+    parser.add_argument("--quick",     action="store_true")
+    parser.add_argument("--watch",     action="store_true")
+    parser.add_argument("--n",         type=int,   default=15)
+    parser.add_argument("--interval",  type=int,   default=3)
+    parser.add_argument("--threshold", type=float, default=0.50)
+    parser.add_argument("--window",    type=int,   default=20)
     args = parser.parse_args()
 
     db = connect()

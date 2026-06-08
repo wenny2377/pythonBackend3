@@ -15,9 +15,32 @@ OBJECT_CATEGORIES = {
     "spatula":    "tool",  "knife":      "tool",
     "phone":      "device","laptop":     "device","keyboard":   "device",
     "remote":     "device","tablet":     "device","ipad":       "device",
+    "mouse":      "device",
     "book":       "media", "magazine":   "media", "newspaper":  "media",
     "notebook":   "media",
 }
+
+HELD_OBJECT_TO_ACTION = {
+    "bottle":   "Drinking",
+    "cola":     "Drinking",
+    "cup":      "Drinking",
+    "bowl":     "Eating",
+    "plate":    "Eating",
+    "apple":    "Eating",
+    "banana":   "Eating",
+    "pan":      "Cooking",
+    "broom":    "Cleaning",
+    "book":     "Reading",
+    "phone":    "PhoneUse",
+    "remote":   "Watching",
+    "keyboard": "Typing",
+    "mouse":    "Typing",
+}
+
+
+# Stores previous wrist positions for movement trend detection
+# key: user_id, value: (wrist_height, left_wrist_height, timestamp)
+_wrist_history: dict = {}
 
 
 def _skeleton_to_semantic(skel_body: str, head_pitch: float,
@@ -30,9 +53,13 @@ def _skeleton_to_semantic(skel_body: str, head_pitch: float,
                            wrist_x: float = -999,
                            wrist_z: float = -999,
                            left_wrist_x: float = -999,
-                           left_wrist_z: float = -999) -> str:
+                           left_wrist_z: float = -999,
+                           user_id: str = "",
+                           prev_wrist_height: float = -999,
+                           prev_hand_to_head: float = -1) -> str:
     hints = []
 
+    # ── Hand to face distance ─────────────────────────────────────────────
     best_h2h = -1
     if hand_to_head >= 0 and left_hand_to_head >= 0:
         best_h2h = min(hand_to_head, left_hand_to_head)
@@ -41,17 +68,21 @@ def _skeleton_to_semantic(skel_body: str, head_pitch: float,
     elif left_hand_to_head >= 0:
         best_h2h = left_hand_to_head
 
-    # Hand proximity
     if best_h2h >= 0:
-        if best_h2h < 0.38:
-            if skel_body == "standing" and head_pitch > -999 and head_pitch > 20:
-                hints.append("hand very close to face while looking down")
-            else:
-                hints.append("hand very close to face")
+        if best_h2h < 0.35:
+            hints.append("hand very close to face")
         elif best_h2h < 0.50:
             hints.append("hand close to face")
 
-    # Wrist XZ: both hands forward at desk level (typing)
+        # L2: Hand movement trend (approaching vs moving away from face)
+        if prev_hand_to_head >= 0 and best_h2h >= 0:
+            delta = best_h2h - prev_hand_to_head
+            if delta < -0.05:
+                hints.append("hand moving toward face")
+            elif delta > 0.05:
+                hints.append("hand moving away from face")
+
+    # ── Wrist position (Typing detection) ────────────────────────────────
     if skel_body == "sitting":
         r_valid = wrist_x > -999 and wrist_z > -999
         l_valid = left_wrist_x > -999 and left_wrist_z > -999
@@ -60,52 +91,65 @@ def _skeleton_to_semantic(skel_body: str, head_pitch: float,
                 if abs(wrist_height) < 0.15 and abs(left_wrist_height) < 0.15:
                     hints.append("both hands extended forward at desk level")
 
-    # Spine (standing only)
-    if spine_angle >= 0 and skel_body == "standing":
-        if spine_angle > 25:
-            hints.append("trunk leaning forward significantly")
-        elif spine_angle > 12:
-            hints.append("trunk leaning forward slightly")
+    # ── Wrist height trend ───────────────────────────────────────────────
+    if wrist_height > -999 and prev_wrist_height > -999:
+        delta_h = wrist_height - prev_wrist_height
+        if delta_h > 0.08:
+            hints.append("wrist rising (hand lifting up)")
+        elif delta_h < -0.08:
+            hints.append("wrist lowering (hand coming down)")
 
-    # Arm (standing only)
-    if arm_elevation >= 0 and skel_body == "standing":
-        if arm_elevation > 130:
-            hints.append("arms pointing downward")
-        elif arm_elevation < 55:
-            hints.append("arms raised upward")
-        elif 70 <= arm_elevation <= 110:
-            hints.append("arms horizontal")
+    # ── Head pitch ───────────────────────────────────────────────────────
+    if head_pitch > -999:
+        if head_pitch < -55:
+            hints.append("head strongly tilted back (consistent with lying down)")
+        elif head_pitch < -18:
+            hints.append("head tilted back (consistent with drinking)")
+        elif head_pitch > 65:
+            hints.append("head bent far forward (consistent with reading)")
+        elif head_pitch > 45:
+            hints.append("head looking down significantly")
+        elif head_pitch > 20:
+            hints.append("head looking slightly down")
+        elif -10 <= head_pitch <= 10:
+            hints.append("head facing forward")
 
-    # Wrist height (standing only)
-    if wrist_height > -999 and skel_body == "standing":
-        if wrist_height > 0.10:
-            hints.append("wrist above hip level")
-        elif wrist_height < -0.08:
-            hints.append("wrist below hip level")
-
-    # Head direction with context
-    if head_pitch > -999 and skel_body:
-        if skel_body == "sitting":
-            if head_pitch < -15:
-                hints.append("head tilting back (consistent with drinking)")
-            elif 15 <= head_pitch <= 35:
-                hints.append("head slightly down")
-            elif head_pitch > 60:
-                hints.append("head bent far forward (consistent with reading)")
-            elif -5 <= head_pitch <= 10:
-                hints.append("head facing forward")
-        elif skel_body == "standing":
-            if head_pitch < -15:
-                hints.append("head tilting back (consistent with drinking)")
-            elif head_pitch > 55:
-                hints.append("head bent far forward")
-            elif 20 <= head_pitch <= 55:
-                if not any("looking down" in h for h in hints):
-                    hints.append("head looking down")
-            elif 20 <= head_pitch <= 35:
-                hints.append("head slightly down")
+    # ── Arm elevation ────────────────────────────────────────────────────
+    if arm_elevation >= 0:
+        if arm_elevation > 165:
+            hints.append("arm raised very high (consistent with opening/reaching)")
+        elif arm_elevation > 130:
+            hints.append("arm raised")
+        elif arm_elevation < 60:
+            hints.append("arm lowered (consistent with sitting drink or resting)")
 
     return ", ".join(hints) if hints else ""
+
+
+def _infer_body_position(head_pitch: float,
+                          hand_to_head: float,
+                          arm_elevation: float) -> str:
+    if head_pitch > -999 and head_pitch < -55:
+        return "lying"
+
+    if head_pitch > -999 and head_pitch < -18:
+        if hand_to_head >= 0 and hand_to_head < 0.35:
+            return "sitting"
+
+    if hand_to_head >= 0 and hand_to_head < 0.35 and arm_elevation >= 0 and arm_elevation > 130:
+        return "standing"
+
+    if head_pitch > -999 and head_pitch > 65:
+        return "sitting"
+
+    if head_pitch > -999 and 10 < head_pitch < 25:
+        if hand_to_head >= 0 and hand_to_head < 0.40:
+            return "sitting"
+
+    if arm_elevation >= 0 and arm_elevation > 165:
+        return "standing"
+
+    return "unknown"
 
 
 def _get_facing_target(user_pos, user_forward, db, max_dist=6.0):
@@ -151,7 +195,8 @@ def build_scene_text(user_pos, user_forward, room_name,
                      hand_to_head=-1, wrist_height=-999,
                      left_hand_to_head=-1, left_wrist_height=-999,
                      wrist_x=-999, wrist_z=-999,
-                     left_wrist_x=-999, left_wrist_z=-999):
+                     left_wrist_x=-999, left_wrist_z=-999,
+                     prev_wrist_height=-999, prev_hand_to_head=-1):
     lines = []
 
     lines.append("=== Scene Graph ===")
@@ -162,10 +207,10 @@ def build_scene_text(user_pos, user_forward, room_name,
             h = float(virtual_hour)
             if h < 6:
                 slot = "Dawn"
-            elif h < 12:
+            elif h < 10:
                 slot = "Morning"
-            elif h < 14:
-                slot = "LunchTime"
+            elif h < 13:
+                slot = "Noon"
             elif h < 18:
                 slot = "Afternoon"
             elif h < 22:
@@ -176,29 +221,40 @@ def build_scene_text(user_pos, user_forward, room_name,
         except Exception:
             pass
 
-    body_str  = skel_body or "unknown"
-    pitch_str = f"{head_pitch:.0f}°" if head_pitch and head_pitch > -999 else "unknown"
+    inferred_body = _infer_body_position(
+        head_pitch    = head_pitch    if head_pitch > -999 else -999,
+        hand_to_head  = hand_to_head  if hand_to_head >= 0 else -1,
+        arm_elevation = arm_elevation if arm_elevation >= 0 else -1,
+    )
+    body_str  = inferred_body if inferred_body != "unknown" else (skel_body or "unknown")
+    pitch_str = f"{head_pitch:.0f}" if head_pitch and head_pitch > -999 else "unknown"
     lines.append(f"Person: body={body_str}, head_pitch={pitch_str}")
 
     posture = _skeleton_to_semantic(
-        skel_body, head_pitch,
-        hand_to_head=hand_to_head,
-        left_hand_to_head=left_hand_to_head,
-        spine_angle=spine_angle,
-        arm_elevation=arm_elevation,
-        wrist_height=wrist_height,
-        left_wrist_height=left_wrist_height,
-        wrist_x=wrist_x,
-        wrist_z=wrist_z,
-        left_wrist_x=left_wrist_x,
-        left_wrist_z=left_wrist_z,
+        skel_body          = body_str,
+        head_pitch         = head_pitch,
+        hand_to_head       = hand_to_head,
+        left_hand_to_head  = left_hand_to_head,
+        spine_angle        = spine_angle,
+        arm_elevation      = arm_elevation,
+        wrist_height       = wrist_height,
+        left_wrist_height  = left_wrist_height,
+        wrist_x            = wrist_x,
+        wrist_z            = wrist_z,
+        left_wrist_x       = left_wrist_x,
+        left_wrist_z       = left_wrist_z,
+        user_id            = user_id,
+        prev_wrist_height  = prev_wrist_height,
+        prev_hand_to_head  = prev_hand_to_head,
     )
     if posture:
-        lines.append(f"Posture: {posture}")
+        lines.append(f"Posture cues: {posture}")
 
     if held_object and held_object not in ("none", "unknown", ""):
         cat = OBJECT_CATEGORIES.get(held_object.lower(), "object")
-        lines.append(f"Holding: {held_object} [{cat}]")
+        implied = HELD_OBJECT_TO_ACTION.get(held_object.lower(), "")
+        implied_str = f" -> implies {implied}" if implied else ""
+        lines.append(f"Holding: {held_object} [{cat}]{implied_str}")
     else:
         lines.append("Holding: nothing")
 
@@ -273,8 +329,6 @@ def build_scene_text(user_pos, user_forward, room_name,
             lines.append(f"TV: {tv_state}")
     elif tv_doc and facing not in ("tv", "television"):
         lines.append(f"TV: {tv_state}")
-
-
 
     lines.append("=== End Scene ===")
     return "\n".join(lines)

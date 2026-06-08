@@ -107,6 +107,8 @@ VISION_PROTOTYPES = {
     for k, v in _beh_cfg.get("vision_prototypes", {}).items()
 }
 
+_BEHAVIOUR_CFG = _beh_cfg.get("behaviours", {})
+
 NEARBY_OBJECT_RADIUS  = float(_hp.get("nearby_object_radius", 2.0))
 HEADING_THRESHOLD     = float(_hp.get("heading_threshold", 0.55))
 NORMALIZE_THRESHOLD   = float(_hp.get("normalize_threshold", 0.38))
@@ -429,12 +431,12 @@ class PerceptionEngine:
         self._faiss_dyn  = FAISSMemoryStore(sbert_model=self.sbert, dim=dim)
         self.faiss_store = FAISSMemoryStore(sbert_model=self.sbert, dim=dim)
 
-        self._lock           = threading.Lock()
-        self.room_cache      = RoomEmbeddingCache(self.sbert)
-        self.scene_sync      = None
+        self._lock       = threading.Lock()
+        self.room_cache  = RoomEmbeddingCache(self.sbert)
+        self.scene_sync  = None
         self.manifold_engine = None
-        self._llm_url        = ollama_url
-        self._llm_model      = "llama3.1:8b-instruct-q4_K_M"
+        self._llm_url    = ollama_url
+        self._llm_model  = "llama3.1:8b-instruct-q4_K_M"
 
     def _build_prototype_vecs(self):
         labels = list(VISION_PROTOTYPES.keys())
@@ -529,65 +531,103 @@ class PerceptionEngine:
             pass
         return nearby
 
-    def _infer_held_from_disappeared_objects(
-            self, user_pos: dict, room_name: str,
-            disappeared_threshold_sec: float = 60.0,
-            user_id: str = "") -> str:
+    def _get_held_object_from_scene(self, user_id: str,
+                                     user_pos: dict = None) -> str:
+        WALK_SPEED   = 1.4   # m/s matches UserEntity.walkSpeed
+        MAX_AGE_SEC  = 30    # only consider objects disappeared in last 30s
+        HELD_WHITELIST = {
+            "bowl", "plate", "spoon", "fork", "chopsticks",
+            "pan", "spatula", "broom", "mop",
+            "book", "magazine",
+            "phone", "cell phone",
+            "remote",
+            "cola", "bottle", "cup", "waterbottle",
+        }
+
+        # ── L2a: FindHolderOf direct detection (most reliable) ───────────────
+        try:
+            cutoff = datetime.datetime.utcnow() - datetime.timedelta(seconds=3)
+            doc = self.col_dynamic.find_one(
+                {
+                    "held_by":     user_id,
+                    "last_seen":   {"$gte": cutoff},
+                },
+                sort=[("last_seen", -1)]
+            )
+            if doc:
+                label = (doc.get("label") or "none").lower().strip()
+                if label and label != "none" and label in HELD_WHITELIST:
+                    print(f"[HeldObj] FindHolderOf: {user_id} holding {label}")
+                    return label
+        except Exception as e:
+            print(f"[HeldObj] held_by query error: {e}")
+
+        # ── L2b: Spatiotemporal disappearance inference ───────────────────────
+        # An object that recently disappeared + person can have walked there
         if not user_pos:
             return "none"
-        ux  = float(user_pos.get("x", 0))
-        uz  = float(user_pos.get("z", 0))
-        now = datetime.datetime.utcnow()
-        try:
-            held_doc = self.col_dynamic.find_one(
-                {"held_by": user_id} if user_id else {},
-                sort=[("interact_count", -1)]
-            ) if user_id else None
-            if held_doc:
-                label = held_doc.get("label", "")
-                if label and label not in STRUCTURAL_BLACKLIST:
-                    print(f"[Layer0] held_by: {label}")
-                    return label
-        except Exception:
-            pass
-        try:
-            cutoff = now - datetime.timedelta(seconds=30.0)
-            query = {
-                "last_seen":    {"$lt": cutoff},
-                "last_seen_on": {"$exists": True, "$nin": ["", "Unknown_Area"]},
-            }
-            if room_name:
-                query["room"] = {"$regex": room_name, "$options": "i"}
-            candidates = list(self.col_dynamic.find(
-                query,
-                {"label": 1, "last_seen_on": 1, "interact_count": 1, "last_seen": 1}
-            ).sort("interact_count", -1).limit(10))
-            for obj in candidates:
-                furniture_label = obj.get("last_seen_on", "")
-                if not furniture_label:
-                    continue
-                furniture_doc = self.col_scene.find_one({"label": furniture_label}, {"pos": 1})
-                if not furniture_doc:
-                    continue
-                pos = furniture_doc.get("pos")
-                if not isinstance(pos, list) or len(pos) < 2:
-                    continue
-                dist = math.sqrt((ux - pos[0])**2 + (uz - pos[1])**2)
-                if dist <= 1.0:
-                    label = obj.get("label", "")
-                    if label and label not in STRUCTURAL_BLACKLIST:
-                        secs = (now - obj["last_seen"]).total_seconds()
-                        print(f"[Layer0] disappeared: {label} "
-                              f"({secs:.0f}s ago on {furniture_label},"
-                              f" person dist={dist:.2f}m)")
-                        return label
-        except Exception as e:
-            print(f"[Layer0] error: {e}")
-        return "none"
 
-    def _infer_held_object(self, nearest_furniture: str, zone_name: str,
-                            room_name: str, user_pos: dict = None,
-                            user_id: str = "") -> str:
+        try:
+            ux  = float(user_pos.get("x", 0))
+            uz  = float(user_pos.get("z", 0))
+            now = datetime.datetime.utcnow()
+            cutoff = now - datetime.timedelta(seconds=MAX_AGE_SEC)
+
+            candidates = list(self.col_dynamic.find(
+                {
+                    "last_seen": {"$lt": cutoff},
+                    "source":    "unity",
+                    "held_by":   {"$in": ["", None]},
+                },
+                {"label": 1, "sensor_pos": 1,
+                 "last_seen_on": 1, "last_seen": 1}
+            ).sort("last_seen", -1).limit(8))
+
+            best_label = "none"
+            best_score = float("inf")
+
+            for obj in candidates:
+                label = (obj.get("label") or "").lower().strip()
+                if not label or label not in HELD_WHITELIST:
+                    continue
+                if label in STRUCTURAL_BLACKLIST:
+                    continue
+
+                obj_pos = obj.get("sensor_pos")
+                if not isinstance(obj_pos, list) or len(obj_pos) < 2:
+                    furniture_label = obj.get("last_seen_on", "")
+                    if furniture_label:
+                        fdoc = self.col_scene.find_one(
+                            {"label": furniture_label}, {"pos": 1})
+                        if fdoc:
+                            obj_pos = fdoc.get("pos")
+                if not isinstance(obj_pos, list) or len(obj_pos) < 2:
+                    continue
+
+                dist = math.sqrt(
+                    (ux - obj_pos[0])**2 + (uz - obj_pos[1])**2)
+                age  = (now - obj["last_seen"]).total_seconds()
+
+                # Spatiotemporal constraint: person must be reachable
+                # from object position given walk speed and elapsed time
+                max_walkable = age * WALK_SPEED + 1.5  # +1.5m tolerance
+                if dist > max_walkable:
+                    continue
+
+                # Prefer the object that disappeared most recently
+                if age < best_score:
+                    best_score = age
+                    best_label = label
+                    print(f"[HeldObj] disappearance+spatiotemporal: {label} "
+                          f"dist={dist:.1f}m age={age:.0f}s "
+                          f"max_walkable={max_walkable:.1f}m")
+
+            if best_label != "none":
+                return best_label
+
+        except Exception as e:
+            print(f"[HeldObj] spatiotemporal inference error: {e}")
+
         return "none"
 
     def _compute_p_l(self, obj_label: str, behavior: str) -> float:
@@ -625,49 +665,73 @@ class PerceptionEngine:
         return p_l * p_v
 
     def _skeleton_body_position(self, payload: dict) -> tuple:
-        hip_h         = float(payload.get("hip_height",      -1))
-        head_pitch    = float(payload.get("head_pitch",    -999))
-        spine_angle   = float(payload.get("spine_angle",     -1))
-        hand_to_head  = float(payload.get("hand_to_head",    -1))
-        arm_elevation = float(payload.get("arm_elevation",   -1))
-        wrist_height  = float(payload.get("wrist_height",  -999))
+        pitch    = float(payload.get("head_pitch",       -999))
+        h2h      = float(payload.get("hand_to_head",       -1))
+        arm      = float(payload.get("arm_elevation",      -1))
+        wrist_z  = float(payload.get("wrist_z",          -999))
+        l_wrist_z= float(payload.get("left_wrist_z",    -999))
+        wrist_h  = float(payload.get("wrist_height",    -999))
+        l_wrist_h= float(payload.get("left_wrist_height",-999))
 
-        if hip_h < 0:
-            if spine_angle >= 0 and spine_angle > 70:
-                skel_body = "lying"
-            elif head_pitch > -999 and head_pitch < -45:
-                skel_body = "lying"
-            else:
-                skel_body = None
-        elif hip_h < 0.20:
-            skel_body = "lying"
-        elif hip_h >= 0.60:
-            skel_body = "standing"
-        elif head_pitch > -999 and head_pitch > 60 and hip_h < 0.58:
-            skel_body = "sitting"
-        elif hip_h < 0.52 and spine_angle >= 0 and spine_angle < 15:
-            skel_body = "sitting"
-        elif hip_h < 0.58 and spine_angle >= 0 and spine_angle < 8:
-            skel_body = "sitting"
-        else:
-            skel_body = "standing"
+        if not _BEHAVIOUR_CFG:
+            return None, None
 
-        head_hint = None
-        if hand_to_head >= 0 and hand_to_head < 0.38:
-            if skel_body == "sitting":
-                head_hint = "SittingDrink"
-            else:
-                head_hint = "Drinking"
-        elif head_pitch > -999:
-            if skel_body == "sitting":
-                if head_pitch < -15:
-                    head_hint = "SittingDrink"
-                elif 15 <= head_pitch <= 28:
-                    head_hint = "Eating"
-                elif head_pitch > 60:
-                    head_hint = "Reading"
+        pitch_valid = pitch > -999
+        h2h_valid   = h2h >= 0
+        arm_valid   = arm >= 0
 
-        return skel_body, head_hint
+        # ── Laying ───────────────────────────────────────────────────────────
+        laying_cfg   = _BEHAVIOUR_CFG.get("Laying", {})
+        laying_ideal = float(laying_cfg.get("head_pitch", {}).get("ideal",    -83))
+        laying_tol   = float(laying_cfg.get("head_pitch", {}).get("tolerance", 10))
+        if pitch_valid and abs(pitch - laying_ideal) <= laying_tol:
+            return "lying", "Laying"
+
+        # ── SittingDrink ─────────────────────────────────────────────────────
+        sd_cfg   = _BEHAVIOUR_CFG.get("SittingDrink", {})
+        sd_ideal = float(sd_cfg.get("head_pitch", {}).get("ideal",    -25))
+        sd_tol   = float(sd_cfg.get("head_pitch", {}).get("tolerance",  8))
+        if pitch_valid and abs(pitch - sd_ideal) <= sd_tol:
+            if h2h_valid and h2h < 0.35:
+                return "sitting", "SittingDrink"
+
+        # ── Reading ──────────────────────────────────────────────────────────
+        read_cfg   = _BEHAVIOUR_CFG.get("Reading", {})
+        read_ideal = float(read_cfg.get("head_pitch", {}).get("ideal",    70))
+        read_tol   = float(read_cfg.get("head_pitch", {}).get("tolerance",12))
+        if pitch_valid and abs(pitch - read_ideal) <= read_tol:
+            return "sitting", "Reading"
+
+        # ── Eating ───────────────────────────────────────────────────────────
+        eat_cfg   = _BEHAVIOUR_CFG.get("Eating", {})
+        eat_ideal = float(eat_cfg.get("head_pitch", {}).get("ideal",   21))
+        eat_tol   = float(eat_cfg.get("head_pitch", {}).get("tolerance", 8))
+        if pitch_valid and abs(pitch - eat_ideal) <= eat_tol:
+            if h2h_valid and h2h < 0.40:
+                return "sitting", "Eating"
+
+        # ── Opening ──────────────────────────────────────────────────────────
+        if arm_valid and arm > 165:
+            return "standing", "Opening"
+
+        # ── Watching: TV on + sitting = Watching ─────────────────────────────
+        try:
+            tv_doc = self.db.device_states.find_one({"label": "tv"})
+            tv_on  = tv_doc and tv_doc.get("state", "off") == "on"
+            if tv_on and pitch_valid and -20 < pitch < 30:
+                return "sitting", "Watching"
+        except Exception:
+            pass
+
+        # ── Typing: sitting + both wrists forward at desk level ──────────────
+        r_fwd = wrist_z   > -999 and wrist_z   > 0.03
+        l_fwd = l_wrist_z > -999 and l_wrist_z > 0.03
+        r_lvl = wrist_h   > -999 and abs(wrist_h)   < 0.30
+        l_lvl = l_wrist_h > -999 and abs(l_wrist_h) < 0.30
+        if r_fwd and l_fwd and r_lvl and l_lvl:
+            return "sitting", "Typing"
+
+        return None, None
 
     def _temporal_smooth(self, new_action: str, evidence_score: float,
                           user_id: str, hip_height: float = -1) -> str:
@@ -686,12 +750,6 @@ class PerceptionEngine:
                 n_consecutive += 1
             else:
                 break
-        if hip_height > 0:
-            prev_hip_entries = [e for e in reversed(seq[-3:]) if e.get("hip_height") is not None]
-            if prev_hip_entries:
-                prev_hip = float(prev_hip_entries[0].get("hip_height", hip_height))
-                if abs(hip_height - prev_hip) > 0.15:
-                    n_consecutive = 0
         conf_threshold = 0.55 if n_consecutive < 3 else (0.65 if n_consecutive < 5 else 0.75)
         trans_matrix = getattr(self.scene_engine, "_transition_matrix", {})
         prob = trans_matrix.get(prev_action, {}).get(new_action, 0.0)
@@ -718,9 +776,11 @@ class PerceptionEngine:
         skel_body  = None
         head_pitch = float(payload.get("head_pitch", -999)) if payload else -999
         if payload:
-            skel_body, _ = self._skeleton_body_position(payload)
+            skel_body, skel_hint = self._skeleton_body_position(payload)
             if skel_body in ("sitting", "standing", "lying"):
                 body_position = skel_body
+            if skel_hint and skel_hint in BEHAVIOR_LABELS:
+                return skel_hint, f"skeleton:{skel_hint}", zone_label
 
         candidates = set(b for b in BEHAVIOR_LABELS if b not in NO_WEIGHT_ACTIONS)
         for b in list(candidates):
@@ -739,13 +799,47 @@ class PerceptionEngine:
 
         if norm_held and norm_held != "none":
             strong_action = STRONG_HELD_ITEMS.get(norm_held.lower(), "")
+            if not strong_action:
+                RUNTIME_HELD_MAP = {
+                    "book":      "Reading",
+                    "magazine":  "Reading",
+                    "phone":     "PhoneUse",
+                    "cell phone":"PhoneUse",
+                    "bowl":      "Eating",
+                    "plate":     "Eating",
+                    "remote":    "Watching",
+                }
+                strong_action = RUNTIME_HELD_MAP.get(norm_held.lower(), "")
+
+            # cola/bottle: body posture decides Drinking vs SittingDrink
+            if not strong_action and norm_held.lower() in ("cola", "bottle", "cup", "waterbottle"):
+                if body_position == "sitting":
+                    strong_action = "SittingDrink"
+                else:
+                    strong_action = "Drinking"
+
             if strong_action and strong_action in candidates:
-                return strong_action, f"strong:held:{norm_held}→{strong_action}", zone_label
+                return strong_action, f"strong:held:{norm_held}+{body_position}->{strong_action}", zone_label
 
         _llm_url   = getattr(self, '_llm_url', self.url)
         _llm_model = getattr(self, '_llm_model', "llama3.1:8b-instruct-q4_K_M")
+
         try:
-            from modules.scene_graph import build_scene_text
+            from modules.scene_graph import build_scene_text, HELD_OBJECT_TO_ACTION
+
+            # Retrieve previous skeleton snapshot for movement trend (L2)
+            _prev_wrist_h = -999.0
+            _prev_h2h     = -1.0
+            try:
+                _prev_seq = self.col_activity.find_one(
+                    {"user": user_id}, sort=[("date", -1)])
+                if _prev_seq and _prev_seq.get("sequence"):
+                    _last = _prev_seq["sequence"][-1]
+                    _prev_wrist_h = float(_last.get("wrist_height",  -999))
+                    _prev_h2h     = float(_last.get("hand_to_head",    -1))
+            except Exception:
+                pass
+
             _scene_text = build_scene_text(
                 user_pos           = user_pos,
                 user_forward       = user_forward,
@@ -766,32 +860,123 @@ class PerceptionEngine:
                 wrist_z            = float(payload.get("wrist_z",           -999)) if payload else -999,
                 left_wrist_x       = float(payload.get("left_wrist_x",     -999)) if payload else -999,
                 left_wrist_z       = float(payload.get("left_wrist_z",     -999)) if payload else -999,
+                prev_wrist_height  = _prev_wrist_h,
+                prev_hand_to_head  = _prev_h2h,
             )
-            _llm_action, _llm_reason, _llm_conf = self._llm_reason(
-                _scene_text, candidates, _llm_url, _llm_model)
-            if _llm_action:
-                return _llm_action, _llm_reason, zone_label
+
+            nearby_objs = self._get_nearby_objects(user_pos, room_name)
+
+            pmi = {
+                "P":      body_position or "unknown",
+                "M":      "unknown",
+                "I":      HELD_OBJECT_TO_ACTION.get(norm_held, "none") if norm_held != "none" else "none",
+                "held":   norm_held if norm_held != "none" else "none",
+                "near":   coord_label or "",
+                "nearby": nearby_objs,
+            }
+
+            llm_action, llm_reason, llm_conf = self._llm_reason(
+                _scene_text, pmi, candidates, _llm_url, _llm_model)
+            if llm_action:
+                return llm_action, llm_reason, zone_label
         except Exception as _llm_e:
             print(f"[LLM Reason] skipped: {_llm_e}")
 
+        # Fallback: use zone affinity to pick best candidate
+        # When LLM fails, zone+time is the most reliable remaining signal
+        if candidates:
+            try:
+                zone_ranked = sorted(
+                    candidates,
+                    key=lambda a: self.scene_engine.get_zone_affinity(
+                        zone_label, a) if zone_label else 0,
+                    reverse=True
+                )
+                fallback_action = zone_ranked[0]
+            except Exception:
+                fallback_action = sorted(candidates)[0]
+            print(f"[ZoneFallback] {fallback_action}")
+            return fallback_action, "zone_affinity_fallback", zone_label
+
         return "Standing", "llm_failed", zone_label
 
-    def _llm_reason(self, scene_text: str, candidates: set,
+    def _llm_reason(self, scene_text: str, pmi: dict,
+                    candidates: set,
                     llm_url: str, llm_model: str) -> tuple:
         if not candidates:
             return None, "", 0.0
+
+        p_label     = pmi.get("P", "unknown")
+        m_label     = pmi.get("M", "unknown")
+        i_label     = pmi.get("I", "none")
+        held        = pmi.get("held", "none")
+        near        = pmi.get("near", "")
+        nearby_objs = pmi.get("nearby", [])
+
+        body_impossible_map = {
+            "lying":    {"Drinking", "SittingDrink", "Sitting", "Eating", "Cooking",
+                         "Opening", "Watching", "Reading", "Cleaning", "PhoneUse",
+                         "Typing", "Walking", "Standing"},
+            "sitting":  {"Drinking", "Cooking", "Opening", "Cleaning",
+                         "PhoneUse", "Walking", "Standing"},
+            "standing": {"SittingDrink", "Sitting", "Eating", "Laying",
+                         "Watching", "Typing"},
+        }
+
+        feasible = set(candidates)
+        if p_label in body_impossible_map:
+            feasible -= body_impossible_map[p_label]
+        if not feasible:
+            feasible = set(candidates)
+
+        candidate_list = ", ".join(sorted(feasible))
+        nearby_str     = ", ".join(nearby_objs) if nearby_objs else "none"
+
+        # Use SBERT to rank candidates, keep top 3 for LLM
         try:
-            behavior_list = ", ".join(sorted(candidates))
-            prompt = (
-                f"You are a home robot reasoning about what a person is doing.\n\n"
-                f"Scene Graph:\n{scene_text}\n\n"
-                f"Physically possible behaviors given posture and room constraints:\n"
-                f"{behavior_list}\n\n"
-                f"Based ONLY on the scene facts above, which behavior is most likely?\n"
-                f"Reply with JSON only: "
-                f'{{\"behavior\": \"...\", \"confidence\": 0.0, \"reason\": \"...\"}}\n'
-                f"Output ONLY valid JSON. No markdown."
-            )
+            scene_vec    = self.sbert.encode([scene_text], normalize_embeddings=True)[0]
+            proto_scores = {}
+            for act in feasible:
+                proto = VISION_PROTOTYPES.get(act, act)
+                pvec  = self.sbert.encode([proto], normalize_embeddings=True)[0]
+                proto_scores[act] = float(scene_vec @ pvec)
+            top_candidates = sorted(
+                feasible,
+                key=lambda a: proto_scores.get(a, 0),
+                reverse=True)[:3]
+        except Exception:
+            top_candidates = list(feasible)[:3]
+
+        top_list = ", ".join(top_candidates)
+
+        # Extract key scene facts for concise prompt
+        tv_line   = ""
+        time_line = ""
+        held_line = ""
+        for line in scene_text.split("\n"):
+            if "TV:" in line:       tv_line   = line.strip()
+            if "Time:" in line:     time_line = line.strip()
+            if "Holding:" in line:  held_line = line.strip()
+
+        scene_summary = f"Room: {near or 'unknown'}"
+        if time_line:  scene_summary += f", {time_line}"
+        if held_line:  scene_summary += f", {held_line}"
+        if tv_line:    scene_summary += f", {tv_line}"
+
+        prompt = (
+            f"A person is in their home.\n"
+            f"Body: {p_label}.\n"
+            f"{scene_summary}.\n"
+            f"Posture: {scene_text.split('Posture cues:')[-1].split(chr(10))[0].strip() if 'Posture cues:' in scene_text else 'unknown'}.\n\n"
+            f"What are they most likely doing?\n"
+            f"Choose one: {top_list}\n\n"
+            "Reply JSON only: "
+            "{\"action\": \"<one from the list>\", "
+            "\"confidence\": 0.0, "
+            "\"reason\": \"<max 40 chars>\"}"
+        )
+
+        try:
             resp = requests.post(
                 f"{llm_url}/api/chat",
                 json={
@@ -807,18 +992,39 @@ class PerceptionEngine:
             m     = re.search(r'\{.*\}', clean, re.DOTALL)
             if not m:
                 return None, "", 0.0
-            data     = json.loads(m.group(0))
-            behavior = data.get("behavior", "").strip()
-            reason   = data.get("reason", "llm").strip()[:60]
-            conf     = float(data.get("confidence", 0.7))
-            if behavior in candidates:
-                print(f"[LLM] → {behavior} ({conf:.2f}) | {reason}")
-                return behavior, f"llm:{reason}", conf
-            print(f"[LLM] invalid behavior: {behavior} not in candidates")
-            return None, "", 0.0
+
+            data   = json.loads(m.group(0))
+            action = data.get("action", "").strip()
+            reason = data.get("reason", "llm").strip()[:60]
+            conf   = float(data.get("confidence", 0.7))
+
+            if action in feasible:
+                print(f"[LLM-PMI] {action} ({conf:.2f}) | {reason}")
+                return action, f"pmi_llm:{reason}", conf
+
+            if action in candidates:
+                print(f"[LLM-PMI] {action} ({conf:.2f}) posture-override | {reason}")
+                return action, f"pmi_llm_override:{reason}", conf
+
+            # Fuzzy match: case-insensitive search in feasible set
+            action_lower = action.lower()
+            for f_action in feasible:
+                if f_action.lower() == action_lower:
+                    print(f"[LLM-PMI] fuzzy match: '{action}' -> '{f_action}'")
+                    return f_action, f"pmi_llm:{reason}", conf
+
+            print(f"[LLM-PMI] invalid: '{action}' not in candidates, using best feasible")
+            if feasible:
+                fallback = sorted(feasible)[0]
+                return fallback, f"pmi_llm_fallback:{reason}", 0.3
+
         except Exception as e:
-            print(f"[LLM Reason] error: {e}")
-            return None, "", 0.0
+            print(f"[LLM-PMI] error: {e}")
+
+        if feasible:
+            fallback = sorted(feasible)[0]
+            return fallback, "pmi_llm_error_fallback", 0.1
+        return None, "", 0.0
 
     def _emit_edge(self, user_id: str, action: str, bound_label: str,
                    confidence: float, user_pos: dict):
@@ -950,8 +1156,6 @@ class PerceptionEngine:
         }
 
     def _compute_vote_entropy(self, votes: list) -> float:
-        import math
-        from collections import Counter
         if not votes:
             return 0.0
         counts  = Counter(votes)
@@ -970,6 +1174,7 @@ class PerceptionEngine:
         node_scores  = payload.get("node_scores", [])
         user_pos     = payload.get("user_pos", None)
         user_forward = payload.get("user_forward", None)
+
         if not user_forward or (
             float(user_forward.get("x", 0)) == 0 and
             float(user_forward.get("z", 0)) == 0
@@ -992,6 +1197,7 @@ class PerceptionEngine:
             if not user_pos and _udoc:
                 user_pos = {"x": float(_udoc.get("x", 0)),
                             "z": float(_udoc.get("z", 0))}
+
         room_name    = payload.get("room_name", "")
         virtual_hour = payload.get("virtual_hour", None)
         virtual_day  = payload.get("virtual_day", None)
@@ -1066,44 +1272,19 @@ class PerceptionEngine:
         final_user       = max(set(user_votes), key=user_votes.count) \
                            if user_votes else hint_user_id
         activity_hint    = _weighted_vote(activity_votes, used_scores_list, default="")
-        body_position    = _weighted_vote(body_votes,     used_scores_list, default="standing")
+        body_position    = _weighted_vote(body_votes, used_scores_list, default="standing")
         body_orientation = _weighted_vote(orientation_votes, used_scores_list,
                                           default="facing_toward")
         vlm_confidence   = float(sum(confidence_list) / max(len(confidence_list), 1))
 
-        held_object  = "none"
-        _infer_source = "dynamic_objects"
-
-        # Read held_object from state set by ExperimentRunner
-        try:
-            _held_doc = self.db.user_held_objects.find_one(
-                {"user_id": final_user})
-            if _held_doc:
-                _held_from_state = _held_doc.get("held_object", "none")
-                if _held_from_state and _held_from_state != "none":
-                    held_object   = _held_from_state
-                    _infer_source = "experiment_state"
-                    print(f"[HeldState] {final_user} holding {held_object}")
-        except Exception:
-            pass
+        held_object   = self._get_held_object_from_scene(final_user, user_pos)
+        _infer_source = "dynamic_objects_held_by" if held_object != "none" else "none"
 
         _nearest_zone_tmp = self.scene_engine.find_nearest_zone(user_pos, room_name)
         _zone_name_tmp    = _nearest_zone_tmp["zone_name"] if _nearest_zone_tmp else ""
 
         if body_orientation == "facing_away":
             vlm_confidence = 0.0
-
-        _inferred = self._infer_held_object(
-            nearest_furniture=coord_label, zone_name=_zone_name_tmp,
-            room_name=room_name, user_pos=user_pos, user_id=final_user,
-        )
-        if _inferred and _inferred != "none":
-            _inferred_action = ITEM_TO_ACTION.get(_inferred.lower(), "")
-            _body_check = body_position.lower() if body_position else "standing"
-            if not _inferred_action or \
-                    (_body_check, _inferred_action) not in BODY_IMPOSSIBLE:
-                held_object   = _inferred
-                _infer_source = "dynamic_objects"
 
         print(f"[VLM] activity={activity_hint} body={body_position} "
               f"orient={body_orientation} held={held_object} "
@@ -1113,11 +1294,11 @@ class PerceptionEngine:
         _body_entropy    = self._compute_vote_entropy(body_votes)
         _held_entropy    = self._compute_vote_entropy(held_votes)
         _overall_entropy = _act_entropy * 0.6 + _body_entropy * 0.2 + _held_entropy * 0.2
-        _sys_cfg_vlm = _load_config("config/system_config.yaml").get("entropy", {})
-        _e_high = float(_sys_cfg_vlm.get("high_threshold", 1.2))
-        _e_low  = float(_sys_cfg_vlm.get("low_threshold",  0.4))
-        _w_high = float(_sys_cfg_vlm.get("vlm_weight_high", 0.10))
-        _w_low  = float(_sys_cfg_vlm.get("vlm_weight_low",  0.30))
+        _entropy_cfg     = _sys_cfg.get("entropy", {})
+        _e_high = float(_entropy_cfg.get("high_threshold", 1.2))
+        _e_low  = float(_entropy_cfg.get("low_threshold",  0.4))
+        _w_high = float(_entropy_cfg.get("vlm_weight_high", 0.10))
+        _w_low  = float(_entropy_cfg.get("vlm_weight_low",  0.30))
         if _overall_entropy >= _e_high:
             _dynamic_vlm_w = _w_high
         elif _overall_entropy <= _e_low:

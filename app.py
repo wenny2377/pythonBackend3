@@ -853,6 +853,8 @@ def dynamic_sync():
             }
             if held_by:
                 set_fields["held_by"] = held_by
+                print(f"[DynamicSync] held_by detected: label={label} held_by={held_by}")
+                
             else:
                 set_fields["held_by"]      = ""
                 set_fields["last_seen_on"] = last_seen_on
