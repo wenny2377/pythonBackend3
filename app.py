@@ -851,12 +851,16 @@ def dynamic_sync():
                 "source":       source,
                 "category":     category,
             }
+            
             if held_by:
                 set_fields["held_by"] = held_by
-                print(f"[DynamicSync] held_by detected: label={label} held_by={held_by}")
-                
+                existing = db.dynamic_objects.find_one(
+                    {"label": label}, {"held_by": 1})
+                if not existing or existing.get("held_by") != held_by:
+                    set_fields["held_since"] = now
             else:
                 set_fields["held_by"]      = ""
+                set_fields["held_since"]   = None
                 set_fields["last_seen_on"] = last_seen_on
 
             db.dynamic_objects.update_one(
