@@ -183,7 +183,7 @@ def _insert_bullet(skill_md: str, section: str, bullet: str) -> str:
 class SkillManager:
 
     def __init__(self, db_client=None, ollama_url="http://localhost:11434",
-                 model_name="llama3.1:8b-instruct-q4_K_M", db_name="robot_rag_db"):
+                 model_name="llama3.1:8b", db_name="robot_rag_db"):
         self.db         = db_client[db_name] if db_client else \
                           MongoClient("mongodb://localhost:27017")[db_name]
         self.ollama_url = ollama_url

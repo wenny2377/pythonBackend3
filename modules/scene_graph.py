@@ -38,8 +38,6 @@ HELD_OBJECT_TO_ACTION = {
 }
 
 
-# Stores previous wrist positions for movement trend detection
-# key: user_id, value: (wrist_height, left_wrist_height, timestamp)
 _wrist_history: dict = {}
 
 
@@ -59,7 +57,6 @@ def _skeleton_to_semantic(skel_body: str, head_pitch: float,
                            prev_hand_to_head: float = -1) -> str:
     hints = []
 
-    # ── Hand to face distance ─────────────────────────────────────────────
     best_h2h = -1
     if hand_to_head >= 0 and left_hand_to_head >= 0:
         best_h2h = min(hand_to_head, left_hand_to_head)
@@ -74,7 +71,6 @@ def _skeleton_to_semantic(skel_body: str, head_pitch: float,
         elif best_h2h < 0.50:
             hints.append("hand close to face")
 
-        # L2: Hand movement trend (approaching vs moving away from face)
         if prev_hand_to_head >= 0 and best_h2h >= 0:
             delta = best_h2h - prev_hand_to_head
             if delta < -0.05:
@@ -82,7 +78,6 @@ def _skeleton_to_semantic(skel_body: str, head_pitch: float,
             elif delta > 0.05:
                 hints.append("hand moving away from face")
 
-    # ── Wrist position (Typing detection) ────────────────────────────────
     if skel_body == "sitting":
         r_valid = wrist_x > -999 and wrist_z > -999
         l_valid = left_wrist_x > -999 and left_wrist_z > -999
@@ -91,7 +86,6 @@ def _skeleton_to_semantic(skel_body: str, head_pitch: float,
                 if abs(wrist_height) < 0.15 and abs(left_wrist_height) < 0.15:
                     hints.append("both hands extended forward at desk level")
 
-    # ── Wrist height trend ───────────────────────────────────────────────
     if wrist_height > -999 and prev_wrist_height > -999:
         delta_h = wrist_height - prev_wrist_height
         if delta_h > 0.08:
@@ -99,7 +93,6 @@ def _skeleton_to_semantic(skel_body: str, head_pitch: float,
         elif delta_h < -0.08:
             hints.append("wrist lowering (hand coming down)")
 
-    # ── Head pitch ───────────────────────────────────────────────────────
     if head_pitch > -999:
         if head_pitch < -55:
             hints.append("head strongly tilted back (consistent with lying down)")
@@ -114,7 +107,6 @@ def _skeleton_to_semantic(skel_body: str, head_pitch: float,
         elif -10 <= head_pitch <= 10:
             hints.append("head facing forward")
 
-    # ── Arm elevation ────────────────────────────────────────────────────
     if arm_elevation >= 0:
         if arm_elevation > 165:
             hints.append("arm raised very high (consistent with opening/reaching)")
@@ -189,7 +181,7 @@ def _get_facing_target(user_pos, user_forward, db, max_dist=6.0):
 
 
 def build_scene_text(user_pos, user_forward, room_name,
-                     skel_body, head_pitch, held_object, db,
+                     skel_body, head_pitch, held_event, db,
                      user_id="", virtual_hour=None,
                      spine_angle=-1, arm_elevation=-1,
                      hand_to_head=-1, wrist_height=-999,
@@ -251,21 +243,10 @@ def build_scene_text(user_pos, user_forward, room_name,
     if posture:
         lines.append(f"Posture cues: {posture}")
 
-    if held_object and held_object not in ("none", "unknown", ""):
-        cat = OBJECT_CATEGORIES.get(held_object.lower(), "object")
-        # Natural language description of held object + duration
-        if held_age and held_age > 0:
-            if held_age < 10:
-                duration_str = "just picked up"
-            elif held_age < 60:
-                duration_str = f"holding for {int(held_age)} seconds"
-            else:
-                duration_str = f"holding for over a minute"
-        else:
-            duration_str = "holding"
-        lines.append(f"Holding: {held_object} ({cat}, {duration_str})")
+    if held_event and held_event not in ("none", "unknown", ""):
+        lines.append(f"Object event: {held_event}")
     else:
-        lines.append("Holding: nothing")
+        lines.append("No recent object pickups")
 
     facing = _get_facing_target(user_pos, user_forward, db)
     tv_doc   = None

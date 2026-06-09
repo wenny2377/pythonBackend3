@@ -15,18 +15,18 @@ class VectorMemory:
                         dynamic_meta_path=Config.DYNAMIC_META_PATH,
                         device="cuda"):
 
-        self._lock         = threading.Lock()
+        self._lock = threading.Lock()
         self._dynamic_lock = threading.Lock()
 
         self.model = SentenceTransformer('paraphrase-MiniLM-L6-v2', device=device)
-        self.dim   = 384
+        self.dim = 384
 
         self.index_path = index_path
-        self.meta_path  = meta_path
+        self.meta_path = meta_path
 
         if os.path.exists(index_path):
             self.index = faiss.read_index(index_path)
-            print(f"[FAISS] Habit index loaded: {self.index.ntotal} entries")
+            print(f"[FAISS] Habit index loaded from {index_path}")
         else:
             self.index = faiss.IndexFlatIP(self.dim)
             print("[FAISS] Habit index created")
@@ -34,27 +34,31 @@ class VectorMemory:
         if os.path.exists(meta_path):
             with open(meta_path, 'r', encoding='utf-8') as f:
                 self.metadata = json.load(f)
+            print(f"[FAISS] Habit metadata loaded: {len(self.metadata)} entries")
         else:
             self.metadata = []
+            print("[FAISS] Habit metadata created")
 
         self.dynamic_index_path = dynamic_index_path
-        self.dynamic_meta_path  = dynamic_meta_path
+        self.dynamic_meta_path = dynamic_meta_path
 
         if os.path.exists(dynamic_index_path):
             self.dynamic_index = faiss.read_index(dynamic_index_path)
-            print(f"[FAISS] Dynamic object index loaded: {self.dynamic_index.ntotal} entries")
+            print(f"[FAISS] Dynamic index loaded from {dynamic_index_path}")
         else:
             self.dynamic_index = faiss.IndexFlatIP(self.dim)
-            print("[FAISS] Dynamic object index created")
+            print("[FAISS] Dynamic index created")
 
         if os.path.exists(dynamic_meta_path):
             with open(dynamic_meta_path, 'r', encoding='utf-8') as f:
                 self.dynamic_metadata = json.load(f)
+            print(f"[FAISS] Dynamic metadata loaded: {len(self.dynamic_metadata)} entries")
         else:
             self.dynamic_metadata = []
+            print("[FAISS] Dynamic metadata created")
 
     def sync_from_mongo(self, dynamic_objects_collection):
-        docs  = list(dynamic_objects_collection.find({}))
+        docs = list(dynamic_objects_collection.find({}))
         count = 0
 
         for doc in docs:
@@ -62,26 +66,25 @@ class VectorMemory:
             if not label:
                 continue
             self.upsert_dynamic_object(
-                label          = label,
-                room           = doc.get("room", ""),
-                last_seen_on   = doc.get("last_seen_on", "unknown"),
-                spatial_rel    = doc.get("spatial_rel", "near"),
-                furniture_pos  = doc.get("furniture_pos") or doc.get("position"),
-                seen_count     = doc.get("seen_count", 1),
-                interact_count = doc.get("interact_count", 0),
-                interacted_by  = doc.get("interacted_by", []),
+                label=label,
+                room=doc.get("room", ""),
+                last_seen_on=doc.get("last_seen_on", "unknown"),
+                spatial_rel=doc.get("spatial_rel", "near"),
+                furniture_pos=doc.get("furniture_pos") or doc.get("position"),
+                seen_count=doc.get("seen_count", 1),
+                interact_count=doc.get("interact_count", 0),
+                interacted_by=doc.get("interacted_by", []),
             )
             count += 1
 
-        print(f"[FAISS] sync_from_mongo: {count} dynamic objects synced")
         return count
 
     def add_memory(self, user_id, action, furniture_label, vlm_description,
                    detected_items=None, all_items=None, spatial_relations=None,
                    furniture_pos=None, mongo_id=None):
 
-        detected_items    = detected_items    or []
-        all_items         = all_items         or []
+        detected_items = detected_items or []
+        all_items = all_items or []
         spatial_relations = spatial_relations or []
 
         items_str = ", ".join(detected_items) if detected_items else "nothing"
@@ -101,18 +104,18 @@ class VectorMemory:
         faiss.normalize_L2(vec)
 
         entry = {
-            "faiss_idx":         self.index.ntotal,
-            "user":              user_id,
-            "action":            action,
-            "instance":          furniture_label,
+            "faiss_idx": self.index.ntotal,
+            "user": user_id,
+            "action": action,
+            "instance": furniture_label,
             "interacting_items": detected_items,
-            "all_items":         all_items,
+            "all_items": all_items,
             "spatial_relations": spatial_relations,
-            "furniture_pos":     furniture_pos,
-            "mongo_id":          str(mongo_id) if mongo_id else None,
-            "description":       vlm_description,
-            "memory_text":       memory_text,
-            "timestamp":         datetime.datetime.now().isoformat()
+            "furniture_pos": furniture_pos,
+            "mongo_id": str(mongo_id) if mongo_id else None,
+            "description": vlm_description,
+            "memory_text": memory_text,
+            "timestamp": datetime.datetime.now().isoformat()
         }
 
         with self._lock:
@@ -128,7 +131,7 @@ class VectorMemory:
                                seen_count: int, interact_count: int,
                                interacted_by: list):
 
-        label    = label.lower().strip()
+        label = label.lower().strip()
         used_str = f"used by {', '.join(interacted_by)}." if interacted_by else ""
 
         memory_text = (
@@ -153,16 +156,16 @@ class VectorMemory:
             )
 
             entry = {
-                "label":         label,
-                "room":          room,
-                "last_seen_on":  last_seen_on,
-                "spatial_rel":   spatial_rel,
+                "label": label,
+                "room": room,
+                "last_seen_on": last_seen_on,
+                "spatial_rel": spatial_rel,
                 "furniture_pos": furniture_pos,
-                "seen_count":    seen_count,
-                "interact_count":interact_count,
+                "seen_count": seen_count,
+                "interact_count": interact_count,
                 "interacted_by": interacted_by,
-                "memory_text":   memory_text,
-                "timestamp":     datetime.datetime.now().isoformat(),
+                "memory_text": memory_text,
+                "timestamp": datetime.datetime.now().isoformat(),
             }
 
             if position_changed:
@@ -172,12 +175,8 @@ class VectorMemory:
                 faiss_idx = self.dynamic_index.ntotal
                 self.dynamic_index.add(vec)
                 entry["faiss_idx"] = faiss_idx
-
-                reason = "new" if old is None else f"moved: {old.get('last_seen_on')} -> {last_seen_on}"
-                print(f"[FAISS Dynamic] '{label}' encode triggered ({reason})")
             else:
                 entry["faiss_idx"] = old["faiss_idx"]
-                print(f"[FAISS Dynamic] '{label}' metadata updated only")
 
             if existing_idx is not None:
                 self.dynamic_metadata[existing_idx] = entry
@@ -206,17 +205,17 @@ class VectorMemory:
             if user_id and entry.get('user') != user_id:
                 continue
             results.append({
-                "user":              entry.get('user'),
-                "action":            entry.get('action'),
-                "instance":          entry.get('instance'),
+                "user": entry.get('user'),
+                "action": entry.get('action'),
+                "instance": entry.get('instance'),
                 "interacting_items": entry.get('interacting_items', []),
-                "all_items":         entry.get('all_items', []),
+                "all_items": entry.get('all_items', []),
                 "spatial_relations": entry.get('spatial_relations', []),
-                "furniture_pos":     entry.get('furniture_pos'),
-                "mongo_id":          entry.get('mongo_id'),
-                "description":       entry.get('description'),
-                "memory_text":       entry.get('memory_text'),
-                "similarity":        float(score),
+                "furniture_pos": entry.get('furniture_pos'),
+                "mongo_id": entry.get('mongo_id'),
+                "description": entry.get('description'),
+                "memory_text": entry.get('memory_text'),
+                "similarity": float(score),
             })
             if len(results) >= top_k:
                 break
@@ -234,10 +233,10 @@ class VectorMemory:
 
             k = min(top_k * 5, self.dynamic_index.ntotal)
             scores, indices = self.dynamic_index.search(vec, k)
-            meta_snapshot   = list(self.dynamic_metadata)
+            meta_snapshot = list(self.dynamic_metadata)
 
         seen_labels = set()
-        results     = []
+        results = []
 
         for score, idx in zip(scores[0], indices[0]):
             if idx < 0:
@@ -253,16 +252,16 @@ class VectorMemory:
             if user_filter and user_filter not in entry.get("interacted_by", []):
                 continue
             results.append({
-                "label":         label,
-                "room":          entry.get("room"),
-                "last_seen_on":  entry.get("last_seen_on"),
-                "spatial_rel":   entry.get("spatial_rel"),
+                "label": label,
+                "room": entry.get("room"),
+                "last_seen_on": entry.get("last_seen_on"),
+                "spatial_rel": entry.get("spatial_rel"),
                 "furniture_pos": entry.get("furniture_pos"),
-                "seen_count":    entry.get("seen_count", 0),
-                "interact_count":entry.get("interact_count", 0),
+                "seen_count": entry.get("seen_count", 0),
+                "interact_count": entry.get("interact_count", 0),
                 "interacted_by": entry.get("interacted_by", []),
-                "memory_text":   entry.get("memory_text"),
-                "similarity":    float(score),
+                "memory_text": entry.get("memory_text"),
+                "similarity": float(score),
             })
             if len(results) >= top_k:
                 break
@@ -271,19 +270,19 @@ class VectorMemory:
 
     def get_top_habit(self, query, user_id=None, top_k=1):
 
-        results     = self.search_habit(query, user_id=user_id, top_k=20)
+        results = self.search_habit(query, user_id=user_id, top_k=20)
         habit_count = {}
 
         for r in results:
             key = r['instance']
             if key not in habit_count:
                 habit_count[key] = {
-                    "instance":          r['instance'],
-                    "furniture_pos":     r['furniture_pos'],
-                    "count":             0,
-                    "actions":           [],
+                    "instance": r['instance'],
+                    "furniture_pos": r['furniture_pos'],
+                    "count": 0,
+                    "actions": [],
                     "interacting_items": [],
-                    "all_items":         [],
+                    "all_items": [],
                 }
             habit_count[key]['count'] += 1
             habit_count[key]['actions'].append(r['action'])
@@ -298,7 +297,7 @@ class VectorMemory:
         top = sorted_habits[:top_k]
         for h in top:
             h['interacting_items'] = list(set(h['interacting_items']))
-            h['all_items']         = list(set(h['all_items']))
+            h['all_items'] = list(set(h['all_items']))
 
         return top[0] if top_k == 1 else top
 
@@ -309,12 +308,12 @@ class VectorMemory:
             return []
 
         try:
-            q_vec  = self.model.encode(query)
+            q_vec = self.model.encode(query)
             scored = []
 
             for item in candidate_items:
                 i_vec = self.model.encode(item)
-                sim   = float(
+                sim = float(
                     np.dot(q_vec, i_vec) /
                     (np.linalg.norm(q_vec) * np.linalg.norm(i_vec) + 1e-8)
                 )

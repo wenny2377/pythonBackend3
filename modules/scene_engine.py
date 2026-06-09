@@ -560,15 +560,10 @@ class SceneEngine:
                     "anchor":       anchor["label"],
                     "anchor_mass":  round(anchor["mass"], 3),
                 })
-                print(f"  [Zone] {anchor['room']} | {zone_name} | "
-                      f"anchor={anchor['label']} "
-                      f"furniture={labels} "
-                      f"center=({cx:.1f},{cz:.1f})")
+               
 
             self._set_ready(zones)
-            print(f"[Zones] Built {len(zones)} zones across "
-                  f"{len({z['room'] for z in zones})} rooms")
-
+           
         except Exception as e:
             import traceback
             print(f"[Zones] Error: {e}\n{traceback.format_exc()}")
