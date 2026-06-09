@@ -532,9 +532,10 @@ class PerceptionEngine:
         return nearby
 
     def _get_held_object_from_scene(self, user_id: str,
-                                     user_pos: dict = None) -> str:
-        WALK_SPEED   = 1.4   # m/s matches UserEntity.walkSpeed
-        MAX_AGE_SEC  = 30    # only consider objects disappeared in last 30s
+                                     user_pos: dict = None) -> tuple:
+        """Returns (label, age_seconds) or ("none", 0)"""
+        WALK_SPEED   = 1.4
+        MAX_AGE_SEC  = 30
         HELD_WHITELIST = {
             "bowl", "plate", "spoon", "fork", "chopsticks",
             "pan", "spatula", "broom", "mop",
@@ -546,19 +547,23 @@ class PerceptionEngine:
 
         # ── L2a: FindHolderOf direct detection (most reliable) ───────────────
         try:
-            cutoff = datetime.datetime.utcnow() - datetime.timedelta(seconds=3)
+            now    = datetime.datetime.utcnow()
+            cutoff = now - datetime.timedelta(seconds=5)
             doc = self.col_dynamic.find_one(
                 {
-                    "held_by":     user_id,
-                    "last_seen":   {"$gte": cutoff},
+                    "held_by":   user_id,
+                    "last_seen": {"$gte": cutoff},
                 },
                 sort=[("last_seen", -1)]
             )
             if doc:
                 label = (doc.get("label") or "none").lower().strip()
                 if label and label != "none" and label in HELD_WHITELIST:
-                    print(f"[HeldObj] FindHolderOf: {user_id} holding {label}")
-                    return label
+                    held_since = doc.get("held_since")
+                    age = (now - held_since).total_seconds()                           if held_since else 0.0
+                    print(f"[HeldObj] FindHolderOf: {user_id} holding "
+                          f"{label} for {age:.0f}s")
+                    return label, age
         except Exception as e:
             print(f"[HeldObj] held_by query error: {e}")
 
@@ -623,12 +628,12 @@ class PerceptionEngine:
                           f"max_walkable={max_walkable:.1f}m")
 
             if best_label != "none":
-                return best_label
+                return best_label, 0.0
 
         except Exception as e:
             print(f"[HeldObj] spatiotemporal inference error: {e}")
 
-        return "none"
+        return "none", 0
 
     def _compute_p_l(self, obj_label: str, behavior: str) -> float:
         if not obj_label or obj_label == "none":
@@ -797,29 +802,8 @@ class PerceptionEngine:
         if skel_body == "lying" and "Laying" in candidates:
             return "Laying", "strong:skeleton_lying", zone_label
 
-        if norm_held and norm_held != "none":
-            strong_action = STRONG_HELD_ITEMS.get(norm_held.lower(), "")
-            if not strong_action:
-                RUNTIME_HELD_MAP = {
-                    "book":      "Reading",
-                    "magazine":  "Reading",
-                    "phone":     "PhoneUse",
-                    "cell phone":"PhoneUse",
-                    "bowl":      "Eating",
-                    "plate":     "Eating",
-                    "remote":    "Watching",
-                }
-                strong_action = RUNTIME_HELD_MAP.get(norm_held.lower(), "")
-
-            # cola/bottle: body posture decides Drinking vs SittingDrink
-            if not strong_action and norm_held.lower() in ("cola", "bottle", "cup", "waterbottle"):
-                if body_position == "sitting":
-                    strong_action = "SittingDrink"
-                else:
-                    strong_action = "Drinking"
-
-            if strong_action and strong_action in candidates:
-                return strong_action, f"strong:held:{norm_held}+{body_position}->{strong_action}", zone_label
+        # No strong held rules - held object is passed to LLM as context
+        # LLM reasons about held object + body posture + zone to infer action
 
         _llm_url   = getattr(self, '_llm_url', self.url)
         _llm_model = getattr(self, '_llm_model', "llama3.1:8b-instruct-q4_K_M")
@@ -847,6 +831,7 @@ class PerceptionEngine:
                 skel_body          = skel_body,
                 head_pitch         = head_pitch,
                 held_object        = held_obj,
+                held_age           = held_age,
                 db                 = self.db,
                 user_id            = user_id,
                 virtual_hour       = float(payload.get("virtual_hour",        -1)) if payload else -1,
@@ -932,45 +917,42 @@ class PerceptionEngine:
         candidate_list = ", ".join(sorted(feasible))
         nearby_str     = ", ".join(nearby_objs) if nearby_objs else "none"
 
-        # Use SBERT to rank candidates, keep top 3 for LLM
-        try:
-            scene_vec    = self.sbert.encode([scene_text], normalize_embeddings=True)[0]
-            proto_scores = {}
-            for act in feasible:
-                proto = VISION_PROTOTYPES.get(act, act)
-                pvec  = self.sbert.encode([proto], normalize_embeddings=True)[0]
-                proto_scores[act] = float(scene_vec @ pvec)
-            top_candidates = sorted(
-                feasible,
-                key=lambda a: proto_scores.get(a, 0),
-                reverse=True)[:3]
-        except Exception:
-            top_candidates = list(feasible)[:3]
+        # Build natural language scene description for LLM
+        # Extract key facts from scene_text
+        _tv_state   = "unknown"
+        _time_str   = ""
+        _held_line  = ""
+        _posture_str= ""
+        _near_str   = near or "unknown area"
+        for _line in scene_text.split("\n"):
+            _l = _line.strip()
+            if _l.startswith("TV:"):       _tv_state    = _l
+            if _l.startswith("Time:"):     _time_str    = _l
+            if _l.startswith("Holding:"):  _held_line   = _l
+            if _l.startswith("Posture"):   _posture_str = _l.replace("Posture cues:", "").strip()
 
-        top_list = ", ".join(top_candidates)
+        # Natural language description (no numbers, no coordinates)
+        nl_parts = []
+        nl_parts.append(f"A person is in the {room_name or 'home'}")
+        if _time_str:
+            nl_parts.append(_time_str.replace("Time: ", "at "))
+        nl_parts.append(f"Their body is {p_label}.")
+        if _posture_str:
+            nl_parts.append(f"Posture: {_posture_str}.")
+        if _held_line and "nothing" not in _held_line:
+            nl_parts.append(f"{_held_line}.")
+        nl_parts.append(f"Nearest area: {_near_str}.")
+        if "TV:" in _tv_state:
+            nl_parts.append(f"{_tv_state}.")
 
-        # Extract key scene facts for concise prompt
-        tv_line   = ""
-        time_line = ""
-        held_line = ""
-        for line in scene_text.split("\n"):
-            if "TV:" in line:       tv_line   = line.strip()
-            if "Time:" in line:     time_line = line.strip()
-            if "Holding:" in line:  held_line = line.strip()
-
-        scene_summary = f"Room: {near or 'unknown'}"
-        if time_line:  scene_summary += f", {time_line}"
-        if held_line:  scene_summary += f", {held_line}"
-        if tv_line:    scene_summary += f", {tv_line}"
+        scene_description = " ".join(nl_parts)
+        candidate_list_str = ", ".join(sorted(feasible))
 
         prompt = (
-            f"A person is in their home.\n"
-            f"Body: {p_label}.\n"
-            f"{scene_summary}.\n"
-            f"Posture: {scene_text.split('Posture cues:')[-1].split(chr(10))[0].strip() if 'Posture cues:' in scene_text else 'unknown'}.\n\n"
-            f"What are they most likely doing?\n"
-            f"Choose one: {top_list}\n\n"
-            "Reply JSON only: "
+            f"{scene_description}\n\n"
+            f"What is this person most likely doing right now?\n"
+            f"Choose exactly one from: {candidate_list_str}\n\n"
+            "Reply with JSON only:\n"
             "{\"action\": \"<one from the list>\", "
             "\"confidence\": 0.0, "
             "\"reason\": \"<max 40 chars>\"}"
@@ -1277,7 +1259,7 @@ class PerceptionEngine:
                                           default="facing_toward")
         vlm_confidence   = float(sum(confidence_list) / max(len(confidence_list), 1))
 
-        held_object   = self._get_held_object_from_scene(final_user, user_pos)
+        held_object, held_age = self._get_held_object_from_scene(final_user, user_pos)
         _infer_source = "dynamic_objects_held_by" if held_object != "none" else "none"
 
         _nearest_zone_tmp = self.scene_engine.find_nearest_zone(user_pos, room_name)
