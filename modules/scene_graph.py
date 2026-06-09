@@ -196,7 +196,8 @@ def build_scene_text(user_pos, user_forward, room_name,
                      left_hand_to_head=-1, left_wrist_height=-999,
                      wrist_x=-999, wrist_z=-999,
                      left_wrist_x=-999, left_wrist_z=-999,
-                     prev_wrist_height=-999, prev_hand_to_head=-1):
+                     prev_wrist_height=-999, prev_hand_to_head=-1,
+                     held_age=0.0):
     lines = []
 
     lines.append("=== Scene Graph ===")
@@ -252,9 +253,17 @@ def build_scene_text(user_pos, user_forward, room_name,
 
     if held_object and held_object not in ("none", "unknown", ""):
         cat = OBJECT_CATEGORIES.get(held_object.lower(), "object")
-        implied = HELD_OBJECT_TO_ACTION.get(held_object.lower(), "")
-        implied_str = f" -> implies {implied}" if implied else ""
-        lines.append(f"Holding: {held_object} [{cat}]{implied_str}")
+        # Natural language description of held object + duration
+        if held_age and held_age > 0:
+            if held_age < 10:
+                duration_str = "just picked up"
+            elif held_age < 60:
+                duration_str = f"holding for {int(held_age)} seconds"
+            else:
+                duration_str = f"holding for over a minute"
+        else:
+            duration_str = "holding"
+        lines.append(f"Holding: {held_object} ({cat}, {duration_str})")
     else:
         lines.append("Holding: nothing")
 
