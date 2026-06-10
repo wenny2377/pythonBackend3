@@ -35,25 +35,14 @@ INTERRUPT_KEYWORDS = {
     "停下", "停止", "算了", "取消", "不用了",
 }
 
-NEGATION_PATTERNS = [
-    "don't want", "dont want", "not want",
-    "don't like", "dont like", "not like",
-    "don't need", "dont need",
-    "not today", "something else", "another one",
-    "change", "switch", "instead", "other",
-    "no juice", "no cola", "no milk", "no water",
-]
+EXECUTE_KEYWORDS = {
+    "拿", "bring", "取", "fetch", "幫我拿", "給我", "get me"
+}
 
-REFERENCE_PATTERNS = [
-    "bring it", "get it", "fetch it",
-    "bring that", "get that", "that one",
-    "help me get", "help me grab",
-]
-
-CONFIRM_PATTERNS = [
-    "yes", "ok", "okay", "sure", "please do",
-    "go ahead", "that works", "sounds good",
-]
+CONFIRM_WORDS = {"好", "ok", "是的", "對", "可以", "麻煩", "請", "yes", "okay", "sure"}
+REJECT_WORDS = {"不要", "換一個", "other", "another"}
+DISLIKE_WORDS = {"不喜歡", "討厭", "don't like", "hate"}
+CANCEL_WORDS = {"取消", "算了", "cancel", "never mind"}
 
 ONE_SHOT_SYSTEM = """You are a home service robot assistant.
 
@@ -110,12 +99,12 @@ def _call_llm(ollama_url, model, system, user, max_tokens=LLM_TOKENS):
         resp = requests.post(
             f"{ollama_url}/api/chat",
             json={
-                "model":    model,
+                "model": model,
                 "messages": [
                     {"role": "system", "content": system},
-                    {"role": "user",   "content": user},
+                    {"role": "user", "content": user},
                 ],
-                "stream":  False,
+                "stream": False,
                 "options": {"temperature": LLM_TEMP, "num_predict": max_tokens},
             },
             timeout=LLM_TIMEOUT,
@@ -143,12 +132,17 @@ def _call_llm_json(ollama_url, model, system, user, max_tokens=300):
 
 class SessionState:
     def __init__(self):
-        self.last_nav_label   = ""
-        self.last_nav_target  = None
+        self.last_nav_label = ""
+        self.last_nav_target = None
         self.last_recommended = []
-        self.excluded_items   = set()
-        self.last_intent      = ""
-        self.pending_confirm  = False
+        self.excluded_items = set()
+        self.excluded_categories = set()
+        self.pending_confirm = False
+        self.pending_need_type = None
+        self.pending_query = ""
+        self.pending_item = ""
+        self.available_items = []
+        self.conversation_history = []
         self.last_scene_graph = ""
 
     def reset(self):
@@ -159,36 +153,36 @@ class InteractionEngine:
 
     def __init__(self, mongo_client, vector_memory, ollama_url, model_name,
                  saycan_engine=None):
-        self.db           = mongo_client[Config.DB_NAME]
-        self.vector       = vector_memory
-        self.ollama_url   = ollama_url
-        self.model_name   = model_name
-        self.conv_logs    = self.db["conversation_logs"]
-        self.saycan       = saycan_engine
+        self.db = mongo_client[Config.DB_NAME]
+        self.vector = vector_memory
+        self.ollama_url = ollama_url
+        self.model_name = model_name
+        self.conv_logs = self.db["conversation_logs"]
+        self.saycan = saycan_engine
 
         try:
             from modules.skill_manager import SkillManager
             self.skill_manager = SkillManager(
-                db_client  = mongo_client,
-                ollama_url = ollama_url,
-                model_name = model_name,
+                db_client=mongo_client,
+                ollama_url=ollama_url,
+                model_name=model_name,
             )
             self._has_skill_manager = True
         except Exception as e:
             logger.warning(f"[InteractionEngine] SkillManager not available: {e}")
             self._has_skill_manager = False
 
-        self._sbert     = None
+        self._sbert = None
         self._need_vecs = None
         self._init_sbert()
 
         self._conv_buffer = defaultdict(list)
-        self._sessions    = {}
+        self._sessions = {}
 
     def _init_sbert(self):
         try:
             if hasattr(self.vector, 'model'):
-                self._sbert     = self.vector.model
+                self._sbert = self.vector.model
                 self._need_vecs = self._build_description_vecs(NEED_DESCRIPTIONS)
         except Exception as e:
             logger.warning(f"[SBERT] init failed: {e}")
@@ -232,22 +226,22 @@ class InteractionEngine:
                 sort=[("timestamp", -1)],
                 projection={"body_position": 1, "held_object": 1}
             )
-            skel_body   = latest_eval.get("body_position", "unknown") if latest_eval else "unknown"
+            skel_body = latest_eval.get("body_position", "unknown") if latest_eval else "unknown"
             held_object = latest_eval.get("held_object", "none") if latest_eval else "none"
 
-            vh_doc       = self.db.system_config.find_one({"key": "virtual_hour"})
+            vh_doc = self.db.system_config.find_one({"key": "virtual_hour"})
             virtual_hour = vh_doc.get("value") if vh_doc else None
 
             scene_text = build_scene_text(
-                user_pos     = user_pos,
-                user_forward = user_forward,
-                room_name    = room,
-                skel_body    = skel_body,
-                head_pitch   = -999,
-                held_object  = held_object,
-                db           = self.db,
-                user_id      = user_id,
-                virtual_hour = virtual_hour,
+                user_pos=user_pos,
+                user_forward=user_forward,
+                room_name=room,
+                skel_body=skel_body,
+                head_pitch=-999,
+                held_object=held_object,
+                db=self.db,
+                user_id=user_id,
+                virtual_hour=virtual_hour,
             )
             return scene_text
         except Exception as e:
@@ -266,10 +260,10 @@ class InteractionEngine:
 
         if self._sbert and self._need_vecs:
             import numpy as np
-            q_vec  = self._sbert.encode(query, normalize_embeddings=True)
+            q_vec = self._sbert.encode(query, normalize_embeddings=True)
             scores = {cat: float(np.dot(q_vec, vec))
                       for cat, vec in self._need_vecs.items()}
-            best_cat   = max(scores, key=scores.get)
+            best_cat = max(scores, key=scores.get)
             best_score = scores[best_cat]
             if best_score >= SBERT_CATEGORY_THRESHOLD:
                 return "need"
@@ -293,28 +287,418 @@ class InteractionEngine:
             return "locate"
         return "chat"
 
-    def _is_negation(self, query: str, user_id: str) -> str | None:
-        query_lower = query.lower().strip()
-        session     = self._get_session(user_id)
+    def _is_execute_command(self, query: str) -> bool:
+        q = query.lower().strip()
+        return any(kw in q for kw in EXECUTE_KEYWORDS)
 
-        if not any(p in query_lower for p in NEGATION_PATTERNS):
+    def _is_confirmation(self, query: str) -> bool:
+        q = query.lower().strip()
+        return any(w in q for w in CONFIRM_WORDS)
+
+    def _is_rejection(self, query: str) -> bool:
+        q = query.lower().strip()
+        return any(w in q for w in REJECT_WORDS)
+
+    def _is_dislike(self, query: str) -> bool:
+        q = query.lower().strip()
+        return any(w in q for w in DISLIKE_WORDS)
+
+    def _is_cancel(self, query: str) -> bool:
+        q = query.lower().strip()
+        return any(w in q for w in CANCEL_WORDS)
+
+    def _extract_need_category(self, query: str) -> str:
+        if not self._sbert or not self._need_vecs:
+            return "food"
+
+        import numpy as np
+        q_vec = self._sbert.encode(query, normalize_embeddings=True)
+        scores = {cat: float(np.dot(q_vec, vec))
+                  for cat, vec in self._need_vecs.items()}
+        best_cat = max(scores, key=scores.get)
+        best_score = scores[best_cat]
+        return best_cat if best_score >= SBERT_CATEGORY_THRESHOLD else "food"
+
+    def _get_available_items(self, need_type, user_id, session):
+        from datetime import datetime, timedelta
+
+        cutoff = datetime.utcnow() - timedelta(hours=SNAPSHOT_TTL_HOURS)
+
+        docs = list(self.db.dynamic_objects.find({
+            "last_seen": {"$gte": cutoff},
+            "category": need_type,
+            "label": {"$nin": list(session.excluded_items)}
+        }, {
+            "label": 1, "category": 1, "last_seen_on": 1
+        }).sort("interact_count", -1).limit(10))
+
+        if not docs:
+            docs = list(self.db.dynamic_objects.find({
+                "category": need_type,
+                "label": {"$nin": list(session.excluded_items)}
+            }, {
+                "label": 1, "category": 1, "last_seen_on": 1
+            }).limit(10))
+
+        return docs
+
+    def _get_user_preference(self, user_id, need_type):
+        doc = self.db.user_skills.find_one({"user_id": user_id})
+        if not doc:
             return None
-        if not session.last_recommended:
+
+        skill_md = doc.get("skill_md", "")
+        import re
+        match = re.search(r"## Preferences\n(.*?)(?=\n## |$)", skill_md, re.DOTALL)
+        if not match:
             return None
 
-        for item in session.last_recommended:
-            if item.lower() in query_lower:
-                return item
-        return session.last_recommended[0]
+        prefs = match.group(1)
+        target = "food" if need_type == "food" else "drink"
 
-    def _resolve_reference(self, query: str, session: SessionState) -> str:
-        query_lower = query.lower().strip()
+        for line in prefs.split('\n'):
+            if target in line.lower():
+                parts = line.split(':')
+                if len(parts) > 1:
+                    items = [i.strip() for i in parts[1].split(',')]
+                    return items[0] if items else None
+        return None
 
-        if any(p in query_lower for p in CONFIRM_PATTERNS) and session.last_nav_label:
-            return f"get {session.last_nav_label}"
-        if any(p in query_lower for p in REFERENCE_PATTERNS) and session.last_nav_label:
-            return f"{query} ({session.last_nav_label})"
-        return query
+    def _add_to_disliked(self, user_id, item):
+        doc = self.db.user_skills.find_one({"user_id": user_id})
+        skill_md = doc.get("skill_md", "") if doc else ""
+
+        if "## Disliked" not in skill_md:
+            skill_md += "\n\n## Disliked\n"
+
+        if f"- {item}" not in skill_md:
+            skill_md += f"- {item}\n"
+
+        self.db.user_skills.update_one(
+            {"user_id": user_id},
+            {"$set": {"skill_md": skill_md, "version": (doc.get("version", 0) + 1) if doc else 1}},
+            upsert=True
+        )
+
+    def _get_user_skill_md(self, user_id):
+        if not self._has_skill_manager:
+            return None
+        try:
+            return self.skill_manager.get_skill(user_id) or ""
+        except Exception:
+            return None
+
+    def _handle_need_with_rag(self, query, user_id, session):
+        all_items = list(self.db.dynamic_objects.find(
+            {},
+            {"label": 1, "category": 1, "last_seen_on": 1, "interact_count": 1}
+        ))
+
+        EXCLUDE = {"user_mom", "user_dad", "user", "person", "people"}
+        all_items = [d for d in all_items if d.get("label", "").lower() not in EXCLUDE]
+
+        items_text = ""
+        for item in all_items:
+            cat = f" [{item.get('category', 'unknown')}]" if item.get("category") else ""
+            items_text += f"- {item['label']}{cat}: on {item.get('last_seen_on', 'unknown')}\n"
+
+        if not items_text:
+            items_text = "(No objects currently detected in the home.)"
+
+        excluded_text = ""
+        if session.excluded_items:
+            excluded_text = f"User already rejected: {', '.join(session.excluded_items)}\n"
+
+        skill_md = self._get_user_skill_md(user_id) or ""
+
+        system = f"""You are a home robot assistant. Based ONLY on the information below, respond to the user.
+
+ITEMS AVAILABLE AT HOME:
+{items_text}
+
+USER PREFERENCES (from skill profile):
+{skill_md}
+
+ITEMS ALREADY REJECTED IN THIS CONVERSATION:
+{excluded_text}
+
+RULES:
+1. Only recommend items from the AVAILABLE list above
+2. NEVER recommend items in REJECTED list
+3. NEVER recommend items marked as disliked in USER PREFERENCES
+4. If user is hungry, recommend a SPECIFIC food item from the list
+5. If user is thirsty, recommend a SPECIFIC drink item from the list
+6. ALWAYS output a specific recommended_item name, never null when user wants food/drink
+7. If user wants something specific that is not available, say honestly it's not available
+8. Always ask for confirmation before proceeding
+9. Output ONLY valid JSON
+
+OUTPUT FORMAT:
+{{"answer": "your response to the user", "recommended_item": "specific item name"}}
+
+User: {query}"""
+
+        result = _call_llm_json(self.ollama_url, self.model_name, "", system, max_tokens=200)
+
+        if not result:
+            return None
+
+        recommended = result.get("recommended_item")
+        
+        if recommended and recommended != "null":
+            for item in all_items:
+                if item["label"].lower() == recommended.lower():
+                    session.pending_confirm = True
+                    session.pending_item = recommended
+                    session.available_items = all_items
+                    session.pending_query = query
+                    return {
+                        "status": "Success",
+                        "answer": result.get("answer", f"Would you like me to get you {recommended}?"),
+                        "nav_target": None,
+                        "nav_label": None,
+                        "intent_type": "need_confirm",
+                        "options": [{"id": 1, "label": "Yes"}, {"id": 2, "label": "No, something else"}, {"id": 3, "label": "Cancel"}],
+                        "recommendations": [{"label": recommended}],
+                        "available_items": [i["label"] for i in all_items[:5]],
+                        "is_personalized": bool(skill_md),
+                        "confidence": 0.9
+                    }
+
+        return {
+            "status": "Success",
+            "answer": result.get("answer", "I'm not sure how to help with that."),
+            "nav_target": None,
+            "nav_label": None,
+            "intent_type": "need_response",
+            "options": [{"id": 3, "label": "Close"}],
+            "recommendations": [],
+            "is_personalized": False,
+            "confidence": 0.85
+        }
+
+    def _need_with_confirm(self, query, user_id, session, scene_graph):
+        need_type = self._extract_need_category(query)
+
+        available = self._get_available_items(need_type, user_id, session)
+
+        if not available:
+            return {
+                "answer": f"Sorry, there is no {need_type} available at home right now.",
+                "nav_target": None,
+                "nav_label": None,
+                "intent_type": "need_unavailable",
+                "options": [{"id": 3, "label": "Close"}],
+                "recommendations": [],
+                "is_personalized": False,
+                "confidence": 0.8
+            }
+
+        preferred = self._get_user_preference(user_id, need_type)
+        recommended_item = None
+
+        if preferred:
+            for item in available:
+                if preferred.lower() in item["label"].lower():
+                    recommended_item = item["label"]
+                    break
+
+        if not recommended_item and available:
+            recommended_item = available[0]["label"]
+
+        answer = f"Would you like me to get you {recommended_item}?"
+
+        session.pending_confirm = True
+        session.pending_need_type = need_type
+        session.pending_query = query
+        session.pending_item = recommended_item
+        session.available_items = available
+
+        return {
+            "answer": answer,
+            "nav_target": None,
+            "nav_label": None,
+            "intent_type": "need_confirm",
+            "options": [{"id": 1, "label": "Yes"}, {"id": 2, "label": "No, something else"}, {"id": 3, "label": "Cancel"}],
+            "recommendations": [{"label": recommended_item}],
+            "available_items": [i["label"] for i in available[:5]],
+            "is_personalized": preferred is not None,
+            "confidence": 0.9
+        }
+
+    def _process_feedback(self, query, user_id, session):
+        q = query.lower().strip()
+
+        if self._is_rejection(q):
+            if hasattr(session, 'pending_item') and session.pending_item:
+                session.excluded_items.add(session.pending_item.lower())
+
+            available = [i for i in session.available_items
+                         if i["label"].lower() not in session.excluded_items]
+
+            if available:
+                new_item = available[0]["label"]
+                session.pending_item = new_item
+                return {
+                    "answer": f"How about {new_item}? Would you like that?",
+                    "nav_target": None,
+                    "nav_label": None,
+                    "intent_type": "need_confirm",
+                    "options": [{"id": 1, "label": "Yes"}, {"id": 2, "label": "No, something else"}, {"id": 3, "label": "Cancel"}],
+                    "recommendations": [{"label": new_item}],
+                    "is_personalized": True,
+                    "confidence": 0.9
+                }
+            else:
+                session.pending_confirm = False
+                return {
+                    "answer": "Sorry, there are no other options available.",
+                    "nav_target": None,
+                    "nav_label": None,
+                    "intent_type": "need_unavailable",
+                    "options": [{"id": 3, "label": "Close"}],
+                    "recommendations": [],
+                    "is_personalized": False,
+                    "confidence": 0.8
+                }
+
+        if self._is_dislike(q):
+            for item in session.excluded_items:
+                if item in q:
+                    self._add_to_disliked(user_id, item)
+                    return {
+                        "answer": f"Got it, I will never recommend {item} again.",
+                        "nav_target": None,
+                        "nav_label": None,
+                        "intent_type": "feedback",
+                        "options": [{"id": 3, "label": "Close"}],
+                        "recommendations": [],
+                        "is_personalized": True,
+                        "confidence": 0.9
+                    }
+
+            if hasattr(session, 'pending_item') and session.pending_item:
+                self._add_to_disliked(user_id, session.pending_item)
+                session.excluded_items.add(session.pending_item.lower())
+
+                available = [i for i in session.available_items
+                             if i["label"].lower() not in session.excluded_items]
+
+                if available:
+                    new_item = available[0]["label"]
+                    session.pending_item = new_item
+                    return {
+                        "answer": f"Understood. Would you like {new_item} instead?",
+                        "nav_target": None,
+                        "nav_label": None,
+                        "intent_type": "need_confirm",
+                        "options": [{"id": 1, "label": "Yes"}, {"id": 2, "label": "No, something else"}, {"id": 3, "label": "Cancel"}],
+                        "recommendations": [{"label": new_item}],
+                        "is_personalized": True,
+                        "confidence": 0.9
+                    }
+                else:
+                    session.pending_confirm = False
+                    return {
+                        "answer": "Sorry, there are no other options available.",
+                        "nav_target": None,
+                        "nav_label": None,
+                        "intent_type": "need_unavailable",
+                        "options": [{"id": 3, "label": "Close"}],
+                        "recommendations": [],
+                        "is_personalized": False,
+                        "confidence": 0.8
+                    }
+
+        if self._is_confirmation(q):
+            return self._execute_pending(session, user_id)
+
+        if self._is_cancel(q):
+            session.pending_confirm = False
+            return {
+                "answer": "Okay, let me know if you need anything else.",
+                "nav_target": None,
+                "nav_label": None,
+                "intent_type": "cancelled",
+                "options": [{"id": 3, "label": "Close"}],
+                "recommendations": [],
+                "is_personalized": False,
+                "confidence": 0.9
+            }
+
+        return None
+
+    def _execute_pending(self, session, user_id):
+        session.pending_confirm = False
+
+        recommended = getattr(session, 'pending_item', None)
+
+        if recommended:
+            self.db.observation_logs.insert_one({
+                "user": user_id,
+                "action": "get",
+                "instance": recommended,
+                "interacting_items": [recommended],
+                "weight": 1,
+                "timestamp": datetime.datetime.utcnow()
+            })
+            print(f"[Record] {user_id} accepted {recommended}")
+            
+            obj = self.db.dynamic_objects.find_one({"label": recommended.lower()})
+            if obj:
+                nav_label = obj.get("last_seen_on")
+                nav_target = self._resolve_pos(nav_label)
+                return {
+                    "status": "Success",
+                    "answer": f"Okay, getting you {recommended} from {nav_label}",
+                    "nav_target": nav_target,
+                    "nav_label": nav_label,
+                    "options": self._build_options(nav_target, nav_label, ""),
+                    "confidence": 0.9,
+                    "intent_type": "execute",
+                    "recommendations": [{"label": recommended}],
+                    "is_personalized": True
+                }
+            
+            return {
+                "status": "Success",
+                "answer": f"Okay, getting you {recommended}",
+                "nav_target": None,
+                "nav_label": None,
+                "options": [{"id": 3, "label": "Close"}],
+                "confidence": 0.9,
+                "intent_type": "execute",
+                "recommendations": [{"label": recommended}],
+                "is_personalized": True
+            }
+
+        return {
+            "answer": "Okay",
+            "nav_target": None,
+            "nav_label": None,
+            "intent_type": "execute",
+            "options": [{"id": 3, "label": "Close"}],
+            "recommendations": [],
+            "is_personalized": True,
+            "confidence": 0.9
+        }
+
+    def _handle_execute(self, query, user_id):
+        if self.saycan:
+            sc_result = self.saycan.resolve(query, user_id)
+            return {
+                "status": "Success",
+                "answer": sc_result.get("explanation", ""),
+                "nav_target": sc_result.get("nav_target"),
+                "nav_label": sc_result.get("nav_label", ""),
+                "options": self._build_options(sc_result.get("nav_target"), sc_result.get("nav_label"), query),
+                "confidence": sc_result.get("best_score", 0.85),
+                "intent_type": "execute",
+                "recommendations": [{"label": sc_result.get("best_action", "")}] if sc_result.get("best_action") else [],
+                "is_personalized": False
+            }
+
+        return self._oneshot_fallback(query, user_id, "", "")
 
     def process(self, query, user_id="Unknown", robot_pos=None,
                 user_pos=None, room=""):
@@ -326,22 +710,26 @@ class InteractionEngine:
             self._reset_session(user_id)
             return self._interrupt_response()
 
-        negated = self._is_negation(query, user_id)
-        if negated:
-            session.excluded_items.add(negated.lower())
-            result = self._recommend_excluding(session, user_id, room, query)
-            self._schedule_skill_update(
-                user_id=user_id, query=query,
-                answer=result["answer"], env_snapshot="", rec_items=[])
-            return result
+        if session.pending_confirm:
+            feedback_result = self._process_feedback(query, user_id, session)
+            if feedback_result:
+                self._log_conversation(
+                    query=query, user_id=user_id,
+                    answer=feedback_result.get("answer", ""),
+                    nav_target=feedback_result.get("nav_target"),
+                    nav_label=feedback_result.get("nav_label", ""),
+                    room=room,
+                    intent_type=feedback_result.get("intent_type", "feedback"),
+                    recommendations=feedback_result.get("recommendations", []),
+                    is_personalized=feedback_result.get("is_personalized", False),
+                )
+                return feedback_result
 
-        query  = self._resolve_reference(query, session)
         intent = self._classify_intent(query)
         print(f"[Classify] intent={intent}")
 
         scene_graph = self._build_current_scene_graph(user_id, room, user_pos)
         session.last_scene_graph = scene_graph
-        print(f"[SceneGraph] built for {user_id}")
 
         if intent == "interrupt":
             self._reset_session(user_id)
@@ -351,112 +739,62 @@ class InteractionEngine:
             return self._chat_response(query, user_id, scene_graph)
 
         if intent == "locate":
-            if self.saycan:
-                result = self.saycan.locate(query, user_id)
-                result["intent_type"] = "query"
-                result["status"]      = "Success"
-                result["options"]     = self._build_options(
-                    result.get("nav_target"), result.get("nav_label"), query)
-                result["recommendations"]  = []
-                result["is_personalized"]  = False
-                result["confidence"]       = 0.9
-            else:
-                result = self._query_response(query, user_id, room)
-            session.last_nav_label  = result.get("nav_label", "")
+            result = self._query_response(query, user_id, room)
+
+            session.last_nav_label = result.get("nav_label", "")
             session.last_nav_target = result.get("nav_target")
-            return result
-
-        if intent == "need":
-            if self.saycan:
-                virtual_hour = None
-                try:
-                    vh_doc = self.db.system_config.find_one({"key": "virtual_hour"})
-                    virtual_hour = vh_doc.get("value") if vh_doc else None
-                except Exception:
-                    pass
-
-                prev_doc = self.db.activity_sequences.find_one(
-                    {"user": user_id}, sort=[("timestamp", -1)])
-                prev_action = "Standing"
-                if prev_doc and prev_doc.get("sequence"):
-                    seq = prev_doc["sequence"]
-                    if len(seq) >= 2:
-                        prev_action = seq[-2].get("action", "Standing")
-
-                pos_doc = self.db.user_positions.find_one({"user_id": user_id})
-                est_pos = None
-                if pos_doc:
-                    est_pos = {"x": float(pos_doc.get("x", 0)),
-                               "z": float(pos_doc.get("z", 0))}
-
-                sc_result = self.saycan.resolve(
-                    query        = query,
-                    user_id      = user_id,
-                    virtual_hour = virtual_hour,
-                    user_pos     = est_pos,
-                    prev_action  = prev_action,
-                )
-
-                answer      = sc_result.get("explanation", "")
-                nav_target  = sc_result.get("nav_target")
-                nav_label   = sc_result.get("nav_label", "")
-                best_action = sc_result.get("best_action", "")
-
-                skill_md = ""
-                if self._has_skill_manager:
-                    skill_md = self.skill_manager.get_skill(user_id) or ""
-                is_personalized = bool(skill_md and "(No skill profile" not in skill_md)
-
-                result = {
-                    "status":          "Success",
-                    "answer":          answer,
-                    "nav_target":      nav_target,
-                    "nav_label":       nav_label,
-                    "options":         self._build_options(nav_target, nav_label, query),
-                    "confidence":      sc_result.get("best_score", 0.85),
-                    "intent_type":     "saycan",
-                    "recommendations": [{"label": best_action}] if best_action else [],
-                    "is_personalized": is_personalized,
-                    "saycan_scores":   sc_result.get("final_scores", {}),
-                    "scene_graph":     scene_graph,
-                }
-            else:
-                result = self._oneshot_fallback(query, user_id, room, scene_graph)
-
-            session.last_nav_label   = result.get("nav_label", "")
-            session.last_nav_target  = result.get("nav_target")
-            session.last_recommended = [
-                r.get("label", "") for r in result.get("recommendations", [])
-            ]
-            session.last_intent     = "need"
-            session.pending_confirm = bool(result.get("nav_target"))
 
             self._log_conversation(
                 query=query, user_id=user_id,
-                answer=result["answer"],
-                nav_target=result["nav_target"],
-                nav_label=result["nav_label"],
+                answer=result.get("answer", ""),
+                nav_target=result.get("nav_target"),
+                nav_label=result.get("nav_label", ""),
                 room=room,
-                intent_type=result["intent_type"],
+                intent_type=result.get("intent_type", "query"),
                 recommendations=result.get("recommendations", []),
                 is_personalized=result.get("is_personalized", False),
             )
-            self._schedule_skill_update(
-                user_id=user_id, query=query,
-                answer=result["answer"], env_snapshot=scene_graph, rec_items=[])
+            return result
+
+        if intent == "need":
+            if self._is_execute_command(query):
+                result = self._handle_execute(query, user_id)
+            else:
+                rag_result = self._handle_need_with_rag(query, user_id, session)
+                if rag_result:
+                    result = rag_result
+                else:
+                    result = self._need_with_confirm(query, user_id, session, scene_graph)
+
+            session.last_nav_label = result.get("nav_label", "")
+            session.last_nav_target = result.get("nav_target")
+            session.last_recommended = [
+                r.get("label", "") for r in result.get("recommendations", [])
+            ]
+
+            self._log_conversation(
+                query=query, user_id=user_id,
+                answer=result.get("answer", ""),
+                nav_target=result.get("nav_target"),
+                nav_label=result.get("nav_label", ""),
+                room=room,
+                intent_type=result.get("intent_type", "need"),
+                recommendations=result.get("recommendations", []),
+                is_personalized=result.get("is_personalized", False),
+            )
             return result
 
         return self._oneshot_fallback(query, user_id, room, scene_graph)
 
     def _interrupt_response(self):
         return {
-            "status":          "Interrupted",
-            "answer":          "Understood, stopping now.",
-            "nav_target":      None,
-            "nav_label":       None,
-            "options":         [{"id": 3, "label": "Close"}],
-            "confidence":      1.0,
-            "intent_type":     "interrupt",
+            "status": "Interrupted",
+            "answer": "Understood, stopping now.",
+            "nav_target": None,
+            "nav_label": None,
+            "options": [{"id": 3, "label": "Close"}],
+            "confidence": 1.0,
+            "intent_type": "interrupt",
             "recommendations": [],
             "is_personalized": False,
         }
@@ -481,126 +819,81 @@ class InteractionEngine:
             user_id=user_id, query=query,
             answer=answer, env_snapshot=scene_graph, rec_items=[])
         return {
-            "status":          "Success",
-            "answer":          answer,
-            "nav_target":      None,
-            "nav_label":       None,
-            "options":         [{"id": 3, "label": "Close"}],
-            "confidence":      1.0,
-            "intent_type":     "chat",
+            "status": "Success",
+            "answer": answer,
+            "nav_target": None,
+            "nav_label": None,
+            "options": [{"id": 3, "label": "Close"}],
+            "confidence": 1.0,
+            "intent_type": "chat",
             "recommendations": [],
             "is_personalized": False,
         }
 
     def _query_response(self, query, user_id, room):
-        from datetime import timedelta
-
-        if self._is_person_query(query):
-            users = list(self.db.user_positions.find(
-                {"room": {"$exists": True, "$ne": ""}},
-                {"user_id": 1, "room": 1}))
-            seen = {}
-            for u in users:
-                key = u.get("user_id", "").lower()
-                if key not in seen:
-                    seen[key] = u
-            users  = list(seen.values())
-            answer = (
-                ", ".join(f"{u.get('user_id','?')} is in {u.get('room','?')}"
-                          for u in users)
-                if users else "No family members currently tracked."
-            )
-            return {
-                "status": "Success", "answer": answer,
-                "nav_target": None, "nav_label": None,
-                "options": [{"id": 3, "label": "Close"}],
-                "confidence": 0.9, "intent_type": "query",
-                "recommendations": [], "is_personalized": False,
-            }
-
-        specific_item = self._extract_specific_item(query)
-        if specific_item:
-            found = self.db.dynamic_objects.find_one(
-                {"label": {"$regex": specific_item, "$options": "i"}})
-            if not found:
-                return {
-                    "status":          "Success",
-                    "answer":          f"I don't see any {specific_item} at home right now.",
-                    "nav_target":      None, "nav_label": None,
-                    "options":         [{"id": 3, "label": "Close"}],
-                    "confidence":      0.9, "intent_type": "query",
-                    "recommendations": [], "is_personalized": False,
-                }
-
-        cutoff = datetime.datetime.utcnow() - timedelta(hours=2)
-        docs   = list(self.db.dynamic_objects.find(
-            {"last_seen": {"$gte": cutoff}},
-            {"label": 1, "room": 1, "last_seen_on": 1,
-             "interact_count": 1, "category": 1},
-        ).sort("interact_count", -1))
-
-        if not docs:
-            docs = list(self.db.dynamic_objects.find(
-                {},
-                {"label": 1, "room": 1, "last_seen_on": 1,
-                 "interact_count": 1, "category": 1},
-            ).sort("interact_count", -1).limit(15))
+        all_items = list(self.db.dynamic_objects.find(
+            {},
+            {"label": 1, "category": 1, "last_seen_on": 1, "room": 1}
+        ))
 
         EXCLUDE = {"user_mom", "user_dad", "user", "person", "people"}
-        docs    = [d for d in docs if d.get("label", "").lower() not in EXCLUDE]
+        all_items = [d for d in all_items if d.get("label", "").lower() not in EXCLUDE]
 
-        if not docs:
+        if not all_items:
             return {
                 "status": "Success",
                 "answer": "No items currently detected in the home.",
-                "nav_target": None, "nav_label": None,
+                "nav_target": None,
+                "nav_label": None,
                 "options": [{"id": 3, "label": "Close"}],
-                "confidence": 0.5, "intent_type": "query",
-                "recommendations": [], "is_personalized": False,
+                "confidence": 0.5,
+                "intent_type": "query",
+                "recommendations": [],
+                "is_personalized": False,
             }
 
-        relevant_docs = docs[:3]
-        if self._sbert:
-            try:
-                import numpy as np
-                q_vec  = self._sbert.encode(query, normalize_embeddings=True)
-                scored = sorted(
-                    [(d, float(np.dot(q_vec,
-                        self._sbert.encode(d.get("label", ""),
-                                           normalize_embeddings=True))))
-                     for d in docs],
-                    key=lambda x: x[1], reverse=True,
-                )
-                relevant_docs = [d for d, s in scored[:5] if s > 0.20] or docs[:3]
-            except Exception:
-                pass
+        items_text = ""
+        for item in all_items:
+            cat = f" [{item.get('category', 'unknown')}]" if item.get("category") else ""
+            items_text += f"- {item['label']}{cat}: on {item.get('last_seen_on', 'unknown')} in {item.get('room', 'unknown')}\n"
 
-        items_str  = ", ".join(
-            f"{d['label']} (on {d.get('last_seen_on','?')} in {d.get('room','?')})"
-            for d in relevant_docs[:3]
-        )
-        nav_label  = relevant_docs[0].get("last_seen_on") if relevant_docs else None
-        nav_target = self._resolve_pos(nav_label)
+        system = f"""You are a home robot assistant. Based ONLY on the items below, answer the user's question.
+
+ITEMS IN THE HOME:
+{items_text}
+
+RULES:
+- If user asks "is there X" or "do we have X", check if X exists in the list above
+- If user asks "where is X", provide the location from the list
+- If user asks "what do we have", list items from the list
+- If the item is NOT in the list, say "I don't have that"
+- Do NOT invent items not in the list
+- Keep response short
+
+User: {query}
+
+Respond directly to the user:"""
+
+        answer = self._call_llm_with_buffer(user_id, "", system, max_tokens=150)
+
+        if not answer:
+            answer = "I'm not sure how to help with that."
 
         return {
-            "status":    "Success",
-            "answer":    f"I found: {items_str}.",
-            "nav_target": nav_target,
-            "nav_label":  nav_label,
-            "options":    self._build_options(nav_target, nav_label, query),
+            "status": "Success",
+            "answer": answer,
+            "nav_target": None,
+            "nav_label": None,
+            "options": [{"id": 3, "label": "Close"}],
             "confidence": 0.85,
             "intent_type": "query",
-            "recommendations": [
-                {"label": d["label"], "last_seen_on": d.get("last_seen_on"),
-                 "room": d.get("room")}
-                for d in relevant_docs[:4]
-            ],
+            "recommendations": [],
             "is_personalized": False,
         }
 
     def _oneshot_fallback(self, query, user_id, room, scene_graph=""):
         need_category = self._extract_need_category(query)
-        env_snapshot  = self._build_env_snapshot(need_category)
+        env_snapshot = self._build_env_snapshot(need_category)
 
         skill_md = ""
         if self._has_skill_manager:
@@ -615,9 +908,9 @@ class InteractionEngine:
         ]
 
         system = ONE_SHOT_SYSTEM.format(
-            scene_graph  = scene_graph or "(not available)",
-            env_snapshot = env_snapshot,
-            skill_md     = skill_md,
+            scene_graph=scene_graph or "(not available)",
+            env_snapshot=env_snapshot,
+            skill_md=skill_md,
         )
 
         user_prompt = (
@@ -643,12 +936,12 @@ class InteractionEngine:
                 "recommendations": [], "is_personalized": False,
             }
 
-        answer     = result.get("answer", "").strip().strip('"').strip("'")
+        answer = result.get("answer", "").strip().strip('"').strip("'")
         nav_target = result.get("nav_target", "unknown")
-        nav_label  = result.get("nav_label", nav_target)
-        rec_items  = result.get("recommended_items", [])
-        nav_pos    = self._resolve_pos(nav_target) \
-                     if nav_target and nav_target != "unknown" else None
+        nav_label = result.get("nav_label", nav_target)
+        rec_items = result.get("recommended_items", [])
+        nav_pos = self._resolve_pos(nav_target) \
+                  if nav_target and nav_target != "unknown" else None
 
         self._schedule_skill_update(
             user_id=user_id, query=query,
@@ -663,86 +956,25 @@ class InteractionEngine:
         is_personalized = bool(skill_md and "(No skill profile" not in skill_md)
 
         return {
-            "status":          "Success",
-            "answer":          answer,
-            "nav_target":      nav_pos or nav_target,
-            "nav_label":       nav_label,
-            "options":         self._build_options(nav_pos, nav_label, query),
-            "confidence":      0.85,
-            "intent_type":     "oneshot",
+            "status": "Success",
+            "answer": answer,
+            "nav_target": nav_pos or nav_target,
+            "nav_label": nav_label,
+            "options": self._build_options(nav_pos, nav_label, query),
+            "confidence": 0.85,
+            "intent_type": "oneshot",
             "recommendations": [{"label": i} for i in rec_items],
             "is_personalized": is_personalized,
-        }
-
-    def _recommend_excluding(self, session, user_id, room, query):
-        from datetime import timedelta
-        cutoff = datetime.datetime.utcnow() - timedelta(hours=2)
-
-        docs = list(self.db.dynamic_objects.find(
-            {"last_seen": {"$gte": cutoff}, "category": "drink",
-             "label": {"$nin": list(session.excluded_items)}},
-            {"label": 1, "last_seen_on": 1, "room": 1}))
-
-        if not docs:
-            docs = list(self.db.dynamic_objects.find(
-                {"category": "drink",
-                 "label": {"$nin": list(session.excluded_items)}},
-                {"label": 1, "last_seen_on": 1, "room": 1}).limit(5))
-
-        if not docs:
-            return {
-                "status": "Success",
-                "answer": "I'm sorry, there are no other drinks available right now.",
-                "nav_target": None, "nav_label": None,
-                "options": [{"id": 3, "label": "Close"}],
-                "confidence": 0.8, "intent_type": "service",
-                "recommendations": [], "is_personalized": True,
-            }
-
-        session.last_recommended = [d["label"] for d in docs[:3]]
-        items_str    = ", ".join(
-            f"{d['label']} (on {d.get('last_seen_on', '?')})" for d in docs[:3])
-        excluded_str = ", ".join(session.excluded_items)
-
-        answer = _call_llm(
-            self.ollama_url, self.model_name,
-            "You are a friendly home robot. The user declined the previous recommendation. "
-            "Suggest alternatives naturally in one sentence. "
-            "Do not mention excluded items. Do not wrap in quotes.",
-            f"User said: \"{query}\"\n"
-            f"Available alternatives: {items_str}\n"
-            f"Do NOT suggest: {excluded_str}\n"
-            f"Reply in one natural sentence.",
-            max_tokens=80,
-        ) or f"There's also {items_str} available."
-
-        nav_label  = docs[0].get("last_seen_on") if docs else None
-        nav_target = self._resolve_pos(nav_label)
-
-        session.last_nav_label  = nav_label or ""
-        session.last_nav_target = nav_target
-        session.pending_confirm = bool(nav_target)
-
-        return {
-            "status":          "Success",
-            "answer":          answer,
-            "nav_target":      nav_target,
-            "nav_label":       nav_label,
-            "options":         self._build_options(nav_target, nav_label, query),
-            "confidence":      0.85,
-            "intent_type":     "service",
-            "recommendations": [{"label": d["label"]} for d in docs[:3]],
-            "is_personalized": True,
         }
 
     def _extract_need_category(self, query: str) -> str | None:
         if not self._sbert or not self._need_vecs:
             return None
         import numpy as np
-        q_vec  = self._sbert.encode(query, normalize_embeddings=True)
+        q_vec = self._sbert.encode(query, normalize_embeddings=True)
         scores = {cat: float(np.dot(q_vec, vec))
                   for cat, vec in self._need_vecs.items()}
-        best_cat   = max(scores, key=scores.get)
+        best_cat = max(scores, key=scores.get)
         best_score = scores[best_cat]
         return best_cat if best_score >= SBERT_CATEGORY_THRESHOLD else None
 
@@ -797,7 +1029,7 @@ class InteractionEngine:
             "wall", "floor", "ceiling", "window", "door",
         }
         cutoff = datetime.datetime.utcnow() - timedelta(hours=SNAPSHOT_TTL_HOURS)
-        docs   = list(self.db.dynamic_objects.find(
+        docs = list(self.db.dynamic_objects.find(
             {"last_seen": {"$gte": cutoff}},
             {"label": 1, "category": 1, "room": 1,
              "last_seen_on": 1, "interact_count": 1},
@@ -822,8 +1054,8 @@ class InteractionEngine:
 
         if need_category:
             priority = [d for d in docs if d.get("category") == need_category]
-            others   = [d for d in docs if d.get("category") != need_category]
-            lines    = (
+            others = [d for d in docs if d.get("category") != need_category]
+            lines = (
                 [f"=== {need_category.upper()} items (priority) ==="]
                 + [_fmt(d) for d in priority]
                 + (["=== Other items ==="] + [_fmt(d) for d in others] if others else [])
@@ -839,14 +1071,14 @@ class InteractionEngine:
 
         def _bg():
             try:
-                sm     = self.skill_manager
+                sm = self.skill_manager
                 should = sm.should_update(
                     user_id=user_id, query=query, answer=answer, trace=[])
                 if should:
                     sm.update(user_id, query, answer, trace=[{
-                        "step":   1,
-                        "tool":   "interaction",
-                        "input":  {"query": query},
+                        "step": 1,
+                        "tool": "interaction",
+                        "input": {"query": query},
                         "result": (
                             f"User: \"{query}\"\nRobot: \"{answer}\"\n"
                             f"Scene:\n{env_snapshot}\nRecommended: {rec_items}"
@@ -859,7 +1091,7 @@ class InteractionEngine:
 
     def _call_llm_with_buffer(self, user_id: str, system: str,
                                query: str, max_tokens: int = None) -> str:
-        history  = self._conv_buffer.get(user_id, [])
+        history = self._conv_buffer.get(user_id, [])
         messages = [{"role": "system", "content": system}]
         messages.extend(history)
         messages.append({"role": "user", "content": query})
@@ -868,18 +1100,18 @@ class InteractionEngine:
             resp = requests.post(
                 f"{self.ollama_url}/api/chat",
                 json={
-                    "model":    self.model_name,
+                    "model": self.model_name,
                     "messages": messages,
-                    "stream":   False,
-                    "options":  {"temperature": LLM_TEMP,
-                                 "num_predict": max_tokens or LLM_TOKENS},
+                    "stream": False,
+                    "options": {"temperature": LLM_TEMP,
+                                "num_predict": max_tokens or LLM_TOKENS},
                 },
                 timeout=LLM_TIMEOUT,
             )
             resp.raise_for_status()
             answer = resp.json()["message"]["content"].strip()
-            buf    = self._conv_buffer[user_id]
-            buf.append({"role": "user",      "content": query})
+            buf = self._conv_buffer[user_id]
+            buf.append({"role": "user", "content": query})
             buf.append({"role": "assistant", "content": answer})
             if len(buf) > CONV_BUFFER_MAX_TURNS * 2:
                 self._conv_buffer[user_id] = buf[-(CONV_BUFFER_MAX_TURNS * 2):]
@@ -901,10 +1133,10 @@ class InteractionEngine:
 
         if choice == 1:
             return {
-                "status":    "navigate",
+                "status": "navigate",
                 "nav_target": nav_target,
-                "nav_label":  nav_label,
-                "message":   f"Navigating to {nav_label}.",
+                "nav_label": nav_label,
+                "message": f"Navigating to {nav_label}.",
             }
         if choice == 2:
             pos_str = (f"[{nav_target[0]:.1f}, {nav_target[1]:.1f}]"
@@ -932,14 +1164,14 @@ class InteractionEngine:
                            nav_label, room, intent_type,
                            recommendations, is_personalized):
         self.conv_logs.insert_one({
-            "user_id":         user_id,
-            "query":           query,
-            "intent_type":     intent_type,
-            "answer":          answer,
-            "nav_label":       nav_label,
-            "nav_target":      nav_target,
-            "room":            room,
+            "user_id": user_id,
+            "query": query,
+            "intent_type": intent_type,
+            "answer": answer,
+            "nav_label": nav_label,
+            "nav_target": nav_target,
+            "room": room,
             "recommendations": recommendations,
             "is_personalized": is_personalized,
-            "timestamp":       datetime.datetime.now(),
+            "timestamp": datetime.datetime.now(),
         })

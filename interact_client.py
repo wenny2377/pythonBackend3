@@ -1,8 +1,9 @@
 import requests
 import json
 import os
+import sys
 
-BACKEND      = "http://127.0.0.1:5000"
+BACKEND = "http://127.0.0.1:5000"
 DEFAULT_USER = "User_Mom"
 DEFAULT_ROOM = ""
 
@@ -10,34 +11,6 @@ USERS = [
     ("1", "User_Mom"),
     ("2", "User_Dad"),
 ]
-
-
-def _extract_answer(buf):
-    marker = '"answer":'
-    idx = buf.find(marker)
-    if idx == -1:
-        return None
-    start = buf.find('"', idx + len(marker))
-    if start == -1:
-        return None
-    start += 1
-    result = []
-    i = start
-    while i < len(buf):
-        c = buf[i]
-        if c == '\\' and i + 1 < len(buf):
-            nc = buf[i + 1]
-            if nc == '"':
-                result.append('"'); i += 2; continue
-            elif nc == 'n':
-                result.append('\n'); i += 2; continue
-            elif nc == '\\':
-                result.append('\\'); i += 2; continue
-        elif c == '"':
-            break
-        result.append(c)
-        i += 1
-    return "".join(result)
 
 
 def ask_stream(query, user_id, room=DEFAULT_ROOM):
@@ -58,88 +31,36 @@ def ask_stream(query, user_id, room=DEFAULT_ROOM):
 
     print("\n[robot]  ", end="", flush=True)
 
-    raw_buf      = ""
-    plain_buf    = ""
-    final_result = {}
-    last_len     = 0
-    is_json_mode = None
-
-    for raw_line in resp.iter_lines():
-        if not raw_line:
+    for line in resp.iter_lines():
+        if not line:
             continue
-        line = raw_line.decode("utf-8") if isinstance(raw_line, bytes) else raw_line
-        if not line.startswith("data: "):
+        line_str = line.decode("utf-8") if isinstance(line, bytes) else line
+        if not line_str.startswith("data: "):
             continue
         try:
-            event = json.loads(line[6:])
+            event = json.loads(line_str[6:])
         except json.JSONDecodeError:
             continue
 
         etype = event.get("type", "")
 
-        if etype == "intent":
-            intent = event.get("intent", "")
-            is_json_mode = intent not in ("chat", "query", "interrupt")
-            continue
-
         if etype == "token":
-            token = event.get("content", "")
-
-            if is_json_mode is False:
-                print(token, end="", flush=True)
-                plain_buf += token
-
-            elif is_json_mode is True:
-                raw_buf += token
-                visible = _extract_answer(raw_buf)
-                if visible is not None:
-                    new_part = visible[last_len:]
-                    if new_part:
-                        print(new_part, end="", flush=True)
-                        last_len = len(visible)
-                else:
-                    if len(raw_buf) > 200 and last_len == 0:
-                        print(".", end="", flush=True)
-
-            else:
-                raw_buf   += token
-                plain_buf += token
-                visible = _extract_answer(raw_buf)
-                if visible is not None:
-                    is_json_mode = True
-                    new_part = visible[last_len:]
-                    if new_part:
-                        print(new_part, end="", flush=True)
-                        last_len = len(visible)
-                else:
-                    print(token, end="", flush=True)
+            content = event.get("content", "")
+            print(content, end="", flush=True)
 
         elif etype == "done":
-            if is_json_mode is False:
-                answer_text = plain_buf.strip().strip('"').strip("'")
-            else:
-                answer_text = (
-                    _extract_answer(raw_buf) or plain_buf
-                ).strip().strip('"').strip("'")
-
-            if not answer_text:
-                answer_text = "(no response)"
-
-            final_result = {
-                "status":          "Success",
-                "answer":          answer_text,
-                "nav_target":      event.get("nav_target"),
-                "nav_label":       event.get("nav_label", ""),
-                "confidence":      event.get("confidence", 0.8),
-                "intent_type":     event.get("intent_type", "oneshot"),
+            print()
+            return {
+                "answer": event.get("answer", ""),
+                "nav_target": event.get("nav_target"),
+                "nav_label": event.get("nav_label", ""),
+                "confidence": event.get("confidence", 0.8),
+                "intent_type": event.get("intent_type", ""),
                 "is_personalized": event.get("is_personalized", False),
-                "options":         event.get("options", []),
-                "recommendations": [],
+                "options": event.get("options", []),
             }
-            break
 
-    print()
-    return final_result if final_result else None
+    return None
 
 
 def ask(query, user_id, room=DEFAULT_ROOM):
@@ -167,11 +88,11 @@ def confirm(choice, nav_target, nav_label, user_id, query):
         resp = requests.post(
             f"{BACKEND}/interact/confirm",
             json={
-                "choice":     choice,
+                "choice": choice,
                 "nav_target": nav_target,
-                "nav_label":  nav_label,
-                "userID":     user_id,
-                "query":      query,
+                "nav_label": nav_label,
+                "userID": user_id,
+                "query": query,
             },
             timeout=10,
         )
@@ -202,10 +123,10 @@ def display_nav(result, user_id, query, answer_printed=False):
         if answer:
             print(f"\n[robot]  {answer}")
 
-    nav_target   = result.get("nav_target")
-    nav_label    = result.get("nav_label", "")
-    confidence   = result.get("confidence", 0)
-    intent_type  = result.get("intent_type", "")
+    nav_target = result.get("nav_target")
+    nav_label = result.get("nav_label", "")
+    confidence = result.get("confidence", 0)
+    intent_type = result.get("intent_type", "")
     personalized = result.get("is_personalized", False)
 
     if nav_label and nav_label not in ("", "unknown"):
