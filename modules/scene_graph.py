@@ -20,24 +20,6 @@ OBJECT_CATEGORIES = {
     "notebook":   "media",
 }
 
-HELD_OBJECT_TO_ACTION = {
-    "bottle":   "Drinking",
-    "cola":     "Drinking",
-    "cup":      "Drinking",
-    "bowl":     "Eating",
-    "plate":    "Eating",
-    "apple":    "Eating",
-    "banana":   "Eating",
-    "pan":      "Cooking",
-    "broom":    "Cleaning",
-    "book":     "Reading",
-    "phone":    "PhoneUse",
-    "remote":   "Watching",
-    "keyboard": "Typing",
-    "mouse":    "Typing",
-}
-
-
 _wrist_history: dict = {}
 
 
@@ -97,9 +79,9 @@ def _skeleton_to_semantic(skel_body: str, head_pitch: float,
         if head_pitch < -55:
             hints.append("head strongly tilted back (consistent with lying down)")
         elif head_pitch < -18:
-            hints.append("head tilted back (consistent with drinking)")
+            hints.append("head tilted back")
         elif head_pitch > 65:
-            hints.append("head bent far forward (consistent with reading)")
+            hints.append("head bent far forward")
         elif head_pitch > 45:
             hints.append("head looking down significantly")
         elif head_pitch > 20:
@@ -109,11 +91,11 @@ def _skeleton_to_semantic(skel_body: str, head_pitch: float,
 
     if arm_elevation >= 0:
         if arm_elevation > 165:
-            hints.append("arm raised very high (consistent with opening/reaching)")
+            hints.append("arm raised very high")
         elif arm_elevation > 130:
             hints.append("arm raised")
         elif arm_elevation < 60:
-            hints.append("arm lowered (consistent with sitting drink or resting)")
+            hints.append("arm lowered")
 
     return ", ".join(hints) if hints else ""
 
@@ -260,7 +242,7 @@ def build_scene_text(user_pos, user_forward, room_name,
     tv_state = tv_doc.get("state", "off") if tv_doc else "unknown"
 
     if facing in ("tv", "television"):
-        lines.append(f"Facing: {facing} (currently {tv_state})")
+        lines.append(f"Facing: {facing} (TV is {tv_state})")
     else:
         lines.append(f"Facing: {facing}")
 
@@ -317,7 +299,7 @@ def build_scene_text(user_pos, user_forward, room_name,
                 lines.append(f"TV: {tv_state}")
         except Exception:
             lines.append(f"TV: {tv_state}")
-    elif tv_doc and facing not in ("tv", "television"):
+    else:
         lines.append(f"TV: {tv_state}")
 
     lines.append("=== End Scene ===")

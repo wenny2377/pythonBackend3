@@ -636,51 +636,37 @@ class PerceptionEngine:
         h2h_valid = h2h >= 0
         arm_valid = arm >= 0
 
+        body_position = None
+        
         laying_cfg = _BEHAVIOUR_CFG.get("Laying", {})
         laying_ideal = float(laying_cfg.get("head_pitch", {}).get("ideal", -83))
         laying_tol = float(laying_cfg.get("head_pitch", {}).get("tolerance", 10))
         if pitch_valid and abs(pitch - laying_ideal) <= laying_tol:
-            return "lying", "Laying"
-
-        sd_cfg = _BEHAVIOUR_CFG.get("SittingDrink", {})
-        sd_ideal = float(sd_cfg.get("head_pitch", {}).get("ideal", -25))
-        sd_tol = float(sd_cfg.get("head_pitch", {}).get("tolerance", 8))
-        if pitch_valid and abs(pitch - sd_ideal) <= sd_tol:
-            if h2h_valid and h2h < 0.35:
-                return "sitting", "SittingDrink"
-
-        read_cfg = _BEHAVIOUR_CFG.get("Reading", {})
-        read_ideal = float(read_cfg.get("head_pitch", {}).get("ideal", 70))
-        read_tol = float(read_cfg.get("head_pitch", {}).get("tolerance", 12))
-        if pitch_valid and abs(pitch - read_ideal) <= read_tol:
-            return "sitting", "Reading"
-
-        eat_cfg = _BEHAVIOUR_CFG.get("Eating", {})
-        eat_ideal = float(eat_cfg.get("head_pitch", {}).get("ideal", 21))
-        eat_tol = float(eat_cfg.get("head_pitch", {}).get("tolerance", 8))
-        if pitch_valid and abs(pitch - eat_ideal) <= eat_tol:
-            if h2h_valid and h2h < 0.40:
-                return "sitting", "Eating"
-
-        if arm_valid and arm > 165:
-            return "standing", "Opening"
-
-        try:
-            tv_doc = self.db.device_states.find_one({"label": "tv"})
-            tv_on = tv_doc and tv_doc.get("state", "off") == "on"
-            if tv_on and pitch_valid and -20 < pitch < 30:
-                return "sitting", "Watching"
-        except Exception:
-            pass
-
+            body_position = "lying"
+        
+        elif pitch_valid and -40 < pitch < 40:
+            body_position = "sitting"
+        
+        elif arm_valid and arm > 165:
+            body_position = "standing"
+        
+        elif pitch_valid and pitch > 65:
+            body_position = "sitting"
+        
+        elif pitch_valid and 10 < pitch < 25 and h2h_valid and h2h < 0.40:
+            body_position = "sitting"
+        
         r_fwd = wrist_z > -999 and wrist_z > 0.03
         l_fwd = l_wrist_z > -999 and l_wrist_z > 0.03
         r_lvl = wrist_h > -999 and abs(wrist_h) < 0.30
         l_lvl = l_wrist_h > -999 and abs(l_wrist_h) < 0.30
-        if r_fwd and l_fwd and r_lvl and l_lvl:
-            return "sitting", "Typing"
-
-        return None, None
+        if body_position is None and r_fwd and l_fwd and r_lvl and l_lvl:
+            body_position = "sitting"
+        
+        if body_position is None:
+            return None, None
+        
+        return body_position, None
 
     def _temporal_smooth(self, new_action: str, evidence_score: float,
                           user_id: str, hip_height: float = -1) -> str:
@@ -725,11 +711,9 @@ class PerceptionEngine:
         skel_body = None
         head_pitch = float(payload.get("head_pitch", -999)) if payload else -999
         if payload:
-            skel_body, skel_hint = self._skeleton_body_position(payload)
+            skel_body, _ = self._skeleton_body_position(payload)
             if skel_body in ("sitting", "standing", "lying"):
                 body_position = skel_body
-            if skel_hint and skel_hint in BEHAVIOR_LABELS:
-                return skel_hint, f"skeleton:{skel_hint}", zone_label
 
         candidates = set(b for b in BEHAVIOR_LABELS if b not in NO_WEIGHT_ACTIONS)
         for b in list(candidates):
@@ -743,14 +727,11 @@ class PerceptionEngine:
         if not candidates:
             return "Standing", "no_candidates", zone_label
 
-        if skel_body == "lying" and "Laying" in candidates:
-            return "Laying", "strong:skeleton_lying", zone_label
-
         _llm_url = getattr(self, '_llm_url', self.url)
         _llm_model = getattr(self, '_llm_model', "llama3.1:8b")
 
         try:
-            from modules.scene_graph import build_scene_text, HELD_OBJECT_TO_ACTION
+            from modules.scene_graph import build_scene_text
 
             _prev_wrist_h = -999.0
             _prev_h2h = -1.0
@@ -838,12 +819,12 @@ class PerceptionEngine:
 
         body_impossible_map = {
             "lying": {"Drinking", "SittingDrink", "Sitting", "Eating", "Cooking",
-                      "Opening", "Watching", "Reading", "Cleaning", "PhoneUse",
-                      "Typing", "Walking", "Standing"},
+                    "Opening", "Watching", "Reading", "Cleaning", "PhoneUse",
+                    "Typing", "Walking", "Standing"},
             "sitting": {"Drinking", "Cooking", "Opening", "Cleaning",
                         "PhoneUse", "Walking", "Standing"},
             "standing": {"SittingDrink", "Sitting", "Eating", "Laying",
-                         "Watching", "Typing"},
+                        "Watching", "Typing"},
         }
 
         feasible = set(candidates)
@@ -861,6 +842,7 @@ class PerceptionEngine:
         _posture_str = ""
         _room_str = ""
         _near_str = near or "unknown area"
+        
         for _line in scene_text.split("\n"):
             _l = _line.strip()
             if _l.startswith("TV:"):
@@ -874,6 +856,15 @@ class PerceptionEngine:
             if _l.startswith("Room:"):
                 _room_str = _l.replace("Room: ", "").strip()
 
+        tv_on = False
+        try:
+            tv_doc = self.db.device_states.find_one({"label": "tv"})
+            if tv_doc:
+                tv_on = tv_doc.get("state", "off") == "on"
+                print(f"[LLM TV] TV state from DB: {tv_doc.get('state', 'off')}")
+        except Exception as e:
+            print(f"[LLM TV] error: {e}")
+
         _room_display = _room_str or "home"
         nl_parts = [f"A person is in the {_room_display}."]
         if _time_str:
@@ -884,8 +875,11 @@ class PerceptionEngine:
         if _event_line:
             nl_parts.append(f"{_event_line}.")
         nl_parts.append(f"Nearest area: {_near_str}.")
-        if _tv_state:
-            nl_parts.append(f"{_tv_state}.")
+        
+        if tv_on:
+            nl_parts.append("TV: on")
+        else:
+            nl_parts.append("TV: off")
 
         scene_description = " ".join(nl_parts)
         candidate_list_str = ", ".join(sorted(feasible))
@@ -899,6 +893,8 @@ class PerceptionEngine:
             "\"confidence\": 0.0, "
             "\"reason\": \"<max 40 chars>\"}"
         )
+
+        print(f"[LLM PROMPT] {prompt[:500]}...")
 
         try:
             resp = requests.post(
@@ -949,7 +945,7 @@ class PerceptionEngine:
         if feasible:
             fallback = sorted(feasible)[0]
             return fallback, "pmi_llm_error_fallback", 0.1
-        return None, "", 0.0
+        return None, "", 0.0    
 
     def _emit_edge(self, user_id: str, action: str, bound_label: str,
                    confidence: float, user_pos: dict):
