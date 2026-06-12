@@ -1,0 +1,11 @@
+Experiment 1: HAR Accuracy
+DB: robot_rag_db
+
+Overall: 80.0%  (4/5)
+
+Per-class:
+  XX SittingDrink   0.0%  (0/2)
+  XX Sitting        0.0%  (0/2)
+  OK Laying         100.0%  (1/1)
+  OK Cleaning       100.0%  (3/3)
+  XX Typing         0.0%  (0/1)

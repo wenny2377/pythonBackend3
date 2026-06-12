@@ -730,7 +730,13 @@ def _process_predict(episode_id: str, data: dict):
     print(f"[Predict] done | {_user_id} | "
           f"{result.get('action')} -> {spatial_action} | {vlm_ms}ms")
 
-
+@app.route('/set_experiment_type', methods=['POST'])
+def set_experiment_type():
+    data     = request.get_json()
+    exp_type = data.get('type', 'baseline')
+    Config.OBJECT_CONFUSION_ENABLED = (exp_type == 'corruption')
+    print(f"[Experiment] type={exp_type} | confusion={Config.OBJECT_CONFUSION_ENABLED}")
+    return jsonify({"status": "ok", "type": exp_type}), 200
 
 @app.route('/scene', methods=['POST'])
 def handle_scene():

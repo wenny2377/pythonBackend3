@@ -1,15 +1,19 @@
 import csv
 import os
 import re
+import sys
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, _ROOT)
+from config import Config
 from collections import defaultdict
 from pymongo import MongoClient
 
-# Path relative to robotBrain/ root directory
-# Run this script from: cd ~/db/robotBrain && python3 tools/charades_pipeline.py
-CHARADES_TRAIN_CSV   = "data/charades/Charades_v1_train.csv"
-CHARADES_CLASSES_TXT = "data/charades/Charades_v1_classes.txt"
+
+
+CHARADES_TRAIN_CSV   = os.path.join(_ROOT, "data", "charades", "Charades_v1_train.csv")
+CHARADES_CLASSES_TXT = os.path.join(_ROOT, "data", "charades", "Charades_v1_classes.txt")
 MONGO_URI = "mongodb://127.0.0.1:27017/"
-DB_NAME   = "robot_rag_db"
+DB_NAME   = Config.DB_NAME
 
 YOUR_LABELS = [
     "Drinking", "SittingDrink", "Eating", "Cooking", "Opening",

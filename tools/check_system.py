@@ -1,17 +1,3 @@
-"""
-check_system.py
-───────────────
-Monitor experiment progress in real time.
-
-Usage:
-  DB_NAME=robot_exp_baseline python3 tools/check_system.py          # full check
-  DB_NAME=robot_exp_baseline python3 tools/check_system.py --watch  # live monitor
-  DB_NAME=robot_exp_baseline python3 tools/check_system.py --quick  # summary only
-
-Or via run.sh:
-  bash run.sh results  (runs eval_runner.py + analysis scripts)
-"""
-
 import argparse
 import datetime
 import os
@@ -20,7 +6,23 @@ from collections import Counter
 from pymongo import MongoClient
 
 MONGO_URI = "mongodb://127.0.0.1:27017/"
-DB_NAME   = os.environ.get("DB_NAME", "robot_rag_db")
+
+
+def _ask_db() -> str:
+    print("\nWhich DB?")
+    print("  1) Baseline   (robot_exp_baseline)")
+    print("  2) Corruption (robot_exp_corruption)")
+    try:
+        choice = input("Choice [1]: ").strip() or "1"
+    except EOFError:
+        choice = "1"
+    return {
+        "1": "robot_exp_baseline",
+        "2": "robot_exp_corruption",
+    }.get(choice, "robot_exp_baseline")
+
+
+DB_NAME = os.environ.get("DB_NAME") or _ask_db()
 
 
 def connect():

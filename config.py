@@ -2,6 +2,20 @@ import os
 import torch
 
 
+def _ask_db() -> str:
+    print("\nWhich DB?")
+    print("  1) Baseline   (robot_exp_baseline)")
+    print("  2) Corruption (robot_exp_corruption)")
+    try:
+        choice = input("Choice [1]: ").strip() or "1"
+    except EOFError:
+        choice = "1"
+    return {
+        "1": "robot_exp_baseline",
+        "2": "robot_exp_corruption",
+    }.get(choice, "robot_exp_baseline")
+
+
 class Config:
     FLASK_HOST = "0.0.0.0"
     FLASK_PORT = 5000
@@ -11,7 +25,7 @@ class Config:
     LLM_MODEL  = "llama3.1:8b"
 
     MONGO_URI = "mongodb://127.0.0.1:27017/"
-    DB_NAME   = os.environ.get("DB_NAME", "robot_rag_db")
+    DB_NAME   = os.environ.get("DB_NAME") or _ask_db()
 
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -41,14 +55,6 @@ class Config:
     MIDAS_MODEL_TYPE = "MiDaS_small"
 
     OBJECT_CONFUSION_ENABLED = False
-    OBJECT_CONFUSION_MAP = {
-        "remote": ("phone",  0.12),
-        "phone":  ("remote", 0.10),
-        "cola":   ("bottle", 0.08),
-        "bottle": ("cola",   0.07),
-        "bowl":   ("cup",    0.05),
-        "cup":    ("bowl",   0.05),
-    }
 
 
-print(f"System init: device={Config.DEVICE} | LLM={Config.LLM_MODEL} | VLM={Config.VLM_MODEL} | DB={Config.DB_NAME}")
+print(f"DB={Config.DB_NAME} | device={Config.DEVICE} | LLM={Config.LLM_MODEL}")

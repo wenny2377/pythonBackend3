@@ -1,13 +1,29 @@
 import os
 import shutil
-import argparse
 from datetime import datetime
 from pymongo import MongoClient
 
-MONGO_URI = "mongodb://127.0.0.1:27017/"
-DB_NAME   = os.environ.get("DB_NAME", "robot_rag_db")
 
-CLEAN_SKILL_TEMPLATE = """# {user_id} Skill Profile
+def _ask_db() -> str:
+    print("\nWhich DB to reset?")
+    print("  1) Baseline   (robot_exp_baseline)")
+    print("  2) Corruption (robot_exp_corruption)")
+    try:
+        choice = input("Choice [1]: ").strip() or "1"
+    except EOFError:
+        choice = "1"
+    return {
+        "1": "robot_exp_baseline",
+        "2": "robot_exp_corruption",
+    }.get(choice, "robot_exp_baseline")
+
+
+MONGO_URI = "mongodb://127.0.0.1:27017/"
+DB_NAME   = os.environ.get("DB_NAME") or _ask_db()
+
+SKILL_USERS = ["User_Mom", "User_Dad"]
+
+CLEAN_SKILL = """# {user_id} Skill Profile
 *Version 1 | Updated: {date}*
 
 ## Behavior Patterns
@@ -23,8 +39,6 @@ CLEAN_SKILL_TEMPLATE = """# {user_id} Skill Profile
 - Do not recommend items not in the environment snapshot
 """
 
-SKILL_USERS = ["User_Mom", "User_Dad"]
-
 COLLECTIONS_TO_CLEAR = [
     "robot_memory", "eval_logs", "exp_checkpoint_logs",
     "observation_logs", "habit_snapshots", "activity_sequences",
@@ -34,9 +48,10 @@ COLLECTIONS_TO_CLEAR = [
     "service_proposals", "service_results", "intent_stats",
     "skill_chunks", "episodic_summaries", "saycan_logs",
     "navigation_logs", "user_positions", "object_events",
+    "device_states",
 ]
 
-KEEP_COLLECTIONS = [
+KEEP_ALWAYS = [
     "scene_snapshots",
     "transition_matrix",
     "charades_affinity",
@@ -49,45 +64,23 @@ FAISS_FILES = [
     "skill_chunks.index",   "skill_chunks_meta.json",
 ]
 
-MANIFOLD_MODEL_DIR = "manifold_models"
-
 
 def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--keep-scene",    action="store_true",
-                        help="Keep scene_snapshots (furniture layout)")
-    parser.add_argument("--keep-charades", action="store_true",
-                        help="Keep transition_matrix from Charades")
-    args = parser.parse_args()
-
     client = MongoClient(MONGO_URI)
     db     = client[DB_NAME]
 
-    print(f"\n{'='*50}")
+    print(f"\n{'='*45}")
     print(f"  Reset: {DB_NAME}")
-    if args.keep_scene:    print("  --keep-scene:    scene_snapshots preserved")
-    if args.keep_charades: print("  --keep-charades: transition_matrix preserved")
-    print(f"{'='*50}\n")
-
-    to_clear = list(COLLECTIONS_TO_CLEAR)
-
-    if not args.keep_scene:
-        to_clear.append("scene_snapshots")
-    if not args.keep_charades:
-        to_clear += ["transition_matrix", "charades_affinity",
-                     "charades_affinity_normalized"]
+    print(f"{'='*45}\n")
 
     print("Clearing collections...")
     total = 0
-    for col in to_clear:
-        try:
-            n = db[col].delete_many({}).deleted_count
-            total += n
-            if n > 0:
-                print(f"  [{col}] deleted {n}")
-        except Exception as e:
-            print(f"  [{col}] error: {e}")
-    print(f"  Total deleted: {total}")
+    for col in COLLECTIONS_TO_CLEAR:
+        n = db[col].delete_many({}).deleted_count
+        total += n
+        if n > 0:
+            print(f"  {col}: {n} deleted")
+    print(f"  Total: {total} records deleted")
 
     print("\nResetting SKILL.md...")
     date = datetime.now().strftime("%Y-%m-%d")
@@ -95,14 +88,14 @@ def main():
         db.user_skills.update_one(
             {"user_id": uid},
             {"$set": {
-                "skill_md":   CLEAN_SKILL_TEMPLATE.format(user_id=uid, date=date),
+                "skill_md":   CLEAN_SKILL.format(user_id=uid, date=date),
                 "version":    1,
                 "updated_at": datetime.utcnow(),
                 "is_stale":   False,
             }},
             upsert=True,
         )
-        print(f"  [{uid}] reset")
+        print(f"  {uid} reset")
 
     print("\nRemoving FAISS files...")
     for path in FAISS_FILES:
@@ -112,23 +105,21 @@ def main():
                 os.remove(full)
                 print(f"  removed {full}")
 
-    print("\nRemoving Manifold models...")
-    if os.path.exists(MANIFOLD_MODEL_DIR):
-        removed = 0
-        for f in os.listdir(MANIFOLD_MODEL_DIR):
-            if f.endswith(".pkl"):
-                os.remove(os.path.join(MANIFOLD_MODEL_DIR, f))
-                removed += 1
-        print(f"  removed {removed} model files")
+    if os.path.exists("manifold_models"):
+        removed = sum(
+            1 for f in os.listdir("manifold_models")
+            if f.endswith(".pkl") and
+            not os.remove(os.path.join("manifold_models", f))
+        )
+        if removed:
+            print(f"  removed {removed} manifold models")
 
     if os.path.exists("debug_images"):
         shutil.rmtree("debug_images")
         print("  removed debug_images/")
 
-    print(f"\n{'='*50}")
-    print(f"  Reset complete: {DB_NAME}")
-    print(f"  Next: bash run.sh baseline (or corruption/demo)")
-    print(f"{'='*50}\n")
+    print(f"\n  Done. DB={DB_NAME} is clean.")
+    print(f"  Next: python3 app.py\n")
 
 
 if __name__ == "__main__":
