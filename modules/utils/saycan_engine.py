@@ -249,7 +249,7 @@ class SayCanEngine:
             print(f"[SayCan-Say] LLM failed: {e}")
             if self.sbert is not None:
                 try:
-                    from modules.scene_engine import AFFORDANCE_DESCRIPTIONS
+                    from modules.perception.scene_engine import AFFORDANCE_DESCRIPTIONS
                     q_vec = self.sbert.encode(query, normalize_embeddings=True)
                     scores = {}
                     for b in BEHAVIOR_LABELS:
