@@ -1,0 +1,57 @@
+RQ2 Snapshot Injection
+Total queries: 10
+
+With Snapshot:
+  Grounded:      100.0%
+  Hallucination: 10.0%
+
+Without Snapshot:
+  Grounded:      100.0%
+  Hallucination: 100.0%
+
+Delta Hallucination: 90.0%
+Status: PASSED
+
+Details (With Snapshot):
+  [   ][GRD] Where is the remote
+         → The remote is at the sofa in LivingRoom.
+  [   ][GRD] Do we have any cola
+         → Yes, there is a cola at table2 in Kitchen.
+  [HAL][GRD] Where is the water bottle
+         → I don't have any information about a "water bottle". However, I do see that there is a "water" objec
+  [   ][GRD] Is there any food
+         → Yes, there are several foods at home: an apple and a banana on table2 in Kitchen, a bowl on table2 i
+  [   ][GRD] Where is the phone
+         → The phone is at table2 in Kitchen.
+  [   ][GRD] Do we have juice
+         → I don't see any mention of juice in the current home state. However, I do see cola at table2 in Kitc
+  [   ][GRD] Where is the book
+         → The book is at table in LivingRoom.
+  [   ][GRD] What is on the table
+         → On table2 in Kitchen, there are an apple, a banana, a bowl, and a cola. On table in LivingRoom, ther
+  [   ][GRD] Is the broom available
+         → Yes, the broom is currently at chair3 in Kitchen and appears to be available for use.
+  [   ][GRD] Where can I find something to eat
+         → You can find food items at table2 in the Kitchen. There's an apple, a banana, a bowl, and a plate ne
+
+Details (Without Snapshot):
+  [HAL][GRD] Where is the remote
+         → I don't know where the remote is. The tv state only shows it's off.
+  [HAL][GRD] Do we have any cola
+         → I don't have that information. I only know what's provided in this snapshot.
+  [HAL][GRD] Where is the water bottle
+         → I don't have specific information about a water bottle's location. However, based on User_Mom's habi
+  [HAL][GRD] Is there any food
+         → I don't have information about food availability in the home.
+  [HAL][GRD] Where is the phone
+         → I don't have any information about the phone's location.
+  [HAL][GRD] Do we have juice
+         → I don't have information about the availability of juice in the home.
+  [HAL][GRD] Where is the book
+         → I don't have any information about a specific book's location. However, I do know that User_Mom was 
+  [HAL][GRD] What is on the table
+         → I don't have any information about what's on the table.
+  [HAL][GRD] Is the broom available
+         → I don't have that information.
+  [HAL][GRD] Where can I find something to eat
+         → I don't have any information about food or eating habits in the current home state.
