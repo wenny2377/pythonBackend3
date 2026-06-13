@@ -1,3 +1,7 @@
+# config/robot_ontology.yaml
+# Scene structure knowledge only.
+# Object definitions (categories, actions, synonyms) → object_registry.yaml
+
 structural_blacklist:
   - "wall"
   - "floor"
@@ -17,14 +21,6 @@ structural_blacklist:
   - "background"
   - "surface"
   - "area"
-
-exclusive_behaviours:
-  - "Laying"
-  - "Cooking"
-  - "Opening"
-  - "Typing"
-  - "Cleaning"
-  - "Watching"
 
 static_fixtures:
   - "sofa"
@@ -55,105 +51,13 @@ high_affordance_furniture:
   - "keyboard"
   - "cabinet"
 
-scene_objects:
-  - "juice"
-  - "cola"
-  - "pan"
-  - "frying pan"
-  - "broom"
-  - "mop"
-  - "dustpan"
-  - "food"
-  - "dish"
-  - "plate"
-  - "spatula"
-
-label_normalize_map:
-  juicebottle:    "juice"
-  juice bottle:   "juice"
-  orange juice:   "juice"
-  cola can:       "cola"
-  coca cola:      "cola"
-  coke:           "cola"
-  soda can:       "cola"
-  phone:          "cell phone"
-  mobile phone:   "cell phone"
-  smartphone:     "cell phone"
-  iphone:         "cell phone"
-  television:     "tv"
-  notebook:       "laptop"
-  computer:       "laptop"
-  tablet:         "laptop"
-  remote control: "remote"
-  tv remote:      "remote"
-  mug:            "cup"
-  coffee cup:     "cup"
-  tea cup:        "cup"
-  drinking glass: "cup"
-  water bottle:   "bottle"
-  sofa:           "couch"
-  settee:         "couch"
-  frying pan:     "pan"
-  cooking pan:    "pan"
-  skillet:        "pan"
-  broom:          "broom"
-  sweep:          "broom"
-  sofa side:      "couch"
-  sofa side 2:    "couch"
-  dad's bed:      "bed"
-  cabinet2:       "cabinet"
-
-item_to_action:
-  bowl:       "Eating"
-  fork:       "Eating"
-  spoon:      "Eating"
-  plate:      "Eating"
-  food:       "Eating"
-  banana:     "Eating"
-  apple:      "Eating"
-  cell phone: "PhoneUse"
-  phone:      "PhoneUse"
-  book:       "Reading"
-  magazine:   "Reading"
-  laptop:     "Typing"
-  keyboard:   "Typing"
-  cup:        "Drinking"
-  bottle:     "Drinking"
-  mug:        "Drinking"
-  juice:      "Drinking"
-  cola:       "Drinking"
-  broom:      "Cleaning"
-  mop:        "Cleaning"
-  pan:        "Cooking"
-  spatula:    "Cooking"
-  remote:     "Watching"
-  tv:         "Watching"
-
-object_vocab:
-  - "remote"
-  - "book"
-  - "magazine"
-  - "phone"
-  - "laptop"
-  - "keyboard"
-  - "broom"
-  - "mop"
-  - "cup"
-  - "glass"
-  - "bottle"
-  - "bowl"
-  - "saladbowl"
-  - "fork"
-  - "spoon"
-  - "chopsticks"
-  - "pan"
-  - "spatula"
-  - "banana"
-  - "apple"
-  - "food"
-  - "juice"
-  - "cola"
-  - "none"
+exclusive_behaviours:
+  - "Laying"
+  - "Cooking"
+  - "Opening"
+  - "Typing"
+  - "Cleaning"
+  - "Watching"
 
 body_constraints:
   impossible:
@@ -184,3 +88,18 @@ body_constraints:
       - "Typing"
       - "Reading"
       - "Eating"
+
+# label_normalize_map is now auto-generated from object_registry.yaml normalize_from fields.
+# Furniture-level normalization (not object-level) stays here:
+furniture_normalize_map:
+  sofa:        "couch"
+  settee:      "couch"
+  sofa side:   "couch"
+  sofa side 2: "couch"
+  dad's bed:   "bed"
+  cabinet2:    "cabinet"
+
+object_normalize_map:
+  bottle:      "water"
+  waterbottle: "water"
+  water bottle: "water"

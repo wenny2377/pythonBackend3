@@ -4,7 +4,8 @@ _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, _ROOT)
 
 from pymongo import MongoClient
-from config import Config
+from collections import defaultdict
+from datetime import datetime
 
 SRC_DB    = "robot_exp_baseline"
 DST_DB    = "robot_exp_demo"
@@ -17,6 +18,8 @@ COLLECTIONS = [
     "habit_snapshots",  "activity_sequences",
     "user_spatial_affinity", "zone_anchors",
     "user_skills", "skill_chunks",
+    "object_events",
+    "object_events",
 ]
 
 USERS = ["User_Mom", "User_Dad"]
@@ -24,12 +27,53 @@ USERS = ["User_Mom", "User_Dad"]
 DRINK_ACTIONS = {"Drinking", "SittingDrink"}
 FOOD_ACTIONS  = {"Eating", "Cooking"}
 
+LABEL_NORMALIZE = {
+    "waterbottle":  "bottle",
+    "water bottle": "bottle",
+    "juicebottle":  "juice",
+    "juice bottle": "juice",
+    "orange juice": "juice",
+    "cola can":     "cola",
+    "coca cola":    "cola",
+    "coke":         "cola",
+    "soda can":     "cola",
+    "cell phone":   "phone",
+    "mobile phone": "phone",
+    "smartphone":   "phone",
+    "iphone":       "phone",
+    "frying pan":   "pan",
+    "cooking pan":  "pan",
+    "skillet":      "pan",
+    "mug":          "cup",
+    "coffee cup":   "cup",
+    "tea cup":      "cup",
+}
 
-def _get_top_item(db, user_id, actions, category):
-    from collections import defaultdict
+PREF_KEYWORD = ["enjoys", "likes", "frequently", "drinks", "eats", "prefers"]
+
+
+def _normalize_label(label: str) -> str:
+    return LABEL_NORMALIZE.get(label.lower().strip(), label.lower().strip())
+
+
+def _get_top_item_from_events(db, user_id, actions, category):
+    item_counts = defaultdict(int)
+    for d in db.object_events.find(
+        {"user": user_id, "pickup_time": {"$exists": True}},
+        {"object": 1}
+    ):
+        raw   = d.get("object", "")
+        label = _normalize_label(raw)
+        obj   = db.dynamic_objects.find_one({"label": label, "category": category})
+        if obj:
+            item_counts[label] += 1
+
+    if item_counts:
+        return max(item_counts, key=item_counts.get)
+
     obs = list(db.observation_logs.find(
         {"user": user_id, "action": {"$in": list(actions)}},
-        {"zone_name": 1, "weight": 1, "interacting_items": 1}
+        {"zone_name": 1, "weight": 1}
     ).sort("weight", -1).limit(5))
 
     zone_counts = defaultdict(float)
@@ -52,10 +96,9 @@ def _get_top_item(db, user_id, actions, category):
     return obj["label"] if obj else None
 
 
-def _skill_template(user_id, drink_item, food_item, obs_lines):
-    from datetime import datetime
-    drink_bullet = f"- {user_id} frequently drinks {drink_item}" if drink_item else ""
-    food_bullet  = f"- {user_id} frequently eats {food_item}" if food_item else ""
+def _build_skill_md(user_id, drink_item, food_item, obs_lines):
+    drink_bullet = f"- User enjoys {drink_item} during Drinking" if drink_item else ""
+    food_bullet  = f"- User enjoys {food_item} during Eating"    if food_item else ""
     return (
         f"# {user_id} Skill Profile\n"
         f"*Version 1 | Updated: {datetime.now().strftime('%Y-%m-%d')}*\n\n"
@@ -65,7 +108,6 @@ def _skill_template(user_id, drink_item, food_item, obs_lines):
         f"{drink_bullet}\n"
         f"{food_bullet}\n\n"
         f"## How to Handle Requests\n"
-        f"- Check object availability before recommending\n"
         f"- If weight >= 10, fetch directly without asking\n"
         f"- If weight < 10, ask for confirmation first\n\n"
         f"## What NOT to do\n"
@@ -75,8 +117,6 @@ def _skill_template(user_id, drink_item, food_item, obs_lines):
 
 
 def generate_skill(db, user_id):
-    from collections import defaultdict
-
     obs = list(db.observation_logs.find(
         {"user": user_id},
         {"action": 1, "zone_name": 1, "weight": 1, "time_slot": 1}
@@ -88,25 +128,21 @@ def generate_skill(db, user_id):
         for d in obs
     ) or "- No habits recorded yet"
 
-    drink_item = _get_top_item(db, user_id, DRINK_ACTIONS, "drink")
-    food_item  = _get_top_item(db, user_id, FOOD_ACTIONS,  "food")
+    drink_item = _get_top_item_from_events(db, user_id, DRINK_ACTIONS, "drink")
+    food_item  = _get_top_item_from_events(db, user_id, FOOD_ACTIONS,  "food")
 
-    skill_md = _skill_template(user_id, drink_item, food_item, obs_lines)
+    skill_md = _build_skill_md(user_id, drink_item, food_item, obs_lines)
 
     db.user_skills.update_one(
         {"user_id": user_id},
-        {"$set": {
-            "user_id":    user_id,
-            "skill_md":   skill_md,
-            "version":    1,
-        }},
+        {"$set": {"user_id": user_id, "skill_md": skill_md, "version": 1}},
         upsert=True,
     )
     print(f"  SKILL.md generated for {user_id}")
     if drink_item:
-        print(f"    → drink preference: {drink_item}")
+        print(f"    drink: {drink_item}")
     if food_item:
-        print(f"    → food preference:  {food_item}")
+        print(f"    food:  {food_item}")
 
 
 def main():
@@ -140,7 +176,7 @@ def main():
         total += len(docs)
 
     print()
-    print("Generating SKILL.md from observation_logs...")
+    print("Generating SKILL.md from object_events + observation_logs...")
     for uid in USERS:
         generate_skill(dst, uid)
 
@@ -149,13 +185,14 @@ def main():
     print(f"Done. {total} documents copied to {DST_DB}")
     print()
     print("Next steps:")
-    print("  python3 app.py        → choose 3 (Demo)")
-    print("  open demo/index.html  in browser")
+    print("  python3 app.py  → choose 3 (Demo)")
+    print("  open demo/index.html in browser")
     print()
     print("Rules:")
     print("  NEVER run Unity against robot_exp_demo")
     print("  NEVER run resetall.py on robot_exp_demo")
     print("  NEVER run analysis scripts against robot_exp_demo")
+
 
 if __name__ == "__main__":
     main()

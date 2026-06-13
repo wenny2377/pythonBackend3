@@ -1,18 +1,3 @@
-"""
-interact_client.py
-──────────────────
-Terminal client for testing reactive service (passive service demo).
-
-Usage:
-  python3 tools/interact_client.py
-
-Commands:
-  exit / quit / q  — exit
-  switch           — switch user
-  clear            — clear screen
-  help             — show help
-"""
-
 import json
 import os
 import requests
@@ -69,10 +54,9 @@ def display_result(result: dict, user_id: str, query: str):
     if nav_label and nav_label not in ("", "unknown"):
         tag = "  [personalized]" if personalized else ""
         if isinstance(nav_target, (list, tuple)) and len(nav_target) >= 2:
-            print(f"   [nav] {nav_label}  "
-                  f"pos=[{nav_target[0]:.1f}, {nav_target[1]:.1f}]{tag}")
+            print(f"   [location] {nav_label}  pos=[{nav_target[0]:.1f}, {nav_target[1]:.1f}]{tag}")
         else:
-            print(f"   [nav] {nav_label}{tag}")
+            print(f"   [location] {nav_label}{tag}")
 
     if intent:
         print(f"   [intent] {intent}")
@@ -86,19 +70,18 @@ def display_result(result: dict, user_id: str, query: str):
             sel = input("\nselect (Enter to skip): ").strip()
             if sel:
                 sel_int = int(sel)
-                cr = requests.post(
-                    f"{BACKEND}/interact/confirm",
-                    json={
-                        "choice":     sel_int,
-                        "nav_target": nav_target,
-                        "nav_label":  nav_label,
-                        "userID":     user_id,
-                        "query":      query,
-                    },
-                    timeout=10,
-                ).json()
-                if cr.get("message"):
-                    print(f"\n[ok] {cr['message']}")
+                if sel_int == 1 and nav_target and nav_label:
+                    if isinstance(nav_target, (list, tuple)) and len(nav_target) >= 2:
+                        print(f"\n[location] {nav_label} is at [{nav_target[0]:.1f}, {nav_target[1]:.1f}]")
+                    else:
+                        print(f"\n[location] {nav_label}")
+                elif sel_int == 2 and nav_label:
+                    if isinstance(nav_target, (list, tuple)) and len(nav_target) >= 2:
+                        print(f"\n[info] {nav_label} is at [{nav_target[0]:.1f}, {nav_target[1]:.1f}]")
+                    else:
+                        print(f"\n[info] {nav_label} — coordinates not available")
+                else:
+                    print("\n[ok] Cancelled.")
         except (ValueError, KeyboardInterrupt):
             pass
 
@@ -136,6 +119,7 @@ Example queries:
   I'm hungry
   I'm thirsty
   Where is the remote?
+  What food do we have?
   Do we have any cola?
   I don't like cola
   Yes / No, something else

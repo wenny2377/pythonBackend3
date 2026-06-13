@@ -9,10 +9,12 @@ import datetime
 import threading
 import queue as _queue
 from collections import defaultdict
+from datetime import date as _date, timedelta as _td
 
 import numpy as np
 import cv2
 from flask import Flask, request, jsonify, Response, stream_with_context
+from flask_cors import CORS
 from pymongo import MongoClient
 from sentence_transformers import SentenceTransformer
 
@@ -49,13 +51,32 @@ def _load_yaml(path: str) -> dict:
     return {}
 
 
+_BASE_VIRTUAL_DATE = _date(2025, 1, 1)
+
+def _parse_virtual_time(data: dict) -> dict:
+    virtual_hour = data.get('virtual_hour')
+    virtual_day  = data.get('virtual_day')
+    time_slot    = data.get('time_slot') or _get_time_slot(virtual_hour)
+    virtual_date = (
+        (_BASE_VIRTUAL_DATE + _td(days=int(virtual_day) - 1)).strftime("%Y-%m-%d")
+        if virtual_day else
+        datetime.datetime.utcnow().strftime("%Y-%m-%d")
+    )
+    return {
+        "virtual_hour": virtual_hour,
+        "virtual_day":  virtual_day,
+        "time_slot":    time_slot,
+        "virtual_date": virtual_date,
+    }
+
+
 app    = Flask(__name__)
+CORS(app)
 CONFIG = Config
 
 werkzeug_logger = logging.getLogger("werkzeug")
 werkzeug_logger.setLevel(logging.WARNING)
-print(f"System init: device={CONFIG.DEVICE} "
-      f"| LLM={CONFIG.LLM_MODEL} | VLM={CONFIG.VLM_MODEL}")
+print(f"System init: device={CONFIG.DEVICE} | LLM={CONFIG.LLM_MODEL} | VLM={CONFIG.VLM_MODEL}")
 
 sbert_model = SentenceTransformer('all-MiniLM-L6-v2', device=CONFIG.DEVICE)
 print("SBERT loaded on", CONFIG.DEVICE)
@@ -111,17 +132,11 @@ skill_manager = SkillManager(
 )
 
 observation_store = ObservationStore(db=db)
-
-habit_learner = HabitLearner(
-    db=db,
-    skill_manager=skill_manager,
-)
-
-proposal_manager = ProposalManager(db=db)
+habit_learner     = HabitLearner(db=db, skill_manager=skill_manager)
+proposal_manager  = ProposalManager(db=db)
 
 proactive_service = ProactiveService(
-    db=db,
-    habit_learner=habit_learner,
+    db=db, habit_learner=habit_learner,
     manifold_engine=manifold_engine,
     proposal_manager=proposal_manager,
     ollama_url=CONFIG.OLLAMA_URL,
@@ -129,8 +144,7 @@ proactive_service = ProactiveService(
 )
 
 reactive_service = ReactiveService(
-    db=db,
-    skill_manager=skill_manager,
+    db=db, skill_manager=skill_manager,
     vector_memory=vector_memory,
     ollama_url=CONFIG.OLLAMA_URL,
     llm_model=CONFIG.LLM_MODEL,
@@ -175,9 +189,7 @@ def preview_images(image_list, source_nodes, hint_user_id, activity):
                 continue
             ts        = datetime.datetime.now().strftime("%H%M%S")
             node_name = source_nodes[i] if i < len(source_nodes) else f"img_{i}"
-            cv2.imwrite(
-                f"{save_dir}/{ts}_{hint_user_id}_{activity}_{node_name}.jpg",
-                frame)
+            cv2.imwrite(f"{save_dir}/{ts}_{hint_user_id}_{activity}_{node_name}.jpg", frame)
         except Exception as e:
             print(f"[Preview Skip] {e}")
 
@@ -192,8 +204,7 @@ def _wait_for_scene(max_wait: float = 12.0, poll: float = 1.0):
         waited += poll
 
 
-def _find_nearest_furniture(x: float, z: float, room: str,
-                             max_dist: float = 3.0) -> str:
+def _find_nearest_furniture(x: float, z: float, room: str, max_dist: float = 3.0) -> str:
     _BLACKLIST = {
         "floor", "ceiling", "wall", "ground", "wooden floor",
         "tile floor", "carpet", "concrete floor", "baseboard",
@@ -232,8 +243,7 @@ def _get_category_for_label(label: str) -> str:
 
 def _get_time_slot(virtual_hour) -> str:
     try:
-        h = float(virtual_hour) if virtual_hour is not None else \
-            float(datetime.datetime.now().hour)
+        h = float(virtual_hour) if virtual_hour is not None else float(datetime.datetime.now().hour)
         if h < 10:  return "Morning"
         if h < 13:  return "Noon"
         if h < 18:  return "Afternoon"
@@ -244,12 +254,10 @@ def _get_time_slot(virtual_hour) -> str:
 
 
 def nightly_maintenance():
-    print("[Maintenance] running nightly tasks...")
+    print("[Maintenance] running...")
     try:
-        db.observation_logs.update_many(
-            {}, {"$mul": {"weight": CONFIG.HABIT_DECAY_FACTOR}})
-        db.observation_logs.delete_many(
-            {"weight": {"$lt": CONFIG.HABIT_MIN_WEIGHT}})
+        db.observation_logs.update_many({}, {"$mul": {"weight": CONFIG.HABIT_DECAY_FACTOR}})
+        db.observation_logs.delete_many({"weight": {"$lt": CONFIG.HABIT_MIN_WEIGHT}})
         habit_learner._apply_recency_decay()
         for doc in db.user_skills.find({}, {"user_id": 1}):
             try:
@@ -279,8 +287,7 @@ def ready():
 def experiment_done():
     def _final_train():
         for uid in ["User_Mom", "User_Dad"]:
-            n = db.manifold_training_data.count_documents({"user_id": uid})
-            if n >= 20:
+            if db.manifold_training_data.count_documents({"user_id": uid}) >= 20:
                 manifold_engine.train_model(uid)
     threading.Thread(target=_final_train, daemon=True).start()
     return jsonify({"status": "ok"}), 200
@@ -299,10 +306,7 @@ def set_experiment_type():
 
 @app.route('/nav_target', methods=['GET'])
 def get_nav_target():
-    return jsonify({
-        "nav_target": _robot_state["nav_target"],
-        "nav_label":  _robot_state["nav_label"],
-    })
+    return jsonify({"nav_target": _robot_state["nav_target"], "nav_label": _robot_state["nav_label"]})
 
 
 @app.route('/highlight', methods=['GET'])
@@ -328,20 +332,15 @@ def interact_stream():
         return jsonify({"error": "Empty query"}), 400
 
     def generate():
-        result     = reactive_service.process(query=query, user_id=user_id, room=room)
-        answer     = result.get("answer", "")
-        nav_target = result.get("nav_target")
-        nav_label  = result.get("nav_label", "")
-
-        for char in answer:
-            yield f"data: {json.dumps({'type': 'token', 'content': char})}\n\n"
-
-        _robot_state["last_answer"] = answer
-        _robot_state["nav_target"]  = nav_target
-        _robot_state["nav_label"]   = nav_label or ""
-        _robot_state["highlight"]   = nav_label or ""
-
-        yield f"data: {json.dumps({'type': 'done', **result})}\n\n"
+        for event in reactive_service.process_stream(query=query, user_id=user_id, room=room):
+            if event.get("type") == "done":
+                nav_target = event.get("nav_target")
+                nav_label  = event.get("nav_label", "")
+                _robot_state["last_answer"] = event.get("answer", "")
+                _robot_state["nav_target"]  = nav_target
+                _robot_state["nav_label"]   = nav_label or ""
+                _robot_state["highlight"]   = nav_label or ""
+            yield f"data: {json.dumps(event)}\n\n"
 
     return Response(
         stream_with_context(generate()),
@@ -370,19 +369,11 @@ def interact_confirm():
     nav_label  = data.get('nav_label', '')
 
     if choice == 1:
-        return jsonify({
-            "status":     "navigate",
-            "nav_target": nav_target,
-            "nav_label":  nav_label,
-            "message":    f"Navigating to {nav_label}.",
-        })
+        return jsonify({"status": "navigate", "nav_target": nav_target,
+                        "nav_label": nav_label, "message": f"Navigating to {nav_label}."})
     if choice == 2:
-        pos_str = (f"[{nav_target[0]:.1f}, {nav_target[1]:.1f}]"
-                   if nav_target else "unknown")
-        return jsonify({
-            "status":  "info_only",
-            "message": f"{nav_label} is at {pos_str}.",
-        })
+        pos_str = (f"[{nav_target[0]:.1f}, {nav_target[1]:.1f}]" if nav_target else "unknown")
+        return jsonify({"status": "info_only", "message": f"{nav_label} is at {pos_str}."})
     return jsonify({"status": "cancelled", "message": "Cancelled."})
 
 
@@ -391,9 +382,7 @@ def interact_confirm():
 @app.route('/service_proposal', methods=['GET'])
 def service_proposal():
     proposal = proposal_manager.get_next()
-    if proposal:
-        return jsonify(proposal), 200
-    return jsonify({"status": "no_proposal"}), 200
+    return jsonify(proposal if proposal else {"status": "no_proposal"}), 200
 
 
 @app.route('/service_response', methods=['POST'])
@@ -467,49 +456,36 @@ def demo_trigger_proactive():
     time_slot   = data.get("time_slot",  "Evening")
 
     lookahead = habit_learner.get_2step_lookahead(
-        user_id=user_id,
-        current_action=prev_action,
-        time_slot=time_slot,
-    )
+        user_id=user_id, current_action=prev_action, time_slot=time_slot)
 
-    cutoff = datetime.datetime.utcnow() - datetime.timedelta(
-        hours=CONFIG.SNAPSHOT_TTL_HOURS)
+    cutoff = datetime.datetime.utcnow() - datetime.timedelta(hours=CONFIG.SNAPSHOT_TTL_HOURS)
     need   = lookahead.get("need", "drink") if lookahead else "drink"
 
     item = db.dynamic_objects.find_one(
         {"category": need, "last_seen": {"$gte": cutoff}},
-        sort=[("interact_count", -1)]
-    )
+        sort=[("interact_count", -1)])
     if not item:
-        item = db.dynamic_objects.find_one(
-            {"category": need},
-            sort=[("interact_count", -1)]
-        )
-
+        item = db.dynamic_objects.find_one({"category": need}, sort=[("interact_count", -1)])
     if not item:
-        return jsonify({"status": "no_item",
-                        "message": "No available item found"}), 200
+        return jsonify({"status": "no_item", "message": "No available item found"}), 200
 
     proposal    = proactive_service._generate_proposal(
         user_id=user_id,
-        lookahead=lookahead or {"need":"drink","confidence":0.5,
-                                "actionable":True,"step1":None,"step2":None},
+        lookahead=lookahead or {"need":"drink","confidence":0.5,"actionable":True,"step1":None,"step2":None},
         available_item=item,
         time_slot=time_slot,
     )
     proposal_id = proposal_manager.push(user_id, proposal)
 
     return jsonify({
-        "status":     "ok",
+        "status":      "ok",
         "proposal_id": proposal_id,
-        "message":    proposal.get("message", ""),
-        "item":       item["label"],
-        "item_loc":   item.get("last_seen_on", ""),
-        "step1":      lookahead.get("step1", {}).get("action", "")
-                      if lookahead and lookahead.get("step1") else "",
-        "step2":      lookahead.get("step2", {}).get("action", "")
-                      if lookahead and lookahead.get("step2") else "",
-        "confidence": lookahead.get("confidence", 0) if lookahead else 0,
+        "message":     proposal.get("message", ""),
+        "item":        item["label"],
+        "item_loc":    item.get("last_seen_on", ""),
+        "step1":       lookahead.get("step1", {}).get("action", "") if lookahead and lookahead.get("step1") else "",
+        "step2":       lookahead.get("step2", {}).get("action", "") if lookahead and lookahead.get("step2") else "",
+        "confidence":  lookahead.get("confidence", 0) if lookahead else 0,
     }), 200
 
 
@@ -523,6 +499,8 @@ def demo_latest_har():
         "spatial_action": doc.get("spatial_action", ""),
         "vlm_confidence": doc.get("vlm_confidence", 0),
         "upgrade_reason": doc.get("upgrade_reason", ""),
+        "virtual_day":    doc.get("virtual_day"),
+        "time_slot":      doc.get("time_slot", ""),
     }), 200
 
 
@@ -535,10 +513,8 @@ def predict():
         return jsonify({"error": "No data received"}), 400
 
     episode_id = data.get("episode_id") or str(uuid.uuid4())
-    existing   = db.eval_logs.find_one({"episode_id": episode_id})
-    if existing:
-        return jsonify({
-            "status": "ok", "episode_id": episode_id, "cached": True}), 200
+    if db.eval_logs.find_one({"episode_id": episode_id}):
+        return jsonify({"status": "ok", "episode_id": episode_id, "cached": True}), 200
 
     t_capture    = data.get("t_capture", "")
     ground_truth = data.get("activity", "")
@@ -546,6 +522,7 @@ def predict():
         with _gt_cache_lock:
             _gt_cache[t_capture] = ground_truth
 
+    print(f"[DEBUG] vday={data.get('virtual_day')} vhour={data.get('virtual_hour')} slot={data.get('time_slot')} user={data.get('userID')}", flush=True)
     _predict_queue.put((episode_id, data))
     return jsonify({"status": "queued", "episode_id": episode_id}), 200
 
@@ -575,9 +552,12 @@ def _process_predict(episode_id: str, data: dict):
     user_fwd_raw = data.get('user_forward')
     source_nodes = data.get('source_nodes', [])
     room_name    = data.get('room_name', '')
-    virtual_hour = data.get('virtual_hour')
-    virtual_day  = data.get('virtual_day', '')
-    t_capture    = data.get('t_capture', '')
+
+    vt           = _parse_virtual_time(data)
+    virtual_hour = vt["virtual_hour"]
+    virtual_day  = vt["virtual_day"]
+    time_slot    = vt["time_slot"]
+    virtual_date = vt["virtual_date"]
 
     if not room_name and source_nodes:
         first_node = source_nodes[0].split('_b')[0]
@@ -591,10 +571,7 @@ def _process_predict(episode_id: str, data: dict):
 
     est_pos = None
     if user_pos_raw:
-        est_pos = {
-            "x": float(user_pos_raw.get("x", 0)),
-            "z": float(user_pos_raw.get("z", 0)),
-        }
+        est_pos = {"x": float(user_pos_raw.get("x", 0)), "z": float(user_pos_raw.get("z", 0))}
 
     est_forward = None
     if user_fwd_raw:
@@ -611,9 +588,7 @@ def _process_predict(episode_id: str, data: dict):
             if isinstance(_fwd, list) and len(_fwd) >= 3:
                 est_forward = {"x": _fwd[0], "y": 0.0, "z": _fwd[2]}
             elif isinstance(_fwd, dict):
-                est_forward = {"x": float(_fwd.get("x", 0)),
-                               "y": 0.0,
-                               "z": float(_fwd.get("z", 0))}
+                est_forward = {"x": float(_fwd.get("x", 0)), "y": 0.0, "z": float(_fwd.get("z", 0))}
 
     if est_pos and hint_user_id:
         db.user_positions.update_one(
@@ -644,25 +619,23 @@ def _process_predict(episode_id: str, data: dict):
     _exp_mode      = result.get("experiment_mode", "habit")
     spatial_action = result.get("spatial_action") or result.get("action", "Unknown")
     zone_label     = result.get("zone_label") or result.get("zone_name") or ""
-    time_slot      = _get_time_slot(virtual_hour)
 
     _activity_votes = [result.get("action", "")] if result.get("action") else []
     _body_votes     = [result["result"].get("_body_position", "")]
     _held_votes     = [result["result"].get("_held_event", "none")]
-    _entropy_info   = entropy_monitor.analyze(
-        _user_id, _activity_votes, _body_votes, _held_votes)
+    _entropy_info   = entropy_monitor.analyze(_user_id, _activity_votes, _body_votes, _held_votes)
 
     print(f"[VLM] vlm={result.get('action')} spatial={spatial_action} "
-          f"entropy={_entropy_info['overall_entropy']:.2f} | {vlm_ms}ms")
+          f"entropy={_entropy_info['overall_entropy']:.2f} | {vlm_ms}ms "
+          f"day={virtual_day} slot={time_slot}")
 
     if spatial_action in ("none", "", "Unknown"):
         return
 
-    if zone_label and spatial_action not in {"Walking", "Standing", "StandUp",
-                                              "PickingUp", "PuttingDown"}:
-        today  = datetime.datetime.utcnow().strftime("%Y-%m-%d")
-        pos_xy = [_user_pos.get("x", 0) / 10.0,
-                  _user_pos.get("z", 0) / 10.0]
+    NO_RECORD = {"Walking", "Standing", "StandUp", "PickingUp", "PuttingDown"}
+
+    if zone_label and spatial_action not in NO_RECORD:
+        pos_xy = [_user_pos.get("x", 0) / 10.0, _user_pos.get("z", 0) / 10.0]
 
         observation_store.record(
             user_id=_user_id, action=spatial_action,
@@ -672,7 +645,7 @@ def _process_predict(episode_id: str, data: dict):
             spatial_relations=result.get("spatial_relations", {}),
             pos_xy=pos_xy, room=result.get("room", ""),
             raw_desc=result["result"].get("context", ""),
-            today=today,
+            today=virtual_date,
         )
 
         prev_seq    = observation_store.get_recent_sequence(_user_id, limit=2)
@@ -690,8 +663,6 @@ def _process_predict(episode_id: str, data: dict):
             virtual_day=virtual_day,
         )
 
-    NO_RECORD = {"Unknown", "Standing", "Walking", "StandUp",
-                 "PickingUp", "PuttingDown"}
     if (spatial_action not in NO_RECORD and
             _exp_mode != "recognition" and
             result["result"].get("_vlm_confidence", 0) >= 0.20):
@@ -731,8 +702,8 @@ def _process_predict(episode_id: str, data: dict):
         mongo_id      = furniture_doc.get('_id')  if furniture_doc else None
         vlm_desc      = result["result"].get("context", "")
         spatial_text  = " ".join(
-            [f"{r['subject']} {r['relation']} {r['object']}"
-             for r in spatial_rels]) if spatial_rels else ""
+            [f"{r['subject']} {r['relation']} {r['object']}" for r in spatial_rels]
+        ) if spatial_rels else ""
 
         vector_memory.add_memory(
             user_id=_user_id, action=spatial_action,
@@ -744,9 +715,8 @@ def _process_predict(episode_id: str, data: dict):
         )
 
     try:
-        _prev_seq_doc = db.activity_sequences.find_one(
-            {"user": _user_id}, sort=[("date", -1)])
-        _real_prev = "Standing"
+        _prev_seq_doc = db.activity_sequences.find_one({"user": _user_id}, sort=[("date", -1)])
+        _real_prev    = "Standing"
         if _prev_seq_doc and len(_prev_seq_doc.get("sequence", [])) >= 2:
             _real_prev = _prev_seq_doc["sequence"][-2].get("action", "Standing")
         manifold_engine.predict_intent(
@@ -765,9 +735,7 @@ def _process_predict(episode_id: str, data: dict):
             pos = doc.get("pos")
             if not isinstance(pos, list) or len(pos) < 2:
                 continue
-            dist = math.sqrt(
-                (est_pos["x"] - pos[0]) ** 2 +
-                (est_pos["z"] - pos[1]) ** 2)
+            dist = math.sqrt((est_pos["x"] - pos[0]) ** 2 + (est_pos["z"] - pos[1]) ** 2)
             if dist < best_dist:
                 best_dist = dist
                 best_doc  = doc
@@ -775,19 +743,17 @@ def _process_predict(episode_id: str, data: dict):
             final_bound = best_doc["label"]
 
     final_bound = final_bound or "Unknown_Area"
-    print(f"[Bind] '{bound_label}' -> '{final_bound}'")
 
     try:
-        today = datetime.datetime.utcnow().strftime("%Y-%m-%d")
         db.activity_sequences.update_one(
-            {"user": _user_id, "date": today},
+            {"user": _user_id, "date": virtual_date},
             {
                 "$push": {"sequence": {
                     "action":    spatial_action,
                     "instance":  final_bound,
                     "timestamp": datetime.datetime.utcnow(),
                 }},
-                "$setOnInsert": {"user": _user_id, "date": today},
+                "$setOnInsert": {"user": _user_id, "date": virtual_date},
             },
             upsert=True,
         )
@@ -797,16 +763,19 @@ def _process_predict(episode_id: str, data: dict):
     db.eval_logs.update_one(
         {"episode_id": episode_id},
         {"$set": {
-            "status":    "done",
-            "entropy":   _entropy_info["overall_entropy"],
-            "forward_x": est_forward.get("x", 0) if est_forward else None,
-            "forward_z": est_forward.get("z", 0) if est_forward else None,
-            "vlm_ms":    vlm_ms,
+            "status":       "done",
+            "entropy":      _entropy_info["overall_entropy"],
+            "forward_x":    est_forward.get("x", 0) if est_forward else None,
+            "forward_z":    est_forward.get("z", 0) if est_forward else None,
+            "vlm_ms":       vlm_ms,
+            "virtual_day":  virtual_day,
+            "virtual_hour": virtual_hour,
+            "virtual_date": virtual_date,
+            "time_slot":    time_slot,
         }},
     )
 
-    print(f"[Predict] done | {_user_id} | "
-          f"{result.get('action')} -> {spatial_action} | {vlm_ms}ms")
+    print(f"[Predict] done | {_user_id} | {result.get('action')} -> {spatial_action} | {vlm_ms}ms")
 
 
 # ── Scene endpoints ───────────────────────────────────────────────────────────
@@ -870,20 +839,17 @@ def dynamic_sync():
         if not objects:
             return jsonify({"status": "empty"}), 200
 
-        timestamp_str = data.get('timestamp', '')
-        try:
-            now = datetime.datetime.fromisoformat(
-                timestamp_str.replace('Z', '+00:00')) if timestamp_str \
-                else datetime.datetime.utcnow()
-        except Exception:
-            now = datetime.datetime.utcnow()
+        now     = datetime.datetime.utcnow()
+        vt      = _parse_virtual_time(data)
+        count   = 0
 
-        count = 0
         for obj in objects:
             label  = obj.get('label', '').lower().strip()
             source = obj.get('source', 'sensor')
             if not label:
                 continue
+
+            obj_vt = _parse_virtual_time(obj)
 
             if source == "unity_user":
                 position = obj.get('position', [0, 0])
@@ -891,13 +857,16 @@ def dynamic_sync():
                 db.user_positions.update_one(
                     {"user_id": label},
                     {"$set": {
-                        "user_id":    label,
-                        "x":          float(position[0]),
-                        "z":          float(position[1]),
-                        "forward":    forward,
-                        "activity":   obj.get('activity', ''),
-                        "room":       obj.get('room', ''),
-                        "updated_at": now,
+                        "user_id":      label,
+                        "x":            float(position[0]),
+                        "z":            float(position[1]),
+                        "forward":      forward,
+                        "activity":     obj.get('activity', ''),
+                        "room":         obj.get('room', ''),
+                        "virtual_hour": obj_vt["virtual_hour"],
+                        "virtual_day":  obj_vt["virtual_day"],
+                        "time_slot":    obj_vt["time_slot"],
+                        "updated_at":   now,
                     }},
                     upsert=True,
                 )
@@ -919,12 +888,14 @@ def dynamic_sync():
                 "status_since": now,
                 "source":       source,
                 "category":     category,
+                "virtual_hour": obj_vt["virtual_hour"],
+                "virtual_day":  obj_vt["virtual_day"],
+                "time_slot":    obj_vt["time_slot"],
             }
 
             if held_by:
                 set_fields["held_by"] = held_by
-                existing = db.dynamic_objects.find_one(
-                    {"label": label}, {"held_by": 1})
+                existing = db.dynamic_objects.find_one({"label": label}, {"held_by": 1})
                 if not existing or existing.get("held_by") != held_by:
                     set_fields["held_since"] = now
             else:
@@ -958,10 +929,7 @@ def dynamic_sync():
             if obj.get('source') == 'unity' and obj.get('label', '').strip()
         ]
         if unity_labels:
-            stale = db.dynamic_objects.delete_many({
-                "source": "unity",
-                "label":  {"$nin": unity_labels},
-            })
+            stale = db.dynamic_objects.delete_many({"source": "unity", "label": {"$nin": unity_labels}})
             if stale.deleted_count > 0:
                 print(f"[DynamicSync] Removed {stale.deleted_count} stale objects")
 
@@ -979,17 +947,10 @@ def set_device_state():
     data  = request.get_json()
     label = data.get('label', '')
     state = data.get('state', 'off')
-    timestamp_str = data.get('timestamp', '')
-    try:
-        now = datetime.datetime.fromisoformat(
-            timestamp_str.replace('Z', '+00:00')) if timestamp_str \
-            else datetime.datetime.utcnow()
-    except Exception:
-        now = datetime.datetime.utcnow()
     if label:
         db.device_states.update_one(
             {'label': label},
-            {'$set': {'state': state, 'updated_at': now}},
+            {'$set': {'state': state, 'updated_at': datetime.datetime.utcnow()}},
             upsert=True)
     return jsonify({'status': 'ok'}), 200
 
@@ -1000,20 +961,12 @@ def device_state():
         data  = request.get_json()
         label = data.get('label', '').lower().strip()
         state = data.get('state', 'off')
-        timestamp_str = data.get('timestamp', '')
-        try:
-            now = datetime.datetime.fromisoformat(
-                timestamp_str.replace('Z', '+00:00')) if timestamp_str \
-                else datetime.datetime.utcnow()
-        except Exception:
-            now = datetime.datetime.utcnow()
         if not label:
             return jsonify({"status": "error"}), 400
         db.device_states.update_one(
             {"label": label},
-            {"$set": {"label": label, "state": state, "updated_at": now}},
+            {"$set": {"label": label, "state": state, "updated_at": datetime.datetime.utcnow()}},
             upsert=True)
-        print(f"[DeviceState] {label} -> {state} at {now}")
         return jsonify({"status": "ok", "label": label, "state": state}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -1024,37 +977,32 @@ def object_event():
     data        = request.get_json()
     user_id     = data.get('user_id')
     object_name = data.get('object')
+    now         = datetime.datetime.utcnow()
 
     if 'pickup_time' in data:
-        pickup_time = data.get('pickup_time')
         try:
             pickup_time = datetime.datetime.fromisoformat(
-                pickup_time.replace('Z', '+00:00')).replace(tzinfo=None) \
-                if pickup_time else datetime.datetime.utcnow()
+                data['pickup_time'].replace('Z', '+00:00')).replace(tzinfo=None)
         except Exception:
-            pickup_time = datetime.datetime.utcnow()
+            pickup_time = now
         db.object_events.insert_one({
-            "user":         user_id,
-            "object":       object_name,
-            "pickup_time":  pickup_time,
-            "putdown_time": None,
+            "user": user_id, "object": object_name,
+            "pickup_time": pickup_time, "putdown_time": None,
         })
-        print(f"[ObjectEvent] {user_id} picked up {object_name} at {pickup_time}")
+        print(f"[ObjectEvent] {user_id} picked up {object_name}")
 
     elif 'putdown_time' in data:
-        putdown_time = data.get('putdown_time')
         try:
             putdown_time = datetime.datetime.fromisoformat(
-                putdown_time.replace('Z', '+00:00')).replace(tzinfo=None) \
-                if putdown_time else datetime.datetime.utcnow()
+                data['putdown_time'].replace('Z', '+00:00')).replace(tzinfo=None)
         except Exception:
-            putdown_time = datetime.datetime.utcnow()
+            putdown_time = now
         db.object_events.find_one_and_update(
             {"user": user_id, "putdown_time": None},
             {"$set": {"putdown_time": putdown_time}},
             sort=[("pickup_time", -1)],
         )
-        print(f"[ObjectEvent] {user_id} put down at {putdown_time}")
+        print(f"[ObjectEvent] {user_id} put down")
 
     return jsonify({"status": "ok"}), 200
 
@@ -1062,20 +1010,13 @@ def object_event():
 @app.route('/track_position', methods=['POST'])
 def track_position():
     try:
-        data          = request.get_json()
-        user_id       = data.get("userID", "Unknown")
-        x             = float(data.get("x", 0))
-        z             = float(data.get("z", 0))
-        room_name     = data.get("room_name", "")
-        forward_x     = float(data.get("forward_x", 0))
-        forward_z     = float(data.get("forward_z", 0))
-        timestamp_str = data.get('timestamp', '')
-        try:
-            now = datetime.datetime.fromisoformat(
-                timestamp_str.replace('Z', '+00:00')) if timestamp_str \
-                else datetime.datetime.utcnow()
-        except Exception:
-            now = datetime.datetime.utcnow()
+        data      = request.get_json()
+        user_id   = data.get("userID", "Unknown")
+        x         = float(data.get("x", 0))
+        z         = float(data.get("z", 0))
+        room_name = data.get("room_name", "")
+        forward_x = float(data.get("forward_x", 0))
+        forward_z = float(data.get("forward_z", 0))
         db.user_positions.update_one(
             {"user_id": user_id},
             {"$set": {
@@ -1083,7 +1024,7 @@ def track_position():
                 "x":          x, "z": z,
                 "room":       room_name,
                 "forward":    [forward_x, 0.0, forward_z],
-                "updated_at": now,
+                "updated_at": datetime.datetime.utcnow(),
             }},
             upsert=True)
         return jsonify({"status": "ok"}), 200
@@ -1130,8 +1071,7 @@ def exp_checkpoint():
 
         similarity = 0.0
         try:
-            results = vector_memory.search_habit(
-                f"{user_id} {action}", user_id=user_id, top_k=1)
+            results = vector_memory.search_habit(f"{user_id} {action}", user_id=user_id, top_k=1)
             if results:
                 similarity = float(results[0].get("similarity", 0.0))
         except Exception:
@@ -1174,17 +1114,10 @@ def manifold_train():
     try:
         data    = request.get_json(force=True, silent=True) or {}
         user_id = data.get("user_id", "")
-        if not user_id:
-            for uid in ["User_Mom", "User_Dad"]:
-                threading.Thread(
-                    target=manifold_engine.train_model,
-                    args=(uid,), daemon=True).start()
-            return jsonify({"status": "training started for all users"}), 200
-        threading.Thread(
-            target=manifold_engine.train_model,
-            args=(user_id,), daemon=True).start()
-        return jsonify({
-            "status": "training started", "user_id": user_id}), 200
+        uids    = [user_id] if user_id else ["User_Mom", "User_Dad"]
+        for uid in uids:
+            threading.Thread(target=manifold_engine.train_model, args=(uid,), daemon=True).start()
+        return jsonify({"status": "training started", "users": uids}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -1215,8 +1148,7 @@ def log_navigation():
 
 # ── Startup ───────────────────────────────────────────────────────────────────
 
-_predict_worker_thread = threading.Thread(
-    target=_predict_worker, daemon=True)
+_predict_worker_thread = threading.Thread(target=_predict_worker, daemon=True)
 _predict_worker_thread.start()
 print("[Predict Queue] worker started")
 

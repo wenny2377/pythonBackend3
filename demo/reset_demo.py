@@ -21,7 +21,34 @@ RESET_COLLECTIONS = [
     "conversation_logs",
 ]
 
+
+def _refresh_last_seen(db):
+    now = datetime.utcnow()
+    r   = db.dynamic_objects.update_many({}, {"$set": {"last_seen": now}})
+    print(f"  Refreshed last_seen: {r.modified_count} objects → now")
+
+
 def _get_top_item(db, user_id, actions, category):
+    from pymongo import MongoClient
+    item_counts = defaultdict(int)
+    for d in db.object_events.find(
+        {"user": user_id, "pickup_time": {"$exists": True}},
+        {"object": 1}
+    ):
+        raw   = d.get("object", "").lower().strip()
+        NORMALIZE = {
+            "waterbottle": "water", "water bottle": "water", "bottle": "water",
+            "cola can": "cola", "coca cola": "cola", "coke": "cola",
+            "cell phone": "phone", "mobile phone": "phone", "smartphone": "phone",
+        }
+        label = NORMALIZE.get(raw, raw)
+        obj   = db.dynamic_objects.find_one({"label": label, "category": category})
+        if obj:
+            item_counts[label] += 1
+
+    if item_counts:
+        return max(item_counts, key=item_counts.get)
+
     obs = list(db.observation_logs.find(
         {"user": user_id, "action": {"$in": list(actions)}},
         {"zone_name": 1, "weight": 1}
@@ -35,15 +62,13 @@ def _get_top_item(db, user_id, actions, category):
 
     obj = db.dynamic_objects.find_one(
         {"category": category, "last_seen_on": top_zone},
-        sort=[("interact_count", -1)]
-    )
+        sort=[("interact_count", -1)])
     if obj:
         return obj["label"]
 
     obj = db.dynamic_objects.find_one(
         {"category": category},
-        sort=[("interact_count", -1)]
-    )
+        sort=[("interact_count", -1)])
     return obj["label"] if obj else None
 
 
@@ -62,8 +87,8 @@ def _generate_skill(db, user_id):
     drink_item = _get_top_item(db, user_id, DRINK_ACTIONS, "drink")
     food_item  = _get_top_item(db, user_id, FOOD_ACTIONS,  "food")
 
-    drink_bullet = f"- {user_id} frequently drinks {drink_item}" if drink_item else ""
-    food_bullet  = f"- {user_id} frequently eats {food_item}" if food_item else ""
+    drink_bullet = f"- User enjoys {drink_item} during Drinking" if drink_item else ""
+    food_bullet  = f"- User enjoys {food_item} during Eating"    if food_item else ""
 
     skill_md = (
         f"# {user_id} Skill Profile\n"
@@ -74,7 +99,6 @@ def _generate_skill(db, user_id):
         f"{drink_bullet}\n"
         f"{food_bullet}\n\n"
         f"## How to Handle Requests\n"
-        f"- Check object availability before recommending\n"
         f"- If weight >= 10, fetch directly without asking\n"
         f"- If weight < 10, ask for confirmation first\n\n"
         f"## What NOT to do\n"
@@ -84,31 +108,23 @@ def _generate_skill(db, user_id):
 
     db.user_skills.update_one(
         {"user_id": user_id},
-        {"$set": {
-            "user_id":  user_id,
-            "skill_md": skill_md,
-            "version":  1,
-        }},
+        {"$set": {"user_id": user_id, "skill_md": skill_md, "version": 1}},
         upsert=True,
     )
 
     print(f"  SKILL.md regenerated for {user_id}")
     if drink_item:
-        print(f"    → drink: {drink_item}")
+        print(f"    drink: {drink_item}")
     if food_item:
-        print(f"    → food:  {food_item}")
-
-    return drink_item, food_item
+        print(f"    food:  {food_item}")
 
 
 def main():
     client = MongoClient(MONGO_URI)
     db     = client[DEMO_DB]
 
-    existing = db.list_collection_names()
-    if not existing:
-        print(f"[!] {DEMO_DB} does not exist.")
-        print("    Run setup_demo_db.py first.")
+    if not db.list_collection_names():
+        print(f"[!] {DEMO_DB} does not exist. Run setup_demo_db.py first.")
         return
 
     print(f"Resetting demo DB: {DEMO_DB}")
@@ -116,13 +132,14 @@ def main():
 
     for col in RESET_COLLECTIONS:
         result = db[col].delete_many({})
-        if result.deleted_count > 0:
-            print(f"  Cleared {col:<25} ({result.deleted_count} docs)")
-        else:
-            print(f"  Cleared {col:<25} (already empty)")
+        print(f"  Cleared {col:<25} ({result.deleted_count} docs)")
 
     print()
-    print("Regenerating SKILL.md from observation_logs...")
+    print("Refreshing object timestamps...")
+    _refresh_last_seen(db)
+
+    print()
+    print("Regenerating SKILL.md...")
     for uid in USERS:
         _generate_skill(db, uid)
 
@@ -132,19 +149,15 @@ def main():
     print()
     print("State after reset:")
     for col in RESET_COLLECTIONS:
-        n = db[col].count_documents({})
-        print(f"  {col:<25} {n} docs")
-
+        print(f"  {col:<25} {db[col].count_documents({})} docs")
     print()
-    print("Observation data untouched:")
-    for col in ["observation_logs", "transition_counts",
-                "dynamic_objects", "scene_snapshots"]:
-        n = db[col].count_documents({})
-        print(f"  {col:<25} {n} docs")
-
+    print("Untouched:")
+    for col in ["observation_logs","transition_counts",
+                "dynamic_objects","scene_snapshots","object_events"]:
+        print(f"  {col:<25} {db[col].count_documents({})} docs")
     print()
-    print("Ready to demo. Start Flask:")
-    print("  python3 app.py  → choose 3 (Demo)")
+    print("Ready. Start Flask: python3 app.py → choose 3 (Demo)")
+
 
 if __name__ == "__main__":
     main()

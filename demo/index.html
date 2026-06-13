@@ -6,416 +6,88 @@
 <title>Robot Brain — Demo</title>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
-
 body {
   font-family: 'Segoe UI', Arial, sans-serif;
-  background: #0f1117;
-  color: #e0e0e0;
-  height: 100vh;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
+  background: #0f1117; color: #e0e0e0;
+  height: 100vh; display: flex; flex-direction: column; overflow: hidden;
 }
-
-/* ── Header ── */
 header {
-  background: #1a1a2e;
-  padding: 10px 20px;
-  display: flex;
-  align-items: center;
-  gap: 20px;
-  border-bottom: 2px solid #e94560;
-  flex-shrink: 0;
+  background: #1a1a2e; padding: 10px 20px;
+  display: flex; align-items: center; gap: 20px;
+  border-bottom: 2px solid #e94560; flex-shrink: 0;
 }
 header h1 { font-size: 18px; color: #fff; letter-spacing: 1px; }
-header .db-badge {
-  background: #0f3460;
-  color: #7fb3f5;
-  padding: 3px 10px;
-  border-radius: 12px;
-  font-size: 12px;
-}
-header .status-dot {
-  width: 10px; height: 10px;
-  border-radius: 50%;
-  background: #4caf50;
-  animation: pulse 2s infinite;
-}
+.db-badge { background: #0f3460; color: #7fb3f5; padding: 3px 10px; border-radius: 12px; font-size: 12px; }
+.status-dot { width: 10px; height: 10px; border-radius: 50%; background: #4caf50; animation: pulse 2s infinite; }
 @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
-
-/* ── Main Layout ── */
-.main {
-  display: grid;
-  grid-template-columns: 1fr 420px;
-  grid-template-rows: 1fr;
-  flex: 1;
-  gap: 0;
-  min-height: 0;
-}
-
-/* ── Left: Unity Scene ── */
-.scene-panel {
-  background: #080c14;
-  display: flex;
-  flex-direction: column;
-  border-right: 1px solid #1e2a3a;
-  min-height: 0;
-}
-.scene-panel .panel-title {
-  padding: 10px 16px;
-  font-size: 12px;
-  color: #7fb3f5;
-  letter-spacing: 1px;
-  text-transform: uppercase;
-  border-bottom: 1px solid #1e2a3a;
-  flex-shrink: 0;
-}
-.scene-feed {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #333;
-  font-size: 14px;
-  flex-direction: column;
-  gap: 12px;
-}
-.scene-feed .placeholder-icon { font-size: 48px; opacity: 0.3; }
-
-/* HAR result overlay */
-.har-result {
-  background: #1a1a2e;
-  border-top: 1px solid #1e2a3a;
-  padding: 12px 16px;
-  flex-shrink: 0;
-}
-.har-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 6px;
-}
+.main { display: grid; grid-template-columns: 1fr 420px; flex: 1; min-height: 0; }
+.scene-panel { background: #080c14; display: flex; flex-direction: column; border-right: 1px solid #1e2a3a; min-height: 0; }
+.panel-title { padding: 10px 16px; font-size: 12px; color: #7fb3f5; letter-spacing: 1px; text-transform: uppercase; border-bottom: 1px solid #1e2a3a; flex-shrink: 0; }
+.scene-feed { flex: 1; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 12px; }
+.placeholder-icon { font-size: 48px; opacity: 0.3; }
+.har-result { background: #1a1a2e; border-top: 1px solid #1e2a3a; padding: 12px 16px; flex-shrink: 0; }
+.har-row { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
 .har-label { font-size: 11px; color: #64748b; width: 80px; }
 .har-value { font-size: 13px; color: #e0e0e0; }
-.har-badge {
-  background: #0d9488;
-  color: #fff;
-  padding: 2px 10px;
-  border-radius: 10px;
-  font-size: 12px;
-  font-weight: bold;
-}
+.har-badge { background: #0d9488; color: #fff; padding: 2px 10px; border-radius: 10px; font-size: 12px; font-weight: bold; }
 .har-badge.low { background: #f59e0b; }
 .har-badge.err { background: #ef4444; }
-.confidence-bar {
-  height: 4px;
-  background: #1e2a3a;
-  border-radius: 2px;
-  margin-top: 4px;
-  overflow: hidden;
-}
-.confidence-fill {
-  height: 100%;
-  background: #0d9488;
-  border-radius: 2px;
-  transition: width 0.5s;
-}
-
-/* ── Right Panel ── */
-.right-panel {
-  display: flex;
-  flex-direction: column;
-  background: #0f1117;
-  min-height: 0;
-}
-
-/* ── Proactive Section ── */
-.proactive-section {
-  background: #1a1a2e;
-  border-bottom: 1px solid #1e2a3a;
-  flex-shrink: 0;
-  max-height: 280px;
-}
-.section-header {
-  padding: 10px 16px;
-  font-size: 12px;
-  color: #e94560;
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  border-bottom: 1px solid #1e2a3a;
-}
-.trigger-buttons {
-  display: flex;
-  gap: 8px;
-  padding: 10px 16px;
-  flex-wrap: wrap;
-}
-.trigger-btn {
-  background: #0f3460;
-  border: 1px solid #1e4080;
-  color: #7fb3f5;
-  padding: 6px 12px;
-  border-radius: 6px;
-  font-size: 12px;
-  cursor: pointer;
-  transition: all 0.2s;
-}
+.confidence-bar { height: 4px; background: #1e2a3a; border-radius: 2px; margin-top: 4px; overflow: hidden; }
+.confidence-fill { height: 100%; background: #0d9488; border-radius: 2px; transition: width 0.5s; }
+.right-panel { display: flex; flex-direction: column; background: #0f1117; min-height: 0; }
+.proactive-section { background: #1a1a2e; border-bottom: 1px solid #1e2a3a; flex-shrink: 0; max-height: 260px; }
+.section-header { padding: 10px 16px; font-size: 12px; color: #e94560; text-transform: uppercase; letter-spacing: 1px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #1e2a3a; }
+.trigger-buttons { display: flex; gap: 8px; padding: 10px 16px; flex-wrap: wrap; }
+.trigger-btn { background: #0f3460; border: 1px solid #1e4080; color: #7fb3f5; padding: 6px 12px; border-radius: 6px; font-size: 12px; cursor: pointer; transition: all 0.2s; }
 .trigger-btn:hover { background: #1e4080; color: #fff; }
-.trigger-btn:active { transform: scale(0.97); }
-
-.proactive-bubble {
-  margin: 0 16px 12px;
-  background: #0f3460;
-  border: 1px solid #1e4080;
-  border-radius: 10px;
-  padding: 12px 14px;
-  display: none;
-}
+.proactive-bubble { margin: 0 16px 12px; background: #0f3460; border: 1px solid #1e4080; border-radius: 10px; padding: 12px 14px; display: none; }
 .proactive-bubble.visible { display: block; }
-.robot-label {
-  font-size: 11px;
-  color: #7fb3f5;
-  margin-bottom: 6px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-.robot-icon { font-size: 16px; }
-.proactive-message {
-  font-size: 14px;
-  color: #e0e0e0;
-  line-height: 1.5;
-  margin-bottom: 8px;
-}
-.proactive-meta {
-  font-size: 11px;
-  color: #64748b;
-}
-.proactive-actions {
-  display: flex;
-  gap: 8px;
-  margin-top: 10px;
-}
-.accept-btn {
-  background: #0d9488;
-  border: none;
-  color: #fff;
-  padding: 5px 14px;
-  border-radius: 6px;
-  font-size: 12px;
-  cursor: pointer;
-}
-.reject-btn {
-  background: transparent;
-  border: 1px solid #444;
-  color: #aaa;
-  padding: 5px 14px;
-  border-radius: 6px;
-  font-size: 12px;
-  cursor: pointer;
-}
-
-/* ── Reactive Section ── */
-.reactive-section {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-}
-.user-tabs {
-  display: flex;
-  border-bottom: 1px solid #1e2a3a;
-  flex-shrink: 0;
-}
-.user-tab {
-  flex: 1;
-  padding: 10px;
-  text-align: center;
-  font-size: 13px;
-  cursor: pointer;
-  color: #64748b;
-  border-bottom: 2px solid transparent;
-  transition: all 0.2s;
-}
-.user-tab.active {
-  color: #e0e0e0;
-  border-bottom-color: #e94560;
-}
-.user-tab.mom { border-bottom-color: #e91e63; }
-.user-tab.dad { border-bottom-color: #1976d2; }
-
-.chat-area {
-  flex: 1;
-  overflow-y: auto;
-  padding: 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  min-height: 0;
-}
+.robot-label { font-size: 11px; color: #7fb3f5; margin-bottom: 6px; display: flex; align-items: center; gap: 6px; }
+.proactive-message { font-size: 14px; color: #e0e0e0; line-height: 1.5; margin-bottom: 8px; }
+.proactive-meta { font-size: 11px; color: #64748b; }
+.proactive-actions { display: flex; gap: 8px; margin-top: 10px; }
+.accept-btn { background: #0d9488; border: none; color: #fff; padding: 5px 14px; border-radius: 6px; font-size: 12px; cursor: pointer; }
+.reject-btn { background: transparent; border: 1px solid #444; color: #aaa; padding: 5px 14px; border-radius: 6px; font-size: 12px; cursor: pointer; }
+.reactive-section { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+.user-tabs { display: flex; border-bottom: 1px solid #1e2a3a; flex-shrink: 0; }
+.user-tab { flex: 1; padding: 10px; text-align: center; font-size: 13px; cursor: pointer; color: #64748b; border-bottom: 2px solid transparent; transition: all 0.2s; }
+.user-tab.active.mom { color: #e0e0e0; border-bottom-color: #e91e63; }
+.user-tab.active.dad { color: #e0e0e0; border-bottom-color: #1976d2; }
+.chat-area { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 8px; min-height: 0; }
 .chat-area::-webkit-scrollbar { width: 4px; }
 .chat-area::-webkit-scrollbar-thumb { background: #1e2a3a; }
-
-.msg {
-  max-width: 85%;
-  padding: 8px 12px;
-  border-radius: 10px;
-  font-size: 13px;
-  line-height: 1.5;
-}
-.msg.user {
-  background: #1e2a3a;
-  align-self: flex-end;
-  color: #e0e0e0;
-}
-.msg.robot {
-  background: #0f3460;
-  align-self: flex-start;
-  color: #e0e0e0;
-  border: 1px solid #1e4080;
-}
-.msg.system {
-  background: transparent;
-  align-self: center;
-  color: #64748b;
-  font-size: 11px;
-  font-style: italic;
-}
-.msg .intent-tag {
-  font-size: 10px;
-  color: #64748b;
-  margin-top: 4px;
-}
-.msg-options {
-  display: flex;
-  gap: 6px;
-  margin-top: 8px;
-  flex-wrap: wrap;
-}
-.msg-option-btn {
-  background: #1e2a3a;
-  border: 1px solid #2a3a4a;
-  color: #aaa;
-  padding: 4px 10px;
-  border-radius: 6px;
-  font-size: 11px;
-  cursor: pointer;
-}
+.msg { max-width: 85%; padding: 8px 12px; border-radius: 10px; font-size: 13px; line-height: 1.5; }
+.msg.user { background: #1e2a3a; align-self: flex-end; color: #e0e0e0; }
+.msg.robot { background: #0f3460; align-self: flex-start; color: #e0e0e0; border: 1px solid #1e4080; }
+.msg.robot.streaming::after { content: '▋'; animation: blink 0.8s infinite; margin-left: 1px; }
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+.msg.system { background: transparent; align-self: center; color: #64748b; font-size: 11px; font-style: italic; }
+.intent-tag { font-size: 10px; color: #64748b; margin-top: 4px; }
+.msg-options { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+.msg-option-btn { background: #1e2a3a; border: 1px solid #2a3a4a; color: #aaa; padding: 4px 10px; border-radius: 6px; font-size: 11px; cursor: pointer; }
 .msg-option-btn:hover { background: #2a3a4a; color: #fff; }
-
-.quick-btns {
-  display: flex;
-  gap: 6px;
-  padding: 8px 12px;
-  border-top: 1px solid #1e2a3a;
-  flex-wrap: wrap;
-  flex-shrink: 0;
-}
-.quick-btn {
-  background: #1a1a2e;
-  border: 1px solid #1e2a3a;
-  color: #7fb3f5;
-  padding: 5px 12px;
-  border-radius: 14px;
-  font-size: 11px;
-  cursor: pointer;
-  transition: all 0.2s;
-}
+.quick-btns { display: flex; gap: 6px; padding: 8px 12px; border-top: 1px solid #1e2a3a; flex-wrap: wrap; flex-shrink: 0; }
+.quick-btn { background: #1a1a2e; border: 1px solid #1e2a3a; color: #7fb3f5; padding: 5px 12px; border-radius: 14px; font-size: 11px; cursor: pointer; transition: all 0.2s; }
 .quick-btn:hover { background: #0f3460; }
-
-.input-area {
-  display: flex;
-  gap: 8px;
-  padding: 10px 12px;
-  border-top: 1px solid #1e2a3a;
-  flex-shrink: 0;
-}
-.chat-input {
-  flex: 1;
-  background: #1a1a2e;
-  border: 1px solid #1e2a3a;
-  color: #e0e0e0;
-  padding: 8px 12px;
-  border-radius: 8px;
-  font-size: 13px;
-  outline: none;
-}
+.input-area { display: flex; gap: 8px; padding: 10px 12px; border-top: 1px solid #1e2a3a; flex-shrink: 0; }
+.chat-input { flex: 1; background: #1a1a2e; border: 1px solid #1e2a3a; color: #e0e0e0; padding: 8px 12px; border-radius: 8px; font-size: 13px; outline: none; }
 .chat-input:focus { border-color: #0f3460; }
-.send-btn {
-  background: #e94560;
-  border: none;
-  color: #fff;
-  padding: 8px 16px;
-  border-radius: 8px;
-  font-size: 13px;
-  cursor: pointer;
-  font-weight: bold;
-}
+.chat-input:disabled { opacity: 0.5; }
+.send-btn { background: #e94560; border: none; color: #fff; padding: 8px 16px; border-radius: 8px; font-size: 13px; cursor: pointer; font-weight: bold; }
 .send-btn:hover { background: #c73652; }
-
-/* ── Habit Profile Panel ── */
-.habit-modal {
-  position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,0.8);
-  display: none;
-  align-items: center;
-  justify-content: center;
-  z-index: 100;
-}
+.send-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.habit-modal { position: fixed; inset: 0; background: rgba(0,0,0,0.8); display: none; align-items: center; justify-content: center; z-index: 100; }
 .habit-modal.open { display: flex; }
-.habit-card {
-  background: #1a1a2e;
-  border: 1px solid #1e2a3a;
-  border-radius: 12px;
-  padding: 24px;
-  width: 700px;
-  max-height: 80vh;
-  overflow-y: auto;
-}
+.habit-card { background: #1a1a2e; border: 1px solid #1e2a3a; border-radius: 12px; padding: 24px; width: 700px; max-height: 80vh; overflow-y: auto; }
 .habit-card h2 { color: #7fb3f5; margin-bottom: 16px; font-size: 16px; }
 .habit-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-.habit-col h3 { font-size: 13px; color: #e94560; margin-bottom: 10px; }
-.habit-item {
-  background: #0f1117;
-  border-radius: 6px;
-  padding: 8px 10px;
-  margin-bottom: 6px;
-  font-size: 12px;
-}
+.habit-col h3 { font-size: 13px; margin-bottom: 10px; }
+.habit-item { background: #0f1117; border-radius: 6px; padding: 8px 10px; margin-bottom: 6px; font-size: 12px; }
 .habit-item .h-action { color: #7fb3f5; font-weight: bold; }
 .habit-item .h-meta { color: #64748b; font-size: 11px; margin-top: 2px; }
-.habit-item .h-weight {
-  float: right;
-  background: #0f3460;
-  padding: 1px 8px;
-  border-radius: 10px;
-  font-size: 11px;
-  color: #7fb3f5;
-}
-.close-btn {
-  background: transparent;
-  border: 1px solid #444;
-  color: #aaa;
-  padding: 6px 16px;
-  border-radius: 6px;
-  cursor: pointer;
-  margin-top: 16px;
-}
-
-/* ── Header buttons ── */
-.header-btn {
-  background: #1e2a3a;
-  border: 1px solid #2a3a4a;
-  color: #aaa;
-  padding: 5px 12px;
-  border-radius: 6px;
-  font-size: 12px;
-  cursor: pointer;
-}
+.habit-item .h-weight { float: right; background: #0f3460; padding: 1px 8px; border-radius: 10px; font-size: 11px; color: #7fb3f5; }
+.close-btn { background: transparent; border: 1px solid #444; color: #aaa; padding: 6px 16px; border-radius: 6px; cursor: pointer; margin-top: 16px; }
+.header-btn { background: #1e2a3a; border: 1px solid #2a3a4a; color: #aaa; padding: 5px 12px; border-radius: 6px; font-size: 12px; cursor: pointer; }
 .header-btn:hover { background: #2a3a4a; color: #fff; }
 </style>
 </head>
@@ -424,23 +96,20 @@ header .status-dot {
 <header>
   <div class="status-dot"></div>
   <h1>🤖 Robot Brain — Demo</h1>
-  <span class="db-badge" id="dbBadge">robot_exp_demo</span>
+  <span class="db-badge">robot_exp_demo</span>
   <button class="header-btn" onclick="openHabits()">📊 Habit Profile</button>
   <div style="flex:1"></div>
   <span style="font-size:12px;color:#64748b;" id="statusMsg">Connected</span>
 </header>
 
 <div class="main">
-
-  <!-- ── Left: Scene + HAR ── -->
   <div class="scene-panel">
     <div class="panel-title">🎥 Live Scene — Unity Simulation</div>
-    <div class="scene-feed" id="sceneFeed">
+    <div class="scene-feed">
       <div class="placeholder-icon">🏠</div>
       <span style="color:#444;font-size:13px;">Unity simulation running on left screen</span>
-      <span style="color:#333;font-size:12px;">HAR results appear below automatically</span>
     </div>
-    <div class="har-result" id="harResult">
+    <div class="har-result">
       <div class="har-row">
         <span class="har-label">User</span>
         <span class="har-value" id="harUser">—</span>
@@ -463,10 +132,7 @@ header .status-dot {
     </div>
   </div>
 
-  <!-- ── Right ── -->
   <div class="right-panel">
-
-    <!-- Proactive -->
     <div class="proactive-section">
       <div class="section-header">
         🔔 Proactive Service
@@ -482,8 +148,7 @@ header .status-dot {
       </div>
       <div class="proactive-bubble" id="proactiveBubble">
         <div class="robot-label">
-          <span class="robot-icon">🤖</span>
-          Robot says
+          <span>🤖</span> Robot says
           <span style="margin-left:auto;font-size:10px;color:#64748b;" id="proactiveUser"></span>
         </div>
         <div class="proactive-message" id="proactiveMsg"></div>
@@ -495,72 +160,65 @@ header .status-dot {
       </div>
     </div>
 
-    <!-- Reactive -->
     <div class="reactive-section">
       <div class="user-tabs">
-        <div class="user-tab mom active" onclick="switchUser('User_Mom',this)">
-          👩 User Mom
-        </div>
-        <div class="user-tab dad" onclick="switchUser('User_Dad',this)">
-          👨 User Dad
-        </div>
+        <div class="user-tab mom active" onclick="switchUser('User_Mom',this)">👩 User Mom</div>
+        <div class="user-tab dad" onclick="switchUser('User_Dad',this)">👨 User Dad</div>
       </div>
-
       <div class="chat-area" id="chatArea"></div>
-
       <div class="quick-btns">
         <button class="quick-btn" onclick="sendQuick('I am thirsty')">😤 I am thirsty</button>
         <button class="quick-btn" onclick="sendQuick('I am hungry')">🍽 I am hungry</button>
         <button class="quick-btn" onclick="sendQuick('Where is the remote?')">📍 Where is remote?</button>
         <button class="quick-btn" onclick="sendQuick('What should I do after dinner?')">💡 Recommendation</button>
       </div>
-
       <div class="input-area">
-        <input class="chat-input" id="chatInput"
-               placeholder="Type a message..."
-               onkeydown="if(event.key==='Enter') sendMsg()">
-        <button class="send-btn" onclick="sendMsg()">Send</button>
+        <input class="chat-input" id="chatInput" placeholder="Type a message..."
+               onkeydown="if(event.key==='Enter'&&!isStreaming)sendMsg()">
+        <button class="send-btn" id="sendBtn" onclick="sendMsg()">Send</button>
       </div>
     </div>
-
   </div>
 </div>
 
-<!-- Habit Modal -->
 <div class="habit-modal" id="habitModal" onclick="if(event.target===this)closeHabits()">
   <div class="habit-card">
     <h2>📊 Learned Habit Profiles</h2>
-    <div class="habit-cols" id="habitCols">
-      <div style="color:#64748b;font-size:13px;">Loading...</div>
-    </div>
+    <div class="habit-cols" id="habitCols"><div style="color:#64748b;">Loading...</div></div>
     <button class="close-btn" onclick="closeHabits()">Close</button>
   </div>
 </div>
 
 <script>
-const BACKEND   = 'http://localhost:5000';
+const BACKEND = 'http://localhost:5000';
 let currentUser = 'User_Mom';
 let currentProposalId = null;
+let isStreaming = false;
 const chatHistories = { 'User_Mom': [], 'User_Dad': [] };
 
-// ── User switch ───────────────────────────────────────────────────
+function setStreaming(v) {
+  isStreaming = v;
+  document.getElementById('chatInput').disabled = v;
+  document.getElementById('sendBtn').disabled = v;
+}
+
 function switchUser(uid, tab) {
+  if (isStreaming) return;
   currentUser = uid;
   document.querySelectorAll('.user-tab').forEach(t => t.classList.remove('active'));
   tab.classList.add('active');
   renderChat();
 }
 
-// ── Chat rendering ────────────────────────────────────────────────
 function renderChat() {
   const area = document.getElementById('chatArea');
   area.innerHTML = '';
   const history = chatHistories[currentUser] || [];
-  if (history.length === 0) {
-    const hint = document.createElement('div');
-    hint.className = 'msg system';
-    hint.textContent = `${currentUser} session started. Ask something or use quick buttons.`;
-    area.appendChild(hint);
+  if (!history.length) {
+    const d = document.createElement('div');
+    d.className = 'msg system';
+    d.textContent = `${currentUser} session started.`;
+    area.appendChild(d);
   }
   history.forEach(m => appendMsgEl(m));
   area.scrollTop = area.scrollHeight;
@@ -570,11 +228,17 @@ function appendMsgEl(m) {
   const area = document.getElementById('chatArea');
   const div  = document.createElement('div');
   div.className = `msg ${m.role}`;
+  if (m.id) div.id = m.id;
 
   if (m.role === 'robot') {
-    div.innerHTML = `<div>${m.text}</div>`;
+    const textDiv = document.createElement('div');
+    textDiv.textContent = m.text;
+    div.appendChild(textDiv);
     if (m.intent) {
-      div.innerHTML += `<div class="intent-tag">intent: ${m.intent}</div>`;
+      const tag = document.createElement('div');
+      tag.className = 'intent-tag';
+      tag.textContent = `intent: ${m.intent}`;
+      div.appendChild(tag);
     }
     if (m.options && m.options.length) {
       const opts = document.createElement('div');
@@ -593,74 +257,126 @@ function appendMsgEl(m) {
   }
   area.appendChild(div);
   area.scrollTop = area.scrollHeight;
+  return div;
 }
 
 function addMsg(role, text, extra = {}) {
   const m = { role, text, ...extra };
   chatHistories[currentUser].push(m);
-  appendMsgEl(m);
+  return appendMsgEl(m);
 }
 
-// ── Send message ──────────────────────────────────────────────────
 async function sendMsg() {
   const input = document.getElementById('chatInput');
   const query = input.value.trim();
-  if (!query) return;
+  if (!query || isStreaming) return;
   input.value = '';
   sendQuick(query);
 }
 
 async function sendQuick(query) {
+  if (isStreaming) return;
   addMsg('user', query);
-  document.getElementById('statusMsg').textContent = 'Processing...';
+  setStreaming(true);
+  document.getElementById('statusMsg').textContent = 'Thinking...';
+
+  const msgId = 'stream-' + Date.now();
+  const robotMsg = { role: 'robot', text: '', id: msgId };
+  chatHistories[currentUser].push(robotMsg);
+  const el = appendMsgEl(robotMsg);
+  el.classList.add('streaming');
+  const textDiv = el.querySelector('div');
 
   try {
-    const resp = await fetch(`${BACKEND}/interact`, {
-      method:  'POST',
-      headers: {'Content-Type':'application/json'},
-      body:    JSON.stringify({ query, userID: currentUser, room: '' }),
+    const resp = await fetch(`${BACKEND}/interact/stream`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ query, userID: currentUser, room: '' }),
     });
-    const data = await resp.json();
 
-    const options = (data.options || []).filter(o => o.id !== 3);
-    addMsg('robot', data.answer || 'No response.', {
-      intent:  data.intent_type,
-      options: options.length ? options : null,
-    });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let doneData = null;
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop();
+
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        try {
+          const ev = JSON.parse(line.slice(6));
+          if (ev.type === 'token') {
+            robotMsg.text += ev.content;
+            textDiv.textContent = robotMsg.text;
+            el.parentElement.scrollTop = el.parentElement.scrollHeight;
+          } else if (ev.type === 'done') {
+            doneData = ev;
+          }
+        } catch(e) {}
+      }
+    }
+
+    el.classList.remove('streaming');
+
+    if (doneData) {
+      robotMsg.intent  = doneData.intent_type;
+      robotMsg.options = (doneData.options || []).filter(o => o.id !== 3);
+
+      if (robotMsg.intent) {
+        const tag = document.createElement('div');
+        tag.className = 'intent-tag';
+        tag.textContent = `intent: ${robotMsg.intent}`;
+        el.appendChild(tag);
+      }
+      if (robotMsg.options && robotMsg.options.length) {
+        const opts = document.createElement('div');
+        opts.className = 'msg-options';
+        robotMsg.options.forEach(opt => {
+          const btn = document.createElement('button');
+          btn.className = 'msg-option-btn';
+          btn.textContent = opt.label;
+          btn.onclick = () => sendQuick(opt.label);
+          opts.appendChild(btn);
+        });
+        el.appendChild(opts);
+      }
+    }
+
     document.getElementById('statusMsg').textContent = 'Connected';
   } catch(e) {
-    addMsg('robot', `[Error: ${e.message}]`);
-    document.getElementById('statusMsg').textContent = 'Connection error';
+    el.classList.remove('streaming');
+    robotMsg.text = `[Error: ${e.message}]`;
+    textDiv.textContent = robotMsg.text;
+    document.getElementById('statusMsg').textContent = 'Error';
+  } finally {
+    setStreaming(false);
   }
 }
 
-// ── Proactive ─────────────────────────────────────────────────────
 async function triggerProactive(userId, prevAction, timeSlot) {
-  document.getElementById('statusMsg').textContent = 'Generating proactive proposal...';
+  document.getElementById('statusMsg').textContent = 'Generating...';
   try {
     const resp = await fetch(`${BACKEND}/demo/trigger_proactive`, {
-      method:  'POST',
-      headers: {'Content-Type':'application/json'},
-      body:    JSON.stringify({
-        user_id:     userId,
-        prev_action: prevAction,
-        time_slot:   timeSlot,
-      }),
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ user_id: userId, prev_action: prevAction, time_slot: timeSlot }),
     });
     const data = await resp.json();
-
     if (data.status !== 'ok') {
-      document.getElementById('statusMsg').textContent = 'No proposal generated';
+      document.getElementById('statusMsg').textContent = 'No proposal';
       return;
     }
-
     currentProposalId = data.proposal_id;
-    document.getElementById('proactiveUser').textContent   = userId;
-    document.getElementById('proactiveMsg').textContent    = data.message;
-    document.getElementById('proactiveMeta').textContent   =
-      `Item: ${data.item} @ ${data.item_loc} | `+
-      `Predicted: ${data.step1}→${data.step2} | `+
-      `Confidence: ${(data.confidence*100).toFixed(0)}%`;
+    document.getElementById('proactiveUser').textContent = userId;
+    document.getElementById('proactiveMsg').textContent  = data.message;
+    document.getElementById('proactiveMeta').textContent =
+      `Item: ${data.item} @ ${data.item_loc} | Predicted: ${data.step1}→${data.step2} | Confidence: ${(data.confidence*100).toFixed(0)}%`;
     document.getElementById('proactiveBubble').classList.add('visible');
     document.getElementById('statusMsg').textContent = 'Connected';
   } catch(e) {
@@ -671,36 +387,51 @@ async function triggerProactive(userId, prevAction, timeSlot) {
 async function respondProactive(result) {
   if (!currentProposalId) return;
   await fetch(`${BACKEND}/service_response`, {
-    method:  'POST',
-    headers: {'Content-Type':'application/json'},
-    body:    JSON.stringify({
-      proposal_id: currentProposalId,
-      user_id:     currentUser,
-      result,
-    }),
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ proposal_id: currentProposalId, user_id: currentUser, result }),
   });
   document.getElementById('proactiveBubble').classList.remove('visible');
   currentProposalId = null;
-
-  const bubble = document.getElementById('proactiveBubble');
-  const msg    = result === 'accepted'
-    ? '✓ Proposal accepted'
-    : '✗ Proposal rejected';
-  addMsg('system', msg);
+  addMsg('system', result === 'accepted' ? '✓ Proposal accepted' : '✗ Proposal rejected');
 }
 
-// ── Habit Modal ───────────────────────────────────────────────────
 async function openHabits() {
   document.getElementById('habitModal').classList.add('open');
-  document.getElementById('habitCols').innerHTML =
-    '<div style="color:#64748b;">Loading...</div>';
+  document.getElementById('habitCols').innerHTML = '<div style="color:#64748b;">Loading...</div>';
   try {
-    const resp = await fetch(`${BACKEND}/demo/habits`);
-    const data = await resp.json();
-    renderHabits(data);
+    const data = await (await fetch(`${BACKEND}/demo/habits`)).json();
+    const cols = document.getElementById('habitCols');
+    cols.innerHTML = '';
+    Object.entries(data).forEach(([uid, info]) => {
+      const col   = document.createElement('div');
+      col.className = 'habit-col';
+      const color = uid === 'User_Mom' ? '#e91e63' : '#1976d2';
+      col.innerHTML = `<h3 style="color:${color}">${uid.replace('_',' ')}</h3>
+        <div style="font-size:11px;color:#64748b;margin-bottom:8px;">
+          ${info.obs_count} observations · ${info.habits.length} stable habits</div>`;
+      info.habits.slice(0,6).forEach(h => {
+        const item = document.createElement('div');
+        item.className = 'habit-item';
+        item.innerHTML = `<span class="h-weight">${h.weight.toFixed(0)}x</span>
+          <div class="h-action">${h.action}</div>
+          <div class="h-meta">${h.zone} · ${h.slot}</div>`;
+        col.appendChild(item);
+      });
+      if (info.transitions.length) {
+        const t = document.createElement('div');
+        t.innerHTML = `<div style="font-size:11px;color:#64748b;margin:10px 0 6px;">Top transitions:</div>`;
+        info.transitions.forEach(tr => {
+          const ti = document.createElement('div');
+          ti.style.cssText = 'font-size:11px;color:#e0e0e0;margin-bottom:4px;';
+          ti.textContent = `${tr.from_action} → ${tr.to_action}  ×${tr.count}`;
+          t.appendChild(ti);
+        });
+        col.appendChild(t);
+      }
+      cols.appendChild(col);
+    });
   } catch(e) {
-    document.getElementById('habitCols').innerHTML =
-      `<div style="color:#ef4444;">Error: ${e.message}</div>`;
+    document.getElementById('habitCols').innerHTML = `<div style="color:#ef4444;">Error: ${e.message}</div>`;
   }
 }
 
@@ -708,68 +439,21 @@ function closeHabits() {
   document.getElementById('habitModal').classList.remove('open');
 }
 
-function renderHabits(data) {
-  const cols = document.getElementById('habitCols');
-  cols.innerHTML = '';
-
-  Object.entries(data).forEach(([uid, info]) => {
-    const col = document.createElement('div');
-    col.className = 'habit-col';
-    const color = uid === 'User_Mom' ? '#e91e63' : '#1976d2';
-    col.innerHTML = `<h3 style="color:${color}">${uid.replace('_',' ')}</h3>
-      <div style="font-size:11px;color:#64748b;margin-bottom:8px;">
-        ${info.obs_count} observations · ${info.habits.length} stable habits
-      </div>`;
-
-    info.habits.slice(0,6).forEach(h => {
-      const item = document.createElement('div');
-      item.className = 'habit-item';
-      item.innerHTML = `
-        <span class="h-weight">${h.weight.toFixed(0)}x</span>
-        <div class="h-action">${h.action}</div>
-        <div class="h-meta">${h.zone} · ${h.slot}</div>`;
-      col.appendChild(item);
-    });
-
-    if (info.transitions.length) {
-      const t = document.createElement('div');
-      t.innerHTML = `<div style="font-size:11px;color:#64748b;margin:10px 0 6px;">
-        Top transitions:</div>`;
-      info.transitions.forEach(tr => {
-        const ti = document.createElement('div');
-        ti.style.cssText = 'font-size:11px;color:#e0e0e0;margin-bottom:4px;';
-        ti.textContent = `${tr.from_action} → ${tr.to_action}  ×${tr.count}`;
-        t.appendChild(ti);
-      });
-      col.appendChild(t);
-    }
-
-    cols.appendChild(col);
-  });
-}
-
-// ── HAR polling ───────────────────────────────────────────────────
 async function pollLatestHAR() {
   try {
-    const resp = await fetch(`${BACKEND}/demo/latest_har`);
-    if (!resp.ok) return;
-    const data = await resp.json();
+    const data = await (await fetch(`${BACKEND}/demo/latest_har`)).json();
     if (!data.spatial_action) return;
-
     document.getElementById('harUser').textContent   = data.user || '—';
-    document.getElementById('harReason').textContent = (data.upgrade_reason || '').replace('pmi_llm:','');
-
+    document.getElementById('harReason').textContent = (data.upgrade_reason||'').replace('pmi_llm:','');
     const badge = document.getElementById('harAction');
     badge.textContent = data.spatial_action;
     const conf = data.vlm_confidence || 0;
     badge.className = 'har-badge' + (conf < 0.4 ? ' err' : conf < 0.7 ? ' low' : '');
-
-    document.getElementById('harConf').textContent = `${(conf*100).toFixed(0)}%`;
-    document.getElementById('confBar').style.width = `${conf*100}%`;
+    document.getElementById('harConf').textContent   = `${(conf*100).toFixed(0)}%`;
+    document.getElementById('confBar').style.width   = `${conf*100}%`;
   } catch(e) {}
 }
 
-// ── Init ──────────────────────────────────────────────────────────
 renderChat();
 setInterval(pollLatestHAR, 3000);
 </script>

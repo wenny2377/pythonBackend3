@@ -168,6 +168,13 @@ def _get_time_slot(virtual_hour) -> str:
 def _virtual_day_to_date(virtual_day) -> str:
     if virtual_day is None:
         return datetime.datetime.utcnow().strftime("%Y-%m-%d")
+    try:
+        day_int = int(virtual_day)
+        if day_int >= 1:
+            base = datetime.date(2025, 1, 1)
+            return (base + datetime.timedelta(days=day_int - 1)).strftime("%Y-%m-%d")
+    except (ValueError, TypeError):
+        pass
     if isinstance(virtual_day, str) and len(virtual_day) == 10:
         try:
             datetime.datetime.strptime(virtual_day, "%Y-%m-%d")
@@ -1249,11 +1256,11 @@ class PerceptionEngine:
         self._index_to_faiss(final_user, log_action, bound_doc, result, mongo_id)
 
         if ground_truth_activity:
-            import uuid as _uuid
             skel_body_log, _ = (self._skeleton_body_position(payload)
                                  if payload else (None, None))
+            _episode_id = payload.get("episode_id", "") or __import__("uuid").uuid4().hex
             self.db["eval_logs"].insert_one({
-                "episode_id":       str(_uuid.uuid4()),
+                "episode_id":       _episode_id,
                 "t_capture":        payload.get("t_capture", ""),
                 "user":             final_user,
                 "user_id":          final_user,
@@ -1284,6 +1291,10 @@ class PerceptionEngine:
                 "left_wrist_x":     float(payload.get("left_wrist_x", -999)) if payload else -999,
                 "left_wrist_z":     float(payload.get("left_wrist_z", -999)) if payload else -999,
                 "skel_body":        skel_body_log,
+                "virtual_day":      payload.get("virtual_day")  if payload else None,
+                "virtual_hour":     payload.get("virtual_hour") if payload else None,
+                "time_slot":        _get_time_slot(payload.get("virtual_hour") if payload else None),
+                "virtual_date":     _virtual_day_to_date(payload.get("virtual_day") if payload else None),
                 "timestamp":        datetime.datetime.utcnow(),
             })
 

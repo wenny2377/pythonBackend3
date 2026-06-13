@@ -1,44 +1,25 @@
 import re
-import json
-import logging
 import datetime
+import logging
+import threading
 import requests
+import numpy as np
 from dataclasses import dataclass, field
-from collections import defaultdict
 
 from config import Config
 
 logger = logging.getLogger(__name__)
 
-LLM_TIMEOUT   = Config.LLM_TIMEOUT
-LLM_TEMP      = Config.LLM_TEMPERATURE
-LLM_TOKENS    = Config.LLM_MAX_TOKENS
-TTL_HOURS     = Config.SNAPSHOT_TTL_HOURS
-MAX_ITEMS     = Config.SNAPSHOT_MAX_ITEMS
+LLM_TIMEOUT = Config.LLM_TIMEOUT
+LLM_TEMP    = Config.LLM_TEMPERATURE
+LLM_TOKENS  = Config.LLM_MAX_TOKENS
+TTL_HOURS   = Config.SNAPSHOT_TTL_HOURS
+MAX_ITEMS   = Config.SNAPSHOT_MAX_ITEMS
 
-SESSION_TIMEOUT_MINUTES = 30
-MAX_TURN_HISTORY        = 5
-HIGH_WEIGHT_THRESHOLD   = 10
-
-INTENT_KEYWORDS = {
-    "interrupt": {"stop", "cancel", "abort", "never mind", "forget it",
-                  "停下", "停止", "算了", "取消", "不用了"},
-    "locate":    {"where", "which room", "find", "location", "show me",
-                  "在哪", "哪裡", "找", "位置"},
-    "need":      {"hungry", "thirsty", "tired", "want", "need", "feel like",
-                  "bored", "craving", "餓", "渴", "想", "需要", "想要"},
-    "confirm":   {"好", "ok", "是", "對", "可以", "yes", "okay", "sure",
-                  "要", "行"},
-    "reject":    {"不要", "換", "other", "another", "something else",
-                  "不行", "換一個", "no"},
-    "dislike":   {"不喜歡", "討厭", "don't like", "hate", "disgusting",
-                  "噁心", "最討厭", "never", "stop recommending"},
-}
-
-NEED_CATEGORIES = {
-    "food":  ["food", "eat", "hungry", "meal", "snack", "餓", "吃"],
-    "drink": ["drink", "thirsty", "water", "juice", "beverage", "渴", "喝"],
-}
+HIGH_WEIGHT     = 10
+SESSION_TTL     = 30
+MAX_HISTORY     = 5
+SBERT_THRESHOLD = 0.20
 
 OBJECT_EXCLUDES = {
     "user_mom", "user_dad", "user", "person", "people",
@@ -46,9 +27,57 @@ OBJECT_EXCLUDES = {
 }
 
 PREF_STOPWORDS = {
-    "user", "enjoys", "drink", "food", "likes", "frequently",
-    "uses", "during", "in", "the", "a", "an", "some", "often",
-    "usually", "mom", "dad",
+    "user", "enjoys", "drink", "food", "likes", "frequently", "uses",
+    "during", "in", "the", "a", "an", "some", "often", "usually",
+    "mom", "dad", "recommend", "not", "do", "to", "this",
+}
+
+INTERRUPT_WORDS = {"stop", "cancel", "abort", "never mind", "forget it"}
+CONFIRM_WORDS   = {
+    "yes", "ok", "okay", "sure", "yeah", "yep", "please",
+    "go ahead", "alright", "fine", "do it", "get it", "bring it",
+    "that works", "sounds good",
+}
+REJECT_WORDS = {
+    "no", "nope", "another", "something else", "other",
+    "different", "not that", "change", "not really",
+}
+DISLIKE_WORDS = {
+    "hate", "don't like", "dislike", "disgusting",
+    "never", "not again", "awful", "terrible",
+}
+
+TIME_TONE = {
+    "Morning":   "cheerful and energetic",
+    "Noon":      "calm and helpful",
+    "Afternoon": "relaxed and friendly",
+    "Evening":   "warm and attentive",
+    "Night":     "quiet and gentle",
+}
+
+DRINK_KEYWORDS = {"drink", "beverage", "thirst", "water", "juice", "soda", "cola", "bottle"}
+FOOD_KEYWORDS  = {"eat", "food", "meal", "snack", "hungry", "fruit", "bowl", "plate"}
+
+_ITEM_SYNONYMS = {
+    "cola":     "cola soda coke fizzy carbonated cold drink beverage",
+    "water":    "water bottle waterbottle hydration drink beverage H2O",
+    "bottle":   "bottle water waterbottle hydration drink beverage",
+    "juice":    "juice fruit drink beverage sweet",
+    "cup":      "cup mug glass hot cold drink beverage",
+    "apple":    "apple fruit food snack healthy",
+    "banana":   "banana fruit food snack sweet",
+    "bowl":     "bowl dish food meal soup cereal",
+    "plate":    "plate dish food meal dinner",
+    "food":     "food meal snack eat dinner lunch",
+    "remote":   "remote clicker TV controller television channel",
+    "phone":    "phone smartphone mobile call",
+    "book":     "book reading novel literature",
+    "laptop":   "laptop computer notebook typing work",
+    "broom":    "broom sweep cleaning floor",
+    "mop":      "mop cleaning floor wet",
+    "pan":      "pan frying cooking kitchen skillet",
+    "spatula":  "spatula cooking kitchen tool",
+    "keyboard": "keyboard typing computer input",
 }
 
 
@@ -57,658 +86,860 @@ class ConversationSession:
     user_id:         str
     state:           str  = "IDLE"
     pending_item:    str  = ""
-    pending_nav:     dict = field(default_factory=dict)
-    excluded_items:  set  = field(default_factory=set)
-    turn_history:    list = field(default_factory=list)
     need_type:       str  = ""
+    excluded_items:  set  = field(default_factory=set)
     available_items: list = field(default_factory=list)
+    turn_history:    list = field(default_factory=list)
     last_updated:    datetime.datetime = field(
         default_factory=datetime.datetime.utcnow)
 
-    def is_expired(self) -> bool:
-        return (datetime.datetime.utcnow() - self.last_updated).seconds \
-               > SESSION_TIMEOUT_MINUTES * 60
+    def expired(self):
+        return (datetime.datetime.utcnow() -
+                self.last_updated).seconds > SESSION_TTL * 60
 
     def touch(self):
         self.last_updated = datetime.datetime.utcnow()
 
-    def add_turn(self, role: str, content: str):
+    def add_turn(self, role, content):
         self.turn_history.append({"role": role, "content": content})
-        if len(self.turn_history) > MAX_TURN_HISTORY * 2:
-            self.turn_history = self.turn_history[-(MAX_TURN_HISTORY * 2):]
+        if len(self.turn_history) > MAX_HISTORY * 2:
+            self.turn_history = self.turn_history[-(MAX_HISTORY * 2):]
 
     def reset(self):
         self.state           = "IDLE"
         self.pending_item    = ""
-        self.pending_nav     = {}
-        self.excluded_items  = set()
-        self.turn_history    = []
         self.need_type       = ""
+        self.excluded_items  = set()
         self.available_items = []
+        self.turn_history    = []
         self.touch()
 
 
 class ReactiveService:
 
-    def __init__(self, db, skill_manager, vector_memory,
-                 ollama_url: str, llm_model: str):
+    def __init__(self, db, skill_manager, vector_memory, ollama_url, llm_model):
         self.db            = db
         self.skill_manager = skill_manager
-        self.vector        = vector_memory
         self.ollama_url    = ollama_url
         self.llm_model     = llm_model
-        self._sessions: dict[str, ConversationSession] = {}
-        self._sbert     = None
-        self._need_vecs = None
+        self._sessions     = {}
+        self._vec_cache    = {}
+        self._sbert        = None
         try:
-            if hasattr(vector_memory, 'model'):
-                self._sbert     = vector_memory.model
-                self._need_vecs = self._build_need_vecs()
+            if hasattr(vector_memory, "model"):
+                self._sbert = vector_memory.model
         except Exception:
             pass
+        self._warm_cache()
 
-    def process(self, query: str, user_id: str, room: str = "") -> dict:
-        print(f"\n[ReactiveService] user={user_id} | query='{query}'")
-        session = self._get_or_create_session(user_id)
+    # ── Public API ────────────────────────────────────────────────────────────
 
-        if self._match_intent(query, "interrupt"):
+    def process(self, query, user_id, room=""):
+        session = self._session(user_id)
+
+        if self._is_interrupt(query):
             session.reset()
-            return self._response_interrupt()
+            return self._resp("Understood, stopping now.", "interrupt")
 
         if session.state == "CONFIRMING":
-            return self._handle_confirmation_turn(query, session)
+            r = self._confirmation_turn(query, session)
+            session.add_turn("assistant", r.get("answer", ""))
+            return r
 
-        intent = self._classify_intent(query)
-        print(f"[ReactiveService] intent={intent}")
-
+        intent, category = self._classify_intent(query)
         session.add_turn("user", query)
         session.touch()
 
-        if intent == "locate":
-            result = self._handle_locate(query, user_id, room)
+        if intent == "query":
+            r = self._handle_query(query, user_id)
         elif intent == "need":
-            result = self._handle_need(query, user_id, session)
+            r = self._handle_need(query, user_id, session, category)
         else:
-            result = self._handle_chat(query, user_id)
+            r = self._handle_chat(query, user_id)
 
-        session.add_turn("assistant", result.get("answer", ""))
-        return result
+        session.add_turn("assistant", r.get("answer", ""))
+        return r
 
-    def _classify_intent(self, query: str) -> str:
+    def process_stream(self, query, user_id, room=""):
+        session = self._session(user_id)
+
+        if self._is_interrupt(query):
+            session.reset()
+            yield {"type": "done",
+                   **self._resp("Understood, stopping now.", "interrupt")}
+            return
+
+        if session.state == "CONFIRMING":
+            r = self._confirmation_turn(query, session)
+            session.add_turn("assistant", r.get("answer", ""))
+            yield from self._wrap_stream(r)
+            return
+
+        intent, category = self._classify_intent(query)
+        session.add_turn("user", query)
+        session.touch()
+
+        if intent == "query":
+            yield from self._query_stream(query, user_id)
+        elif intent == "need":
+            yield from self._need_stream(query, user_id, session, category)
+        else:
+            yield from self._chat_stream(query, user_id)
+
+    # ── Intent classification ─────────────────────────────────────────────────
+
+    def _is_interrupt(self, query):
+        return any(w in query.lower() for w in INTERRUPT_WORDS)
+
+    def _classify_intent(self, query) -> tuple:
+        raw = self._llm_call(
+            "You are an intent classifier for a home robot.\n"
+            "Reply with exactly two comma-separated words.\n"
+            "Word 1: need, query, or chat\n"
+            "Word 2: drink, food, or any\n\n"
+            "need  = user is hungry/thirsty or wants something fetched\n"
+            "query = user asks about objects, locations, people, devices\n"
+            "chat  = greetings, feelings, small talk, anything else\n"
+            "drink = thirsty, beverage, water, juice, soda, cold drink\n"
+            "food  = hungry, eating, meal, snack, something to eat\n"
+            "any   = not specific\n\n"
+            "Examples:\n"
+            "I am thirsty        → need, drink\n"
+            "could use a drink   → need, drink\n"
+            "I am hungry         → need, food\n"
+            "feeling peckish     → need, food\n"
+            "get me something    → need, any\n"
+            "where is the remote → query, any\n"
+            "what food do we have→ query, food\n"
+            "I am sad            → chat, any\n"
+            "hello               → chat, any",
+            f'"{query}"',
+            max_tokens=10,
+        )
+        intent   = "chat"
+        category = None
+        if raw:
+            parts = [p.strip().lower() for p in raw.split(",")]
+            if parts[0] in ("need", "query", "chat"):
+                intent = parts[0]
+            if len(parts) > 1 and parts[1] in ("drink", "food"):
+                category = parts[1]
+        return intent, category
+
+    # ── Home snapshot ─────────────────────────────────────────────────────────
+
+    def _build_snapshot(self, user_id: str) -> str:
+        parts = []
+
+        objects = self._available(category=None)
+        if objects:
+            lines = "\n".join(
+                f"  {i['label']} ({i.get('category','?')}): "
+                f"at {i.get('last_seen_on','?')} in {i.get('room','?')}"
+                for i in objects)
+            parts.append(f"Objects at home:\n{lines}")
+
+        users = list(self.db.user_positions.find(
+            {}, {"user_id":1, "room":1, "activity":1}))
+        if users:
+            lines = "\n".join(
+                f"  {u['user_id']}: in {u.get('room','unknown')}"
+                + (f", doing {u['activity']}" if u.get('activity') else "")
+                for u in users)
+            parts.append(f"People:\n{lines}")
+
+        devices = list(self.db.device_states.find({}, {"label":1, "state":1}))
+        if devices:
+            lines = "\n".join(
+                f"  {d['label']}: {d.get('state','unknown')}"
+                for d in devices)
+            parts.append(f"Device states:\n{lines}")
+
+        habits = list(self.db.observation_logs.find(
+            {"user": user_id, "weight": {"$gte": 5}},
+            {"action":1, "zone_name":1, "time_slot":1, "weight":1},
+            sort=[("weight", -1)],
+        ).limit(5))
+        if habits:
+            lines = "\n".join(
+                f"  {h['action']} at {h.get('zone_name','')} "
+                f"({h.get('time_slot','')}): {int(h.get('weight',0))} times"
+                for h in habits)
+            parts.append(f"User habits:\n{lines}")
+
+        skill_doc = self.db.user_skills.find_one({"user_id": user_id})
+        if skill_doc and skill_doc.get("skill_md"):
+            parts.append(f"User preferences:\n{skill_doc['skill_md'][:400]}")
+
+        return "\n\n".join(parts)
+
+    # ── Query handler ─────────────────────────────────────────────────────────
+
+    def _handle_query(self, query, user_id):
+        snapshot = self._build_snapshot(user_id)
+        system   = (
+            "You are a home robot assistant.\n\n"
+            f"Current home state:\n{snapshot}\n\n"
+            "Rules:\n"
+            "- Answer ONLY from the information above.\n"
+            "- Never invent objects, locations, people, or states.\n"
+            "- If something is not in the snapshot, say you don't know.\n"
+            "- Keep answers concise. 1-3 sentences."
+        )
+        answer    = self._llm_call(system, query, max_tokens=120) \
+                    or "I'm not sure, let me check."
+        nav_label, nav_target = self._extract_nav(answer, self._available(None))
+        return self._resp(answer, "query",
+                          nav_label=nav_label, nav_target=nav_target)
+
+    def _query_stream(self, query, user_id):
+        snapshot = self._build_snapshot(user_id)
+        system   = (
+            "You are a home robot assistant.\n\n"
+            f"Current home state:\n{snapshot}\n\n"
+            "Rules:\n"
+            "- Answer ONLY from the information above.\n"
+            "- Never invent objects, locations, people, or states.\n"
+            "- If something is not in the snapshot, say you don't know.\n"
+            "- Keep answers concise. 1-3 sentences."
+        )
+        items = self._available(None)
+        full  = ""
+        for token in self._llm_stream(system, query, max_tokens=120):
+            full += token
+            yield {"type": "token", "content": token}
+        if not full:
+            full = "I'm not sure, let me check."
+            yield {"type": "token", "content": full}
+        nav_label, nav_target = self._extract_nav(full, items)
+        yield {"type": "done",
+               **self._resp(full, "query",
+                            nav_label=nav_label, nav_target=nav_target)}
+
+    # ── Need handler ──────────────────────────────────────────────────────────
+
+    def _resolve_need(self, query, user_id, session, category):
+        session.need_type = category or ""
+        excl      = session.excluded_items | self._skill_exclusions(user_id)
+        available = self._available(category=category, excluded=excl)
+        if not available and category:
+            available = self._available(category=None, excluded=excl)
+        item = self._pick_item(query, user_id, available, category)
+        return item, available
+
+    def _handle_need(self, query, user_id, session, category=None):
+        item, available = self._resolve_need(query, user_id, session, category)
+
+        if not item:
+            return self._unavailable(query, user_id)
+
+        session.pending_item    = item["label"]
+        session.available_items = available
+        obj       = self.db.dynamic_objects.find_one(
+            {"label": item["label"].lower()})
+        nav_label  = obj.get("last_seen_on") if obj else None
+        nav_target = self._resolve_nav(nav_label)
+        weight     = self._obs_weight(user_id, item["label"])
+        skill_md   = self._skill_md(user_id) or ""
+
+        if weight >= HIGH_WEIGHT:
+            session.state = "IDLE"
+            answer = self._llm_call(
+                "You are a home robot. The user has a strong habit with "
+                "this item. Tell them you will get it. One natural sentence.",
+                f'User: "{query}"\nItem: {item["label"]}'
+                + (f' at {nav_label}' if nav_label else ''),
+                max_tokens=50) or f"I'll get your {item['label']} right away!"
+            return self._resp(answer, "execute",
+                              nav_label=nav_label, nav_target=nav_target,
+                              recommendations=[{"label": item["label"]}],
+                              is_personalized=True,
+                              options=self._nav_options(nav_label, nav_target))
+
+        session.state = "CONFIRMING"
+        answer = self._llm_call(
+            f"You are a home robot.\n"
+            f"User preferences:\n{skill_md[:300]}\n\n"
+            f"Offer ONLY '{item['label']}' naturally and ask for confirmation. "
+            f"One sentence. Do NOT mention any other items.",
+            f'User: "{query}"\nItem to offer: {item["label"]}'
+            + (f' at {nav_label}' if nav_label else ''),
+            max_tokens=60) or f"Would you like some {item['label']}?"
+        return self._resp(answer, "need_confirm",
+                          recommendations=[{"label": item["label"]}],
+                          is_personalized=bool(
+                              self._preference(user_id, available, category)),
+                          options=[{"id":1,"label":"Yes"},
+                                   {"id":2,"label":"No, something else"},
+                                   {"id":3,"label":"Cancel"}])
+
+    def _need_stream(self, query, user_id, session, category=None):
+        yield {"type": "token", "content": "Let me check... "}
+
+        item, available = self._resolve_need(query, user_id, session, category)
+
+        if not item:
+            tone   = TIME_TONE.get(self._time_slot(), "friendly")
+            system = (f"You are a home robot with a {tone} tone. "
+                      "Nothing matches. Apologise warmly and suggest "
+                      "an alternative (e.g. add to shopping list). "
+                      "1-2 sentences.")
+            full   = ""
+            for token in self._llm_stream(system, f'User: "{query}"',
+                                          max_tokens=80):
+                full += token
+                yield {"type": "token", "content": token}
+            if not full:
+                full = "Sorry, I don't have anything for that right now."
+                yield {"type": "token", "content": full}
+            yield {"type": "done", **self._resp(full, "need_unavailable")}
+            return
+
+        session.pending_item    = item["label"]
+        session.available_items = available
+        obj        = self.db.dynamic_objects.find_one(
+            {"label": item["label"].lower()})
+        nav_label  = obj.get("last_seen_on") if obj else None
+        nav_target = self._resolve_nav(nav_label)
+        weight     = self._obs_weight(user_id, item["label"])
+        skill_md   = self._skill_md(user_id) or ""
+
+        if weight >= HIGH_WEIGHT:
+            session.state = "IDLE"
+            system  = ("You are a home robot. The user has a strong habit "
+                       "with this item. Tell them you will get it. "
+                       "One natural sentence.")
+            context = (f'User: "{query}"\nItem: {item["label"]}'
+                       + (f' at {nav_label}' if nav_label else ''))
+            full    = ""
+            for token in self._llm_stream(system, context, max_tokens=50):
+                full += token
+                yield {"type": "token", "content": token}
+            if not full:
+                full = f"I'll get your {item['label']} right away!"
+                yield {"type": "token", "content": full}
+            yield {"type": "done",
+                   **self._resp(full, "execute",
+                                nav_label=nav_label, nav_target=nav_target,
+                                recommendations=[{"label": item["label"]}],
+                                is_personalized=True,
+                                options=self._nav_options(nav_label, nav_target))}
+            return
+
+        session.state = "CONFIRMING"
+        system  = (f"You are a home robot.\n"
+                   f"User preferences:\n{skill_md[:300]}\n\n"
+                   f"Offer ONLY '{item['label']}' naturally and ask for "
+                   f"confirmation. One sentence. Do NOT mention other items.")
+        context = (f'User: "{query}"\nItem to offer: {item["label"]}'
+                   + (f' at {nav_label}' if nav_label else ''))
+        full    = ""
+        for token in self._llm_stream(system, context, max_tokens=60):
+            full += token
+            yield {"type": "token", "content": token}
+        if not full:
+            full = f"Would you like some {item['label']}?"
+            yield {"type": "token", "content": full}
+        yield {"type": "done",
+               **self._resp(full, "need_confirm",
+                            recommendations=[{"label": item["label"]}],
+                            is_personalized=bool(
+                                self._preference(user_id, available, category)),
+                            options=[{"id":1,"label":"Yes"},
+                                     {"id":2,"label":"No, something else"},
+                                     {"id":3,"label":"Cancel"}])}
+
+    # ── Chat handler ──────────────────────────────────────────────────────────
+
+    def _handle_chat(self, query, user_id):
+        session  = self._session(user_id)
+        messages = (
+            [{"role": "system", "content":
+              "You are a friendly home robot companion. "
+              "Reply warmly in 1-2 sentences. "
+              "Do NOT promise to fetch anything unless asked. "
+              "Do NOT wrap response in quotes."}]
+            + session.turn_history[-MAX_HISTORY * 2:]
+            + [{"role": "user", "content": query}]
+        )
+        answer = self._llm_messages(messages, max_tokens=80) or "I'm here for you!"
+        return self._resp(answer, "chat")
+
+    def _chat_stream(self, query, user_id):
+        session  = self._session(user_id)
+        messages = (
+            [{"role": "system", "content":
+              "You are a friendly home robot companion. "
+              "Reply warmly in 1-2 sentences. "
+              "Do NOT promise to fetch anything unless asked. "
+              "Do NOT wrap response in quotes."}]
+            + session.turn_history[-MAX_HISTORY * 2:]
+            + [{"role": "user", "content": query}]
+        )
+        full = ""
+        for token in self._llm_stream_messages(messages, max_tokens=80):
+            full += token
+            yield {"type": "token", "content": token}
+        if not full:
+            full = "I'm here for you!"
+            yield {"type": "token", "content": full}
+        yield {"type": "done", **self._resp(full, "chat")}
+
+    # ── Confirmation turn ─────────────────────────────────────────────────────
+
+    def _confirmation_turn(self, query, session):
+        session.add_turn("user", query)
+        session.touch()
         q = query.lower().strip()
 
-        for intent, keywords in INTENT_KEYWORDS.items():
-            if any(kw in q for kw in keywords):
-                return intent
+        if any(w in q for w in DISLIKE_WORDS): return self._dislike(session)
+        if any(w in q for w in CONFIRM_WORDS): return self._confirm(session)
+        if any(w in q for w in REJECT_WORDS):  return self._reject(session)
 
-        if self._sbert and self._need_vecs:
-            import numpy as np
-            q_vec  = self._sbert.encode(query, normalize_embeddings=True)
-            scores = {cat: float(np.dot(q_vec, vec))
-                      for cat, vec in self._need_vecs.items()}
-            best   = max(scores, key=scores.get)
-            if scores[best] >= 0.35:
-                return "need"
+        raw = self._llm_call(
+            "Reply with exactly one word: confirm, reject, dislike, or new.\n"
+            "confirm = user agrees\n"
+            "reject  = user wants something else\n"
+            "dislike = user strongly dislikes this item\n"
+            "new     = user is making a completely different request",
+            f'Context: robot just offered an item. User replied: "{query}"',
+            max_tokens=5)
+        if raw:
+            w = raw.strip().lower().split()[0]
+            if w == "dislike": return self._dislike(session)
+            if w == "confirm": return self._confirm(session)
+            if w == "new":
+                session.reset()
+                intent, category = self._classify_intent(query)
+                if intent == "need":
+                    return self._handle_need(query, session.user_id, session, category)
+                elif intent == "query":
+                    return self._handle_query(query, session.user_id)
+                else:
+                    return self._handle_chat(query, session.user_id)
+        return self._reject(session)
 
-        result = self._call_llm(
-            system=(
-                "Classify the user message into exactly one word: "
-                "need, locate, or chat.\n"
-                "need = wants food/drink/object\n"
-                "locate = asks where something is\n"
-                "chat = everything else\n"
-                "Reply with one word only."
-            ),
-            user=f'Message: "{query}"',
-            max_tokens=5,
-        )
-        if result:
-            word = result.strip().lower().split()[0]
-            if word in ("need", "locate", "chat"):
-                return word
-
-        return "chat"
-
-    def _handle_locate(self, query: str, user_id: str, room: str) -> dict:
-        items = self._get_available_items(category=None, max_items=50)
-
-        if not items:
-            return self._response(
-                answer="I don't see any objects tracked at home right now.",
-                intent_type="locate",
-            )
-
-        items_text = "\n".join(
-            f"- {i['label']}: on {i.get('last_seen_on','?')} "
-            f"in {i.get('room','?')}"
-            for i in items
-        )
-
-        answer = self._call_llm(
-            system=(
-                f"You are a home robot. Answer ONLY based on this list:\n"
-                f"{items_text}\n\n"
-                "RULES:\n"
-                "- If item exists: state location clearly\n"
-                "- If item does NOT exist: say 'I don't see [item] at home'\n"
-                "- Never invent locations\n"
-                "- Keep answer to 1-2 sentences"
-            ),
-            user=query,
-            max_tokens=80,
-        ) or "I couldn't find that information."
-
-        nav_label, nav_target = self._extract_nav_from_answer(answer, items)
-
-        return self._response(
-            answer=answer,
-            nav_label=nav_label,
-            nav_target=nav_target,
-            intent_type="locate",
-        )
-
-    def _handle_need(self, query: str, user_id: str,
-                     session: ConversationSession) -> dict:
-        need_type = self._classify_need_type(query)
-        session.need_type = need_type
-
-        skill_exclusions = self._get_skill_exclusions(user_id)
-        session.excluded_items.update(skill_exclusions)
-
-        items = self._get_available_items(
-            category=need_type,
-            excluded=session.excluded_items,
-        )
-
-        if not items:
-            return self._response(
-                answer=f"I don't see any {need_type} available at home right now.",
-                intent_type="need_unavailable",
-            )
-
-        preferred   = self._get_user_preference(user_id, need_type)
-        recommended = None
-
-        if preferred:
-            for item in items:
-                if preferred.lower() in item["label"].lower():
-                    recommended = item
-                    break
-
-        if not recommended:
-            recommended = items[0]
-
-        obs_weight = self._get_item_obs_weight(user_id, recommended["label"], need_type)
-
-        session.pending_item    = recommended["label"]
-        session.available_items = items
-        session.state           = "CONFIRMING"
-
-        skill_md    = self._get_skill_md(user_id) or ""
-        is_personal = bool(preferred)
-
-        if obs_weight >= HIGH_WEIGHT_THRESHOLD:
-            answer = self._call_llm(
-                system=(
-                    "You are a friendly home robot assistant. "
-                    "The user has a strong established habit with this item. "
-                    "Say you will get it for them directly. Max 1 sentence."
-                ),
-                user=(
-                    f"User: '{query}'\n"
-                    f"Item: {recommended['label']} "
-                    f"(observed {obs_weight} times)\n"
-                    f"Location: {recommended.get('last_seen_on','nearby')}"
-                ),
-                max_tokens=50,
-            ) or f"I'll get your {recommended['label']} right away!"
-
-            session.state = "EXECUTING"
-            obj       = self.db.dynamic_objects.find_one(
-                {"label": recommended["label"].lower()})
-            nav_label  = obj.get("last_seen_on") if obj else None
-            nav_target = self._resolve_nav(nav_label)
-            session.reset()
-
-            return self._response(
-                answer=answer,
-                nav_label=nav_label,
-                nav_target=nav_target,
-                intent_type="execute",
-                recommendations=[{"label": recommended["label"]}],
-                is_personalized=True,
-                options=self._build_nav_options(nav_label, nav_target),
-            )
-
-        answer = self._call_llm(
-            system=(
-                "You are a friendly home robot assistant.\n"
-                f"User skill profile:\n{skill_md[:500] if skill_md else '(none)'}\n\n"
-                "Generate a short, natural offer for the recommended item. "
-                "Ask for confirmation. Max 1 sentence."
-            ),
-            user=(
-                f"User said: '{query}'\n"
-                f"Recommended item: {recommended['label']}\n"
-                f"Location: {recommended.get('last_seen_on', 'nearby')}\n"
-                f"Generate the offer:"
-            ),
-            max_tokens=60,
-        ) or f"Would you like some {recommended['label']}?"
-
-        return self._response(
-            answer=answer,
-            intent_type="need_confirm",
-            options=[
-                {"id": 1, "label": "Yes"},
-                {"id": 2, "label": "No, something else"},
-                {"id": 3, "label": "Cancel"},
-            ],
-            recommendations=[{"label": recommended["label"]}],
-            is_personalized=is_personal,
-        )
-
-    def _handle_confirmation_turn(self, query: str,
-                                   session: ConversationSession) -> dict:
-        session.add_turn("user", query)
-        session.touch()
-
-        if self._match_intent(query, "dislike"):
-            return self._handle_dislike(query, session)
-        if self._match_intent(query, "reject"):
-            return self._handle_reject(session)
-        if self._match_intent(query, "confirm"):
-            return self._handle_confirm(session)
-
-        return self._handle_reject(session)
-
-    def _handle_confirm(self, session: ConversationSession) -> dict:
-        item    = session.pending_item
-        user_id = session.user_id
-
-        self._record_preference(
-            user_id=user_id, item=item,
-            positive=True, time_slot=self._current_time_slot(),
-        )
-
+    def _confirm(self, session):
+        item       = session.pending_item
+        user_id    = session.user_id
         obj        = self.db.dynamic_objects.find_one({"label": item.lower()})
         nav_label  = obj.get("last_seen_on") if obj else None
         nav_target = self._resolve_nav(nav_label)
+        self._update_skill_async(user_id, item,
+                                 session.need_type, positive=True)
         session.reset()
+        loc_str = f" from {nav_label}" if nav_label else ""
+        return self._resp(
+            f"Great! Getting you {item}{loc_str}.",
+            "execute", nav_label=nav_label, nav_target=nav_target,
+            recommendations=[{"label": item}], is_personalized=True,
+            options=self._nav_options(nav_label, nav_target))
 
-        return self._response(
-            answer=f"Great! Getting you {item} from {nav_label}.",
-            nav_label=nav_label,
-            nav_target=nav_target,
-            intent_type="execute",
-            recommendations=[{"label": item}],
-            is_personalized=True,
-            options=self._build_nav_options(nav_label, nav_target),
-        )
-
-    def _handle_reject(self, session: ConversationSession) -> dict:
+    def _reject(self, session):
         if session.pending_item:
             session.excluded_items.add(session.pending_item.lower())
-
-        remaining = [
-            i for i in session.available_items
-            if i["label"].lower() not in session.excluded_items
-        ]
-
+        remaining = [i for i in session.available_items
+                     if i["label"].lower() not in session.excluded_items]
         if not remaining:
             session.reset()
-            return self._response(
-                answer="Sorry, I don't have any other options available.",
-                intent_type="need_unavailable",
-            )
+            return self._resp("Sorry, no other options available right now.",
+                              "need_unavailable")
+        nxt        = remaining[0]
+        session.pending_item = nxt["label"]
+        obj        = self.db.dynamic_objects.find_one(
+            {"label": nxt["label"].lower()})
+        nav_label  = obj.get("last_seen_on") if obj else None
+        nav_target = self._resolve_nav(nav_label)
+        loc_str    = f" at {nav_label}" if nav_label else ""
+        return self._resp(
+            f"How about {nxt['label']}{loc_str}?", "need_confirm",
+            recommendations=[{"label": nxt["label"]}],
+            nav_label=nav_label, nav_target=nav_target,
+            options=[{"id":1,"label":"Yes"},
+                     {"id":2,"label":"No, something else"},
+                     {"id":3,"label":"Cancel"}])
 
-        next_item               = remaining[0]
-        session.pending_item    = next_item["label"]
-        session.available_items = remaining
-
-        return self._response(
-            answer=f"How about {next_item['label']} instead?",
-            intent_type="need_confirm",
-            options=[
-                {"id": 1, "label": "Yes"},
-                {"id": 2, "label": "No, something else"},
-                {"id": 3, "label": "Cancel"},
-            ],
-            recommendations=[{"label": next_item["label"]}],
-        )
-
-    def _handle_dislike(self, query: str,
-                         session: ConversationSession) -> dict:
+    def _dislike(self, session):
         item    = session.pending_item
         user_id = session.user_id
-
         if item:
             session.excluded_items.add(item.lower())
-            self._record_preference(
-                user_id=user_id, item=item,
-                positive=False, time_slot=self._current_time_slot(),
-            )
-
-        remaining = [
-            i for i in session.available_items
-            if i["label"].lower() not in session.excluded_items
-        ]
-
+            self._update_skill_async(user_id, item,
+                                     session.need_type, positive=False)
+        remaining = [i for i in session.available_items
+                     if i["label"].lower() not in session.excluded_items]
         if remaining:
-            next_item            = remaining[0]
-            session.pending_item = next_item["label"]
-            return self._response(
-                answer=(f"Got it, I won't recommend {item} again. "
-                        f"Would you like {next_item['label']} instead?"),
-                intent_type="need_confirm",
-                options=[
-                    {"id": 1, "label": "Yes"},
-                    {"id": 2, "label": "No, something else"},
-                    {"id": 3, "label": "Cancel"},
-                ],
-                recommendations=[{"label": next_item["label"]}],
+            nxt        = remaining[0]
+            session.pending_item = nxt["label"]
+            obj        = self.db.dynamic_objects.find_one(
+                {"label": nxt["label"].lower()})
+            nav_label  = obj.get("last_seen_on") if obj else None
+            loc_str    = f" at {nav_label}" if nav_label else ""
+            return self._resp(
+                f"Got it, I won't recommend {item} again. "
+                f"Would you like {nxt['label']}{loc_str}?",
+                "need_confirm",
+                recommendations=[{"label": nxt["label"]}],
                 is_personalized=True,
-            )
-
+                options=[{"id":1,"label":"Yes"},
+                         {"id":2,"label":"No, something else"},
+                         {"id":3,"label":"Cancel"}])
         session.reset()
-        return self._response(
-            answer=f"Got it, I won't recommend {item} again.",
-            intent_type="feedback",
-            is_personalized=True,
-        )
+        return self._resp(f"Got it, I won't recommend {item} again.",
+                          "feedback", is_personalized=True)
 
-    def _handle_chat(self, query: str, user_id: str) -> dict:
-        session = self._get_or_create_session(user_id)
-        history = session.turn_history[-MAX_TURN_HISTORY * 2:]
-        messages = [
-            {"role": "system", "content": (
-                "You are a friendly home robot companion. "
-                "Reply warmly in 1-2 sentences. "
-                "Do NOT promise to fetch or prepare anything. "
-                "Do NOT wrap response in quotes."
-            )}
-        ] + history + [{"role": "user", "content": query}]
+    # ── Item selection ────────────────────────────────────────────────────────
 
-        answer = self._call_llm_messages(messages, max_tokens=80) \
-                 or "I'm here for you!"
+    def _pick_item(self, query, user_id, available, need_type=None):
+        if not available:
+            return None
+        preferred = self._preference(user_id, available, need_type)
+        if preferred:
+            for a in available:
+                if a["label"].lower() == preferred.lower():
+                    return a
+        return self._semantic_match(query, available)
 
-        return self._response(answer=answer, intent_type="chat")
-
-    def _record_preference(self, user_id: str, item: str,
-                            positive: bool, time_slot: str = ""):
-        try:
-            if positive:
-                bullet  = f"- User enjoys {item}"
-                section = "## Preferences"
-            else:
-                bullet  = f"- Do not recommend {item} to this user"
-                section = "## What NOT to do"
-            self.skill_manager._insert_if_new(user_id, section, bullet)
-            print(f"[ReactiveService] Preference recorded: {bullet}")
-        except Exception as e:
-            print(f"[ReactiveService] preference record error: {e}")
-
-    def _get_available_items(self, category: str = None,
-                              excluded: set = None,
-                              max_items: int = MAX_ITEMS) -> list:
-        cutoff    = datetime.datetime.utcnow() - datetime.timedelta(hours=TTL_HOURS)
-        nin_labels = list(OBJECT_EXCLUDES | (excluded or set()))
-        query = {
-            "last_seen": {"$gte": cutoff},
-            "label":     {"$nin": nin_labels},
-        }
-        if category:
-            query["category"] = category
-
-        docs = list(
-            self.db.dynamic_objects.find(
-                query,
-                {"label":1, "category":1, "last_seen_on":1,
-                 "room":1, "interact_count":1},
-            ).sort("interact_count", -1).limit(max_items)
-        )
-
-        if not docs:
-            query.pop("last_seen", None)
-            docs = list(
-                self.db.dynamic_objects.find(
-                    query,
-                    {"label":1, "category":1, "last_seen_on":1,
-                     "room":1, "interact_count":1},
-                ).limit(max_items)
-            )
-
-        return docs
-
-    def verify_item_exists(self, item_name: str) -> bool:
-        cutoff = datetime.datetime.utcnow() - datetime.timedelta(hours=TTL_HOURS)
-        return self.db.dynamic_objects.find_one({
-            "label":     item_name.lower(),
-            "last_seen": {"$gte": cutoff},
-        }) is not None
-
-    def _get_user_preference(self, user_id: str,
-                              need_type: str) -> str | None:
-        skill_md = self._get_skill_md(user_id)
-        if skill_md:
-            match = re.search(
-                r"## Preferences\n(.*?)(?=\n## |$)", skill_md, re.DOTALL)
-            if match:
-                target = "food" if need_type == "food" else "drink"
-                for line in match.group(1).split("\n"):
-                    if target in line.lower() or "enjoys" in line.lower() \
-                            or "frequently" in line.lower():
-                        parts = re.findall(r"\b\w+\b", line)
-                        for p in parts:
-                            if p.lower() not in PREF_STOPWORDS and len(p) > 2:
-                                return p
-
-        try:
-            actions = (["Drinking", "SittingDrink"]
-                       if need_type == "drink" else ["Eating", "Cooking"])
-            obs = list(self.db.observation_logs.find(
-                {"user": user_id, "action": {"$in": actions}},
-                {"zone_name":1, "weight":1}
-            ).sort("weight", -1).limit(3))
-
-            if obs:
-                top_zone = obs[0].get("zone_name", "")
-                obj = self.db.dynamic_objects.find_one(
-                    {"category": need_type, "last_seen_on": top_zone},
-                    sort=[("interact_count", -1)]
-                )
-                if obj:
-                    return obj["label"]
-
-                obj = self.db.dynamic_objects.find_one(
-                    {"category": need_type},
-                    sort=[("interact_count", -1)]
-                )
-                if obj:
-                    return obj["label"]
-        except Exception as e:
-            print(f"[ReactiveService] obs fallback error: {e}")
-
+    def _semantic_match(self, query: str, items: list):
+        if not items:
+            return None
+        if self._sbert:
+            try:
+                q_vec      = self._sbert.encode(query, normalize_embeddings=True)
+                best_item  = None
+                best_score = -1.0
+                for item in items:
+                    ivec  = self._get_item_vec(item)
+                    if ivec is None:
+                        continue
+                    score = float(np.dot(q_vec, ivec))
+                    if score > best_score:
+                        best_score = score
+                        best_item  = item
+                if best_score >= SBERT_THRESHOLD and best_item:
+                    return best_item
+            except Exception:
+                pass
+        labels_text = "\n".join(
+            f"- {i['label']} (category: {i.get('category','?')},"
+            f" at {i.get('last_seen_on','?')})"
+            for i in items)
+        raw = self._llm_call(
+            "Reply with ONLY the exact label from the list. "
+            "Nothing else. No explanation.\n"
+            "If nothing matches, reply: none\n\n"
+            f"Items:\n{labels_text}",
+            f'User wants: "{query}". Pick the best matching label.',
+            max_tokens=10)
+        if raw:
+            raw_clean = raw.strip().lower().split()[0].rstrip(".,!?()")
+            for i in items:
+                if i["label"].lower() == raw_clean:
+                    return i
+            for i in items:
+                if raw_clean in i["label"].lower():
+                    return i
         return None
 
-    def _get_skill_exclusions(self, user_id: str) -> set:
-        skill_md = self._get_skill_md(user_id)
+    def _get_item_vec(self, item):
+        label    = item["label"].lower()
+        category = item.get("category", "")
+        synonyms = _ITEM_SYNONYMS.get(label, "")
+        text     = f"{label} {category} {synonyms}".strip()
+        cached   = self._vec_cache.get(label)
+        if cached and cached[0] == text:
+            return cached[1]
+        if self._sbert is None:
+            return None
+        vec = self._sbert.encode(text, normalize_embeddings=True)
+        self._vec_cache[label] = (text, vec)
+        return vec
+
+    def _warm_cache(self):
+        if self._sbert is None:
+            return
+        def _bg():
+            try:
+                items = self._available(category=None)
+                for item in items:
+                    self._get_item_vec(item)
+                print(f"[ReactiveService] SBERT cache ready: {len(items)} items")
+            except Exception as e:
+                print(f"[ReactiveService] warm cache error: {e}")
+        threading.Thread(target=_bg, daemon=True).start()
+
+    # ── Preference / skill ────────────────────────────────────────────────────
+
+    def _preference(self, user_id, available_items, need_type=None):
+        available_labels = {i["label"].lower() for i in available_items}
+        skill_md = self._skill_md(user_id)
+        if skill_md:
+            m = re.search(r"## Preferences\n(.*?)(?=\n## |$)",
+                          skill_md, re.DOTALL)
+            if m:
+                for line in m.group(1).split("\n"):
+                    if not line.strip():
+                        continue
+                    if need_type == "drink" and not any(
+                            w in line.lower() for w in DRINK_KEYWORDS):
+                        continue
+                    if need_type == "food" and not any(
+                            w in line.lower() for w in FOOD_KEYWORDS):
+                        continue
+                    if any(w in line.lower() for w in
+                           ["enjoys", "likes", "frequently",
+                            "drinks", "eats", "prefers"]):
+                        for p in re.findall(r"\b[a-z]+\b", line):
+                            if (p not in PREF_STOPWORDS
+                                    and len(p) > 2
+                                    and p in available_labels):
+                                return p
+        try:
+            actions = (["Drinking", "SittingDrink"] if need_type == "drink"
+                       else ["Eating", "Cooking"] if need_type == "food"
+                       else ["Drinking", "SittingDrink", "Eating", "Cooking"])
+            obs = list(self.db.observation_logs.find(
+                {"user": user_id, "action": {"$in": actions}},
+                {"zone_name":1, "weight":1},
+            ).sort("weight", -1).limit(5))
+            for doc in obs:
+                zone = doc.get("zone_name", "")
+                obj  = self.db.dynamic_objects.find_one(
+                    {"label": {"$in": list(available_labels)},
+                     "last_seen_on": zone},
+                    sort=[("interact_count", -1)])
+                if obj:
+                    return obj["label"]
+        except Exception:
+            pass
+        return None
+
+    def _skill_exclusions(self, user_id):
+        skill_md = self._skill_md(user_id)
         if not skill_md:
             return set()
         excluded = set()
-        match = re.search(
-            r"## What NOT to do\n(.*?)(?=\n## |$)", skill_md, re.DOTALL)
-        if match:
-            for line in match.group(1).split("\n"):
+        m = re.search(r"## What NOT to do\n(.*?)(?=\n## |$)",
+                      skill_md, re.DOTALL)
+        if m:
+            for line in m.group(1).split("\n"):
                 if "recommend" in line.lower():
-                    parts = re.findall(r"\b\w+\b", line)
-                    for p in parts:
-                        if p.lower() not in {
-                            "do", "not", "recommend", "to", "this", "user"
-                        } and len(p) > 2:
+                    for p in re.findall(r"\b[a-z]+\b", line):
+                        if (p not in {"do","not","recommend","to",
+                                      "this","user"} and len(p) > 2):
                             excluded.add(p.lower())
         return excluded
 
-    def _get_item_obs_weight(self, user_id: str,
-                              item_label: str, need_type: str) -> float:
+    def _skill_md(self, user_id):
         try:
-            actions = (["Drinking", "SittingDrink"]
-                       if need_type == "drink" else ["Eating", "Cooking"])
-            obj = self.db.dynamic_objects.find_one(
-                {"label": item_label.lower()},
-                {"last_seen_on": 1}
-            )
-            zone = obj.get("last_seen_on", "") if obj else ""
+            c = self.skill_manager.get_skill_chunks(user_id, "preferences")
+            return c if c else self.skill_manager.get_skill(user_id)
+        except Exception:
+            return None
 
-            docs = list(self.db.observation_logs.find(
-                {"user": user_id, "action": {"$in": actions},
-                 "zone_name": zone} if zone else
-                {"user": user_id, "action": {"$in": actions}},
-                {"weight": 1}
-            ))
-            return sum(d.get("weight", 0) for d in docs)
+    def _update_skill_async(self, user_id, item, need_type, positive):
+        def _bg():
+            try:
+                section = "## Preferences" if positive else "## What NOT to do"
+                if positive:
+                    action_word = "drinks" if need_type == "drink" else "eats"
+                    bullet = f"- User enjoys {item} during {action_word.capitalize()}"
+                else:
+                    bullet = f"- Do not recommend {item} to this user"
+                self.skill_manager._insert_if_new(user_id, section, bullet)
+            except Exception as e:
+                print(f"[ReactiveService] skill update error: {e}")
+        threading.Thread(target=_bg, daemon=True).start()
+
+    # ── DB helpers ────────────────────────────────────────────────────────────
+
+    def _available(self, category=None, excluded=None):
+        excluded = excluded or set()
+        nin      = list(OBJECT_EXCLUDES | excluded)
+        cutoff   = datetime.datetime.utcnow() - datetime.timedelta(hours=TTL_HOURS)
+        q        = {"last_seen": {"$gte": cutoff}, "label": {"$nin": nin}}
+        if category:
+            q["category"] = category
+        docs = list(self.db.dynamic_objects.find(
+            q, {"label":1,"category":1,"last_seen_on":1,
+                "room":1,"interact_count":1},
+        ).sort("interact_count", -1).limit(MAX_ITEMS))
+        if not docs:
+            q2 = {"label": {"$nin": nin}}
+            if category:
+                q2["category"] = category
+            docs = list(self.db.dynamic_objects.find(
+                q2, {"label":1,"category":1,"last_seen_on":1,
+                     "room":1,"interact_count":1},
+            ).limit(MAX_ITEMS))
+        return docs
+
+    def _obs_weight(self, user_id, item_label):
+        try:
+            obj  = self.db.dynamic_objects.find_one(
+                {"label": item_label.lower()}, {"last_seen_on":1})
+            zone = obj.get("last_seen_on", "") if obj else ""
+            q    = {"user": user_id,
+                    "action": {"$in": ["Drinking","SittingDrink",
+                                       "Eating","Cooking"]}}
+            if zone:
+                q["zone_name"] = zone
+            return sum(d.get("weight", 0) for d in
+                       self.db.observation_logs.find(q, {"weight":1}))
         except Exception:
             return 0.0
 
-    def _get_skill_md(self, user_id: str) -> str | None:
-        try:
-            chunks = self.skill_manager.get_skill_chunks(user_id, "preferences")
-            if chunks:
-                return chunks
-            return self.skill_manager.get_skill(user_id)
-        except Exception:
-            return None
+    def _unavailable(self, query, user_id):
+        tone   = TIME_TONE.get(self._time_slot(), "friendly")
+        system = (f"You are a home robot with a {tone} tone. "
+                  "Nothing matches the user's request. "
+                  "Apologise warmly and offer an alternative "
+                  "(e.g. add to shopping list). 1-2 sentences.")
+        answer = self._llm_call(system, f'User: "{query}"', max_tokens=80) \
+                 or "I'm sorry, I don't have anything for that right now."
+        return self._resp(answer, "need_unavailable")
 
-    def _call_llm(self, system: str, user: str,
-                  max_tokens: int = None) -> str | None:
-        try:
-            resp = requests.post(
-                f"{self.ollama_url}/api/chat",
-                json={
-                    "model":    self.llm_model,
-                    "messages": [
-                        {"role": "system", "content": system},
-                        {"role": "user",   "content": user},
-                    ],
-                    "stream":  False,
-                    "options": {
-                        "temperature": LLM_TEMP,
-                        "num_predict": max_tokens or LLM_TOKENS,
-                    },
-                },
-                timeout=LLM_TIMEOUT,
-            )
-            resp.raise_for_status()
-            return resp.json()["message"]["content"].strip()
-        except Exception as e:
-            logger.error(f"[ReactiveService] LLM error: {e}")
-            return None
+    def _extract_nav(self, answer, items):
+        al = answer.lower()
+        for i in items:
+            if i["label"].lower() in al:
+                nav = i.get("last_seen_on")
+                return nav, self._resolve_nav(nav)
+        return None, None
 
-    def _call_llm_messages(self, messages: list,
-                            max_tokens: int = None) -> str | None:
-        try:
-            resp = requests.post(
-                f"{self.ollama_url}/api/chat",
-                json={
-                    "model":    self.llm_model,
-                    "messages": messages,
-                    "stream":   False,
-                    "options": {
-                        "temperature": LLM_TEMP,
-                        "num_predict": max_tokens or LLM_TOKENS,
-                    },
-                },
-                timeout=LLM_TIMEOUT,
-            )
-            resp.raise_for_status()
-            return resp.json()["message"]["content"].strip()
-        except Exception as e:
-            logger.error(f"[ReactiveService] LLM messages error: {e}")
+    def _resolve_nav(self, label):
+        if not label:
             return None
+        doc = self.db.scene_snapshots.find_one(
+            {"label": {"$regex": f"^{re.escape(label.strip())}$",
+                       "$options": "i"}})
+        return doc.get("pos") if doc else None
 
-    def _get_or_create_session(self, user_id: str) -> ConversationSession:
-        session = self._sessions.get(user_id)
-        if session is None or session.is_expired():
+    def _nav_options(self, nav_label, nav_target):
+        if nav_label and nav_target:
+            return [{"id":1,"label":f"Navigate to '{nav_label}'"},
+                    {"id":2,"label":"Just tell me the location"},
+                    {"id":3,"label":"Cancel"}]
+        return [{"id":3,"label":"Close"}]
+
+    def _time_slot(self) -> str:
+        h = datetime.datetime.now().hour
+        if h < 10: return "Morning"
+        if h < 13: return "Noon"
+        if h < 18: return "Afternoon"
+        if h < 22: return "Evening"
+        return "Night"
+
+    def _session(self, user_id):
+        s = self._sessions.get(user_id)
+        if s is None or s.expired():
             self._sessions[user_id] = ConversationSession(user_id=user_id)
         return self._sessions[user_id]
 
-    def _match_intent(self, query: str, intent: str) -> bool:
-        q = query.lower().strip()
-        return any(kw in q for kw in INTENT_KEYWORDS.get(intent, set()))
+    # ── LLM calls ────────────────────────────────────────────────────────────
 
-    def _classify_need_type(self, query: str) -> str:
-        q = query.lower()
-        for cat, keywords in NEED_CATEGORIES.items():
-            if any(kw in q for kw in keywords):
-                return cat
-        return "food"
-
-    def _current_time_slot(self) -> str:
-        h = datetime.datetime.now().hour
-        if h < 10:  return "Morning"
-        if h < 13:  return "Noon"
-        if h < 18:  return "Afternoon"
-        if h < 22:  return "Evening"
-        return "Night"
-
-    def _resolve_nav(self, label: str) -> list | None:
-        if not label:
+    def _llm_call(self, system, user, max_tokens=None):
+        try:
+            r = requests.post(
+                f"{self.ollama_url}/api/chat",
+                json={"model": self.llm_model,
+                      "messages": [{"role":"system","content":system},
+                                   {"role":"user","content":user}],
+                      "stream": False,
+                      "options": {"temperature": LLM_TEMP,
+                                  "num_predict": max_tokens or LLM_TOKENS}},
+                timeout=LLM_TIMEOUT)
+            r.raise_for_status()
+            return r.json()["message"]["content"].strip()
+        except Exception as e:
+            logger.error(f"[ReactiveService] LLM: {e}")
             return None
-        doc = self.db.scene_snapshots.find_one({"label": label})
-        return doc.get("pos") if doc else None
 
-    def _extract_nav_from_answer(self, answer: str,
-                                  items: list) -> tuple:
-        answer_lower = answer.lower()
-        for item in items:
-            if item["label"].lower() in answer_lower:
-                nav_label  = item.get("last_seen_on")
-                nav_target = self._resolve_nav(nav_label)
-                return nav_label, nav_target
-        return None, None
+    def _llm_messages(self, messages, max_tokens=None):
+        try:
+            r = requests.post(
+                f"{self.ollama_url}/api/chat",
+                json={"model": self.llm_model, "messages": messages,
+                      "stream": False,
+                      "options": {"temperature": LLM_TEMP,
+                                  "num_predict": max_tokens or LLM_TOKENS}},
+                timeout=LLM_TIMEOUT)
+            r.raise_for_status()
+            return r.json()["message"]["content"].strip()
+        except Exception as e:
+            logger.error(f"[ReactiveService] LLM messages: {e}")
+            return None
 
-    def _build_nav_options(self, nav_label, nav_target) -> list:
-        if nav_label and nav_target:
-            return [
-                {"id": 1, "label": f"Navigate to '{nav_label}'"},
-                {"id": 2, "label": "Just tell me the location"},
-                {"id": 3, "label": "Cancel"},
-            ]
-        return [{"id": 3, "label": "Close"}]
+    def _llm_stream(self, system, user, max_tokens=None):
+        try:
+            import json as _j
+            r = requests.post(
+                f"{self.ollama_url}/api/chat",
+                json={"model": self.llm_model,
+                      "messages": [{"role":"system","content":system},
+                                   {"role":"user","content":user}],
+                      "stream": True,
+                      "options": {"temperature": LLM_TEMP,
+                                  "num_predict": max_tokens or LLM_TOKENS}},
+                stream=True, timeout=LLM_TIMEOUT)
+            r.raise_for_status()
+            for line in r.iter_lines():
+                if not line:
+                    continue
+                try:
+                    chunk = _j.loads(line)
+                    token = chunk.get("message", {}).get("content", "")
+                    if token:
+                        yield token
+                    if chunk.get("done"):
+                        break
+                except Exception:
+                    continue
+        except Exception as e:
+            logger.error(f"[ReactiveService] stream: {e}")
 
-    def _build_need_vecs(self) -> dict:
-        descriptions = {
-            "food":  "hungry want food eat meal snack 餓 吃飯",
-            "drink": "thirsty want drink water juice beverage 渴 喝水",
-        }
-        return {
-            k: self._sbert.encode(text, normalize_embeddings=True)
-            for k, text in descriptions.items()
-        }
+    def _llm_stream_messages(self, messages, max_tokens=None):
+        try:
+            import json as _j
+            r = requests.post(
+                f"{self.ollama_url}/api/chat",
+                json={"model": self.llm_model, "messages": messages,
+                      "stream": True,
+                      "options": {"temperature": LLM_TEMP,
+                                  "num_predict": max_tokens or LLM_TOKENS}},
+                stream=True, timeout=LLM_TIMEOUT)
+            r.raise_for_status()
+            for line in r.iter_lines():
+                if not line:
+                    continue
+                try:
+                    chunk = _j.loads(line)
+                    token = chunk.get("message", {}).get("content", "")
+                    if token:
+                        yield token
+                    if chunk.get("done"):
+                        break
+                except Exception:
+                    continue
+        except Exception as e:
+            logger.error(f"[ReactiveService] stream messages: {e}")
 
-    def _response(self, answer: str = "",
-                  nav_label: str = None,
-                  nav_target=None,
-                  intent_type: str = "chat",
-                  options: list = None,
-                  recommendations: list = None,
-                  is_personalized: bool = False,
-                  confidence: float = 0.85) -> dict:
+    def _wrap_stream(self, result):
+        for char in result.get("answer", ""):
+            yield {"type": "token", "content": char}
+        yield {"type": "done", **result}
+
+    def _resp(self, answer="", intent_type="chat", nav_label=None,
+              nav_target=None, options=None, recommendations=None,
+              is_personalized=False, confidence=0.85):
         return {
             "status":          "Success",
             "answer":          answer,
             "nav_label":       nav_label,
             "nav_target":      nav_target,
             "intent_type":     intent_type,
-            "options":         options or [{"id": 3, "label": "Close"}],
+            "options":         options or [{"id":3,"label":"Close"}],
             "recommendations": recommendations or [],
             "is_personalized": is_personalized,
             "confidence":      confidence,
         }
-
-    def _response_interrupt(self) -> dict:
-        return self._response(
-            answer="Understood, stopping now.",
-            intent_type="interrupt",
-            confidence=1.0,
-        )
