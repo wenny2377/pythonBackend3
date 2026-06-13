@@ -1,22 +1,8 @@
-"""
-exp3_habit_learning.py
-──────────────────────
-Experiment 3: Habit Learning
+import os, sys
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, _ROOT)
+from config import Config
 
-Uses observation_logs from DB_NAME (baseline DB).
-No additional experiment run needed.
-
-Run: DB_NAME=robot_exp_baseline python3 analysis/exp3_habit_learning.py
-
-Outputs:
-  analysis/results/exp3_fat_sensitivity.png
-  analysis/results/exp3_learning_curve.png
-  analysis/results/exp3_transition_heatmap.png
-  analysis/results/exp3_summary.txt
-"""
-
-import os
-import datetime
 import numpy as np
 import matplotlib
 matplotlib.use("Agg")
@@ -24,16 +10,15 @@ import matplotlib.pyplot as plt
 from collections import defaultdict
 from pymongo import MongoClient
 
-MONGO_URI = "mongodb://127.0.0.1:27017/"
-DB_NAME   = os.environ.get("DB_NAME", "robot_rag_db")
-OUT       = os.path.join(os.path.dirname(os.path.abspath(__file__)), "results")
+MONGO_URI     = "mongodb://127.0.0.1:27017/"
+DB_BASELINE   = "robot_exp_baseline"
+DB_CORRUPTION = "robot_exp_corruption"
+OUT           = os.path.join(_ROOT, "analysis", "results")
 
 USERS      = ["User_Mom", "User_Dad"]
-FAT_VALUES = [2, 3, 5, 8, 10]
-FAT_SELECT = 5
+FAT        = 5
 NO_WEIGHT  = {"PickingUp", "PuttingDown", "Walking", "Standing", "StandUp"}
-
-EPISODE_BINS = [10, 20, 30, 40, 50, 60, 80, 100, 120, 150, 200, 250, 300]
+BINS       = [10, 20, 30, 40, 50, 60, 80, 100, 120, 150, 200, 250, 300]
 
 ACTION_LABELS = [
     "Eating", "Drinking", "SittingDrink", "Cooking", "Opening",
@@ -41,225 +26,292 @@ ACTION_LABELS = [
     "Typing", "Sitting",
 ]
 
+COLOR_BASE = "#5C6BC0"
+COLOR_CORR = "#EF5350"
+USER_COLORS = {"User_Mom": "#E91E63", "User_Dad": "#1976D2"}
 
-def connect():
-    return MongoClient(MONGO_URI)[DB_NAME]
+def connect(db_name):
+    return MongoClient(MONGO_URI)[db_name]
 
-
-def get_observations(db, user_id: str) -> list:
+def get_observations(db, user_id):
     return list(db.observation_logs.find(
         {"user": user_id, "action": {"$nin": list(NO_WEIGHT)}},
-        {"action": 1, "zone_name": 1, "instance": 1, "weight": 1, "last_seen": 1}
+        {"action": 1, "zone_name": 1, "instance": 1,
+         "weight": 1, "last_seen": 1}
     ).sort("last_seen", 1))
 
-
-def get_transition_counts(db, user_id: str) -> list:
+def get_transitions(db, user_id):
     return list(db.transition_counts.find(
         {"user_id": user_id},
         {"from_action": 1, "to_action": 1, "count": 1, "time_slot": 1}
     ).sort("count", -1))
 
-
-def compute_habits(obs: list, fat: int) -> list:
-    agg = defaultdict(int)
+def compute_habits(obs, fat):
+    agg = defaultdict(float)
     for d in obs:
         key = (d.get("action",""), d.get("zone_name") or d.get("instance",""))
         agg[key] += d.get("weight", 1)
-    return [(act, inst, w) for (act, inst), w in agg.items() if w >= fat]
+    return [(a, z, w) for (a, z), w in agg.items() if w >= fat]
 
+def compute_hsi(obs, fat, gt_habits):
+    habits    = compute_habits(obs, fat)
+    gt_keys   = {f"{a}@{z}" for a, z, _ in gt_habits}
+    h_keys    = {f"{a}@{z}" for a, z, _ in habits}
+    stable    = len(h_keys & gt_keys)
+    return stable / len(gt_keys) if gt_keys else 0.0
 
-def compute_precision_recall(habits: list, gt_habits: list) -> tuple:
-    if not habits:
-        return 0.0, 0.0, 0.0
-    gt_keys     = {f"{a}@{i}" for a, i, _ in gt_habits}
-    habit_keys  = {f"{a}@{i}" for a, i, _ in habits}
-    precision   = len(habit_keys & gt_keys) / len(habit_keys) if habit_keys else 0.0
-    recall      = len(habit_keys & gt_keys) / len(gt_keys) if gt_keys else 0.0
-    f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0.0
-    return precision, recall, f1
+def plot_hsi_curve():
+    fig, axes = plt.subplots(1, 2, figsize=(14, 5), sharey=True)
+    fig.suptitle(
+        "Habit Stability Index (HSI) — Learning Convergence\n"
+        "Baseline vs Corruption (FAT=5)",
+        fontsize=13, fontweight="bold")
 
-
-def plot_fat_sensitivity(db):
-    fig, axes = plt.subplots(1, len(USERS),
-                             figsize=(6 * len(USERS), 5), sharey=True)
-    if len(USERS) == 1:
-        axes = [axes]
-    fig.suptitle("Experiment 3 — FAT threshold sensitivity",
-                 fontsize=12, fontweight="bold")
-
-    summary_lines = []
-
-    for ax, uid in zip(axes, USERS):
-        obs = get_observations(db, uid)
-        if not obs:
-            ax.set_title(f"{uid}\n(no data)")
-            continue
-
-        gt_habits = compute_habits(obs, fat=3)
-        results   = []
-
-        for fat in FAT_VALUES:
-            habits = compute_habits(obs, fat)
-            p, r, f1 = compute_precision_recall(habits, gt_habits)
-            results.append({"fat": fat, "p": p, "r": r, "f1": f1})
-
-        x = range(len(FAT_VALUES))
-        ax.plot(x, [r["r"]  for r in results], "o-", color="#2196F3",
-                lw=2, ms=8, mfc="white", mew=2, label="Recall")
-        ax.plot(x, [r["p"]  for r in results], "s-", color="#FF9800",
-                lw=2, ms=8, mfc="white", mew=2, label="Precision")
-        ax.plot(x, [r["f1"] for r in results], "^-", color="#4CAF50",
-                lw=2.5, ms=9, mfc="white", mew=2.5, label="F1")
-
-        if FAT_SELECT in FAT_VALUES:
-            sel_idx = FAT_VALUES.index(FAT_SELECT)
-            ax.axvline(x=sel_idx, color="#E53935", linestyle="--",
-                       alpha=0.7, lw=1.8, label=f"FAT={FAT_SELECT} selected")
-            sel = results[sel_idx]
-            summary_lines.append(
-                f"{uid}  FAT={FAT_SELECT}  P={sel['p']:.3f}  R={sel['r']:.3f}  F1={sel['f1']:.3f}")
-
-        ax.set_xticks(x)
-        ax.set_xticklabels([f"FAT={v}" for v in FAT_VALUES], fontsize=10)
-        ax.set_ylim(0, 1.2)
-        ax.set_xlabel("FAT threshold")
-        ax.set_ylabel("Score")
-        ax.set_title(uid.replace("_"," "), fontsize=11, fontweight="bold")
-        ax.legend(loc="lower left", fontsize=9)
-        ax.grid(alpha=0.2)
-
-    plt.tight_layout()
-    path = os.path.join(OUT, "exp3_fat_sensitivity.png")
-    plt.savefig(path, dpi=150, bbox_inches="tight")
-    plt.close()
-    print(f"[exp3] Saved: {path}")
-    return summary_lines
-
-
-def plot_learning_curve(db):
-    fig, axes = plt.subplots(1, len(USERS),
-                             figsize=(7 * len(USERS), 5))
-    if len(USERS) == 1:
-        axes = [axes]
-    fig.suptitle("Experiment 3 — Learning curve (F1 vs observations)",
-                 fontsize=12, fontweight="bold")
-
-    colors = {2:"#1E88E5", 3:"#43A047", 5:"#FB8C00", 8:"#E53935", 10:"#8E24AA"}
+    has_corruption = False
+    try:
+        db_corr = connect(DB_CORRUPTION)
+        test    = db_corr.observation_logs.count_documents({})
+        has_corruption = test > 0
+    except Exception:
+        pass
 
     for ax, uid in zip(axes, USERS):
-        obs = get_observations(db, uid)
-        if not obs:
-            ax.set_title(f"{uid}\n(no data)")
+        db_base = connect(DB_BASELINE)
+        obs_b   = get_observations(db_base, uid)
+
+        if not obs_b:
+            ax.set_title(f"{uid.replace('_',' ')}\n(no data)")
             continue
 
-        gt_habits = compute_habits(obs, fat=3)
+        gt_habits = compute_habits(obs_b, fat=3)
 
-        for fat in FAT_VALUES:
-            f1s, xs = [], []
-            for n in EPISODE_BINS:
-                if n > len(obs):
-                    break
-                h = compute_habits(obs[:n], fat)
-                _, _, f1 = compute_precision_recall(h, gt_habits)
-                f1s.append(f1)
-                xs.append(n)
-            if f1s:
-                ax.plot(xs, f1s, marker="o", color=colors[fat],
-                        lw=2, ms=5, label=f"FAT={fat}")
+        xs_b, ys_b = [], []
+        for n in BINS:
+            if n > len(obs_b): break
+            hsi = compute_hsi(obs_b[:n], FAT, gt_habits)
+            xs_b.append(n)
+            ys_b.append(hsi)
 
-        ax.axhline(y=0.85, color="gray", linestyle="--",
-                   alpha=0.5, label="85% target")
-        ax.set_xlabel("Observations")
-        ax.set_ylabel("F1")
-        ax.set_title(uid.replace("_"," "), fontsize=11, fontweight="bold")
-        ax.set_xlim(0, max(EPISODE_BINS) + 10)
-        ax.set_ylim(0, 1.05)
-        ax.legend(loc="lower right", fontsize=9)
-        ax.grid(alpha=0.3)
+        ax.plot(xs_b, ys_b, "o-", color=COLOR_BASE, lw=2.5,
+                ms=6, mfc="white", mew=2, label="Baseline")
+
+        if has_corruption:
+            db_corr = connect(DB_CORRUPTION)
+            obs_c   = get_observations(db_corr, uid)
+            xs_c, ys_c = [], []
+            for n in BINS:
+                if n > len(obs_c): break
+                hsi = compute_hsi(obs_c[:n], FAT, gt_habits)
+                xs_c.append(n)
+                ys_c.append(hsi)
+            ax.plot(xs_c, ys_c, "s--", color=COLOR_CORR, lw=2.5,
+                    ms=6, mfc="white", mew=2, label="Corruption")
+
+        conv_idx = next((i for i, y in enumerate(ys_b) if y >= 0.80), None)
+        if conv_idx is not None:
+            ax.axvline(x=xs_b[conv_idx], color="gray",
+                       linestyle=":", lw=1.5, alpha=0.7)
+            ax.text(xs_b[conv_idx] + 5, 0.05,
+                    f"Converge\n~{xs_b[conv_idx]} ep",
+                    fontsize=8, color="gray")
+
+        ax.axhline(y=0.80, color="gray", linestyle="--",
+                   alpha=0.4, lw=1.2, label="80% target")
+        ax.set_xlabel("Episodes", fontsize=11)
+        ax.set_ylabel("Habit Stability Index (HSI)", fontsize=11)
+        ax.set_ylim(0, 1.1)
+        ax.set_xlim(0, max(BINS) + 15)
+        ax.set_title(uid.replace("_"," "), fontsize=12, fontweight="bold")
+        ax.legend(fontsize=9, loc="lower right")
+        ax.grid(alpha=0.25)
 
     plt.tight_layout()
-    path = os.path.join(OUT, "exp3_learning_curve.png")
-    plt.savefig(path, dpi=150, bbox_inches="tight")
+    path = os.path.join(OUT, "exp3_hsi_curve.png")
+    plt.savefig(path, dpi=200, bbox_inches="tight")
     plt.close()
     print(f"[exp3] Saved: {path}")
 
+def plot_personalization_gap():
+    db = connect(DB_BASELINE)
 
-def plot_transition_heatmap(db):
-    fig, axes = plt.subplots(1, len(USERS),
-                             figsize=(8 * len(USERS), 7))
-    if len(USERS) == 1:
-        axes = [axes]
-    fig.suptitle("Experiment 3 — Learned transition matrix (Evening)",
-                 fontsize=12, fontweight="bold")
+    user_profiles = {}
+    for uid in USERS:
+        obs  = get_observations(db, uid)
+        agg  = defaultdict(float)
+        for d in obs:
+            agg[d.get("action","")] += d.get("weight", 1)
+        total = sum(agg.values()) or 1
+        user_profiles[uid] = {a: w/total*100 for a, w in agg.items()
+                               if a in ACTION_LABELS}
 
-    for ax, uid in zip(axes, USERS):
-        docs = [d for d in get_transition_counts(db, uid)
-                if d.get("time_slot") == "Evening"]
-        if not docs:
-            docs = get_transition_counts(db, uid)
+    actions_present = [a for a in ACTION_LABELS
+                       if any(user_profiles[u].get(a, 0) > 0
+                              for u in USERS)]
+    if not actions_present:
+        print("[exp3] No personalization data")
+        return
 
-        labels_present = [l for l in ACTION_LABELS
-                         if any(d["from_action"] == l or
-                                d["to_action"] == l for d in docs)]
-        if not labels_present:
-            ax.set_title(f"{uid}\n(no transitions)")
-            continue
+    n   = len(actions_present)
+    x   = np.arange(n)
+    w   = 0.35
 
-        n      = len(labels_present)
-        matrix = np.zeros((n, n))
-        for d in docs:
-            fi = labels_present.index(d["from_action"]) \
-                 if d["from_action"] in labels_present else -1
-            ti = labels_present.index(d["to_action"]) \
-                 if d["to_action"] in labels_present else -1
-            if fi >= 0 and ti >= 0:
-                matrix[fi][ti] = d.get("count", 0)
+    fig, ax = plt.subplots(figsize=(13, 6))
 
-        row_sums = matrix.sum(axis=1, keepdims=True)
-        row_sums[row_sums == 0] = 1
-        norm = matrix / row_sums
+    for i, uid in enumerate(USERS):
+        vals   = [user_profiles[uid].get(a, 0) for a in actions_present]
+        offset = (i - 0.5) * w
+        bars   = ax.bar(x + offset, vals, w,
+                        color=USER_COLORS[uid], alpha=0.85,
+                        label=uid.replace("_"," "), edgecolor="white")
+        for bar, v in zip(bars, vals):
+            if v > 1.5:
+                ax.text(bar.get_x() + bar.get_width()/2,
+                        bar.get_height() + 0.3,
+                        f"{v:.1f}%",
+                        ha="center", fontsize=7.5, rotation=0)
 
-        im = ax.imshow(norm, cmap="YlOrRd", vmin=0, vmax=1)
-        plt.colorbar(im, ax=ax, label="Transition probability")
+    ax.set_xticks(x)
+    ax.set_xticklabels(actions_present, rotation=35, ha="right", fontsize=10)
+    ax.set_ylabel("Relative Frequency (%)", fontsize=12)
+    ax.set_title(
+        "Personalization Gap — Learned Habit Profiles\n"
+        "User Mom vs User Dad (Baseline, n=300)",
+        fontsize=12, fontweight="bold", pad=10)
+    ax.legend(fontsize=10)
+    ax.grid(axis="y", alpha=0.25)
 
-        for i in range(n):
-            for j in range(n):
-                if norm[i][j] > 0.05:
-                    ax.text(j, i, f"{norm[i][j]:.2f}",
-                            ha="center", va="center", fontsize=7,
-                            color="white" if norm[i][j] > 0.6 else "black")
+    plt.tight_layout()
+    path = os.path.join(OUT, "exp3_personalization_gap.png")
+    plt.savefig(path, dpi=200, bbox_inches="tight")
+    plt.close()
+    print(f"[exp3] Saved: {path}")
 
-        ax.set_xticks(range(n))
-        ax.set_yticks(range(n))
-        ax.set_xticklabels(labels_present, rotation=40, ha="right", fontsize=8)
-        ax.set_yticklabels(labels_present, fontsize=8)
-        ax.set_xlabel("To action")
-        ax.set_ylabel("From action")
-        ax.set_title(uid.replace("_"," "), fontsize=11, fontweight="bold")
+def plot_timeslot_heatmap():
+    db      = connect(DB_BASELINE)
+    slots   = ["Morning", "Noon", "Afternoon", "Evening", "Night"]
+    actions = [a for a in ACTION_LABELS
+               if db.observation_logs.count_documents({"action": a}) > 0]
+    if not actions:
+        print("[exp3] No timeslot data")
+        return
+
+    matrix = np.zeros((len(actions), len(slots)))
+    for i, action in enumerate(actions):
+        for j, slot in enumerate(slots):
+            docs = list(db.observation_logs.find(
+                {"action": action, "time_slot": slot},
+                {"weight": 1}))
+            matrix[i][j] = sum(d.get("weight", 1) for d in docs)
+
+    row_sums = matrix.sum(axis=1, keepdims=True)
+    row_sums[row_sums == 0] = 1
+    norm = matrix / row_sums
+
+    fig, ax = plt.subplots(figsize=(9, 8))
+    im = ax.imshow(norm, cmap="YlOrRd", vmin=0, vmax=1, aspect="auto")
+    cbar = plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+    cbar.set_label("Relative Frequency", fontsize=10)
+
+    for i in range(len(actions)):
+        for j in range(len(slots)):
+            if norm[i][j] > 0.05:
+                ax.text(j, i, f"{norm[i][j]:.2f}",
+                        ha="center", va="center", fontsize=9,
+                        color="white" if norm[i][j] > 0.6 else "black",
+                        fontweight="bold" if norm[i][j] > 0.5 else "normal")
+
+    ax.set_xticks(range(len(slots)))
+    ax.set_yticks(range(len(actions)))
+    ax.set_xticklabels(slots, fontsize=11)
+    ax.set_yticklabels(actions, fontsize=11)
+    ax.set_xlabel("Time Slot", fontsize=12)
+    ax.set_ylabel("Activity", fontsize=12)
+    ax.set_title(
+        "Temporal Activity Distribution\n"
+        "Learned from Observation Logs (Baseline)",
+        fontsize=12, fontweight="bold", pad=10)
+
+    plt.tight_layout()
+    path = os.path.join(OUT, "exp3_timeslot_heatmap.png")
+    plt.savefig(path, dpi=200, bbox_inches="tight")
+    plt.close()
+    print(f"[exp3] Saved: {path}")
+
+def plot_transition_heatmap():
+    db = connect(DB_BASELINE)
+
+    all_transitions = []
+    for uid in USERS:
+        all_transitions += get_transitions(db, uid)
+
+    evening = [d for d in all_transitions if d.get("time_slot") == "Evening"]
+    docs    = evening if evening else all_transitions
+
+    present = [l for l in ACTION_LABELS
+               if any(d.get("from_action") == l or
+                      d.get("to_action")   == l for d in docs)]
+    if not present:
+        print("[exp3] No transition data")
+        return
+
+    n      = len(present)
+    matrix = np.zeros((n, n))
+    for d in docs:
+        fi = present.index(d["from_action"]) if d["from_action"] in present else -1
+        ti = present.index(d["to_action"])   if d["to_action"]   in present else -1
+        if fi >= 0 and ti >= 0:
+            matrix[fi][ti] += d.get("count", 0)
+
+    row_sums = matrix.sum(axis=1, keepdims=True)
+    row_sums[row_sums == 0] = 1
+    norm = matrix / row_sums
+
+    fig, ax = plt.subplots(figsize=(10, 8))
+    im = ax.imshow(norm, cmap="Blues", vmin=0, vmax=1, aspect="auto")
+    cbar = plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+    cbar.set_label("Transition Probability", fontsize=10)
+
+    for i in range(n):
+        for j in range(n):
+            if norm[i][j] > 0.05:
+                ax.text(j, i, f"{norm[i][j]:.2f}",
+                        ha="center", va="center", fontsize=8,
+                        color="white" if norm[i][j] > 0.6 else "black")
+
+    slot_label = "Evening" if evening else "All Slots"
+    ax.set_xticks(range(n))
+    ax.set_yticks(range(n))
+    ax.set_xticklabels(present, rotation=40, ha="right", fontsize=9)
+    ax.set_yticklabels(present, fontsize=9)
+    ax.set_xlabel("To Activity", fontsize=12)
+    ax.set_ylabel("From Activity", fontsize=12)
+    ax.set_title(
+        f"Learned Behavior Transition Matrix ({slot_label})\n"
+        "Normalized by Row (Transition Probability)",
+        fontsize=12, fontweight="bold", pad=10)
 
     plt.tight_layout()
     path = os.path.join(OUT, "exp3_transition_heatmap.png")
-    plt.savefig(path, dpi=150, bbox_inches="tight")
+    plt.savefig(path, dpi=200, bbox_inches="tight")
     plt.close()
     print(f"[exp3] Saved: {path}")
 
-
-def save_summary(db, fat_lines: list):
+def save_summary():
+    db = connect(DB_BASELINE)
     lines = [
         "Experiment 3: Habit Learning",
-        f"DB: {DB_NAME}",
+        f"Baseline DB: {DB_BASELINE}",
         "",
-        "FAT sensitivity (FAT=5 selected):",
-    ] + fat_lines + ["", "Top learned transitions:"]
-
+        f"FAT threshold: {FAT}",
+        "",
+        "Habit profiles per user:",
+    ]
     for uid in USERS:
-        docs = get_transition_counts(db, uid)[:5]
-        if not docs: continue
-        lines.append(f"\n  {uid}:")
-        for d in docs:
-            lines.append(
-                f"    {d['from_action']:14} → {d['to_action']:14} "
-                f"count={d['count']} ({d.get('time_slot','?')})")
+        obs = get_observations(db, uid)
+        habits = compute_habits(obs, FAT)
+        lines.append(f"\n  {uid} ({len(obs)} observations, {len(habits)} stable habits):")
+        for a, z, w in sorted(habits, key=lambda x: -x[2])[:8]:
+            lines.append(f"    {a:<14} @ {z:<20} weight={w:.1f}")
 
     path = os.path.join(OUT, "exp3_summary.txt")
     with open(path, "w") as f:
@@ -267,24 +319,20 @@ def save_summary(db, fat_lines: list):
     print(f"[exp3] Saved: {path}")
     print("\n".join(lines))
 
-
 def main():
     os.makedirs(OUT, exist_ok=True)
-    db = connect()
-
-    total_obs = db.observation_logs.count_documents(
+    db = connect(DB_BASELINE)
+    total = db.observation_logs.count_documents(
         {"action": {"$nin": list(NO_WEIGHT)}})
-    if total_obs == 0:
-        print(f"[exp3] No observation_logs in {DB_NAME}")
+    if total == 0:
+        print(f"[exp3] No observation_logs in {DB_BASELINE}")
         return
-
-    print(f"[exp3] {total_obs} observations from {DB_NAME}")
-
-    fat_lines = plot_fat_sensitivity(db)
-    plot_learning_curve(db)
-    plot_transition_heatmap(db)
-    save_summary(db, fat_lines)
-
+    print(f"[exp3] {total} observations")
+    plot_hsi_curve()
+    plot_personalization_gap()
+    plot_timeslot_heatmap()
+    plot_transition_heatmap()
+    save_summary()
 
 if __name__ == "__main__":
     main()

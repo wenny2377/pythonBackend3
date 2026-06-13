@@ -8,6 +8,7 @@ import base64
 import datetime
 import threading
 import queue as _queue
+from collections import defaultdict
 
 import numpy as np
 import cv2
@@ -48,7 +49,6 @@ def _load_yaml(path: str) -> dict:
     return {}
 
 
-
 app    = Flask(__name__)
 CONFIG = Config
 
@@ -85,7 +85,6 @@ behavior_labels = _beh_cfg.get("behavior_labels", [
     "Typing", "StandUp", "PickingUp", "PuttingDown", "Standing", "Walking",
 ])
 
-
 scene_engine = SceneEngine(
     db=db, ollama_url=CONFIG.OLLAMA_URL,
     sbert_model=sbert_model, ontology=_ontology,
@@ -108,6 +107,7 @@ skill_manager = SkillManager(
     db_client=mongo_client,
     ollama_url=CONFIG.OLLAMA_URL,
     model_name=CONFIG.LLM_MODEL,
+    db_name=CONFIG.DB_NAME,
 )
 
 observation_store = ObservationStore(db=db)
@@ -150,17 +150,16 @@ classifier.start()
 
 atexit.register(perception.shutdown)
 
-
 _vlm_lock      = threading.Lock()
 _predict_queue = _queue.Queue()
 _gt_cache      = {}
 _gt_cache_lock = threading.Lock()
 
 _robot_state = {
-    "nav_target": None,
-    "nav_label":  "",
+    "nav_target":  None,
+    "nav_label":   "",
     "last_answer": "",
-    "highlight":  "",
+    "highlight":   "",
 }
 
 
@@ -244,32 +243,26 @@ def _get_time_slot(virtual_hour) -> str:
         return "Unknown"
 
 
-
 def nightly_maintenance():
     print("[Maintenance] running nightly tasks...")
     try:
-        # Habit decay
         db.observation_logs.update_many(
             {}, {"$mul": {"weight": CONFIG.HABIT_DECAY_FACTOR}})
         db.observation_logs.delete_many(
             {"weight": {"$lt": CONFIG.HABIT_MIN_WEIGHT}})
-
-        # Transition counts recency decay
         habit_learner._apply_recency_decay()
-
-        # Skill refactor
         for doc in db.user_skills.find({}, {"user_id": 1}):
             try:
                 skill_manager.nightly_refactor(doc["user_id"])
             except Exception as e:
                 print(f"[Maintenance] refactor failed: {e}")
-
         print("[Maintenance] done")
     except Exception as e:
         print(f"[Maintenance] error: {e}")
     threading.Timer(86400, nightly_maintenance).start()
 
 
+# ── System endpoints ──────────────────────────────────────────────────────────
 
 @app.route("/ready", methods=["GET"])
 def ready():
@@ -293,23 +286,36 @@ def experiment_done():
     return jsonify({"status": "ok"}), 200
 
 
+@app.route('/set_experiment_type', methods=['POST'])
+def set_experiment_type():
+    data     = request.get_json()
+    exp_type = data.get('type', 'baseline')
+    Config.OBJECT_CONFUSION_ENABLED = (exp_type == 'corruption')
+    print(f"[Experiment] type={exp_type} | confusion={Config.OBJECT_CONFUSION_ENABLED}")
+    return jsonify({"status": "ok", "type": exp_type}), 200
 
-@app.route('/nav_target',  methods=['GET'])
+
+# ── Robot state endpoints ─────────────────────────────────────────────────────
+
+@app.route('/nav_target', methods=['GET'])
 def get_nav_target():
     return jsonify({
         "nav_target": _robot_state["nav_target"],
         "nav_label":  _robot_state["nav_label"],
     })
 
-@app.route('/highlight',   methods=['GET'])
+
+@app.route('/highlight', methods=['GET'])
 def get_highlight():
     return jsonify({"label": _robot_state["highlight"]})
+
 
 @app.route('/last_answer', methods=['GET'])
 def get_last_answer():
     return jsonify({"answer": _robot_state["last_answer"]})
 
 
+# ── Interact endpoints ────────────────────────────────────────────────────────
 
 @app.route('/interact/stream', methods=['POST'])
 def interact_stream():
@@ -322,18 +328,14 @@ def interact_stream():
         return jsonify({"error": "Empty query"}), 400
 
     def generate():
-        result = reactive_service.process(
-            query=query, user_id=user_id, room=room)
-
+        result     = reactive_service.process(query=query, user_id=user_id, room=room)
         answer     = result.get("answer", "")
         nav_target = result.get("nav_target")
         nav_label  = result.get("nav_label", "")
 
-        # Stream answer token by token
         for char in answer:
             yield f"data: {json.dumps({'type': 'token', 'content': char})}\n\n"
 
-        # Update robot state
         _robot_state["last_answer"] = answer
         _robot_state["nav_target"]  = nav_target
         _robot_state["nav_label"]   = nav_label or ""
@@ -356,8 +358,7 @@ def interact():
     room    = data.get('room', '')
     if not query:
         return jsonify({"error": "Empty query"}), 400
-    result = reactive_service.process(
-        query=query, user_id=user_id, room=room)
+    result = reactive_service.process(query=query, user_id=user_id, room=room)
     return jsonify(result), 200
 
 
@@ -367,14 +368,13 @@ def interact_confirm():
     choice     = int(data.get('choice', 3))
     nav_target = data.get('nav_target')
     nav_label  = data.get('nav_label', '')
-    user_id    = data.get('userID', 'Unknown')
 
     if choice == 1:
         return jsonify({
-            "status":    "navigate",
+            "status":     "navigate",
             "nav_target": nav_target,
             "nav_label":  nav_label,
-            "message":   f"Navigating to {nav_label}.",
+            "message":    f"Navigating to {nav_label}.",
         })
     if choice == 2:
         pos_str = (f"[{nav_target[0]:.1f}, {nav_target[1]:.1f}]"
@@ -386,6 +386,7 @@ def interact_confirm():
     return jsonify({"status": "cancelled", "message": "Cancelled."})
 
 
+# ── Service endpoints ─────────────────────────────────────────────────────────
 
 @app.route('/service_proposal', methods=['GET'])
 def service_proposal():
@@ -416,6 +417,116 @@ def service_history():
     return jsonify({"proposals": proposals, "total": len(proposals)}), 200
 
 
+# ── Demo endpoints ────────────────────────────────────────────────────────────
+
+@app.route('/demo/habits', methods=['GET'])
+def demo_habits():
+    NO_WEIGHT = {"PickingUp", "PuttingDown", "Walking", "Standing", "StandUp"}
+    FAT       = 5
+    result    = {}
+
+    for uid in ["User_Mom", "User_Dad"]:
+        obs = list(db.observation_logs.find(
+            {"user": uid, "action": {"$nin": list(NO_WEIGHT)}},
+            {"action":1, "zone_name":1, "time_slot":1, "weight":1}
+        ))
+        agg = defaultdict(float)
+        for d in obs:
+            key = (d.get("action",""), d.get("zone_name",""), d.get("time_slot",""))
+            agg[key] += d.get("weight", 1)
+
+        habits = sorted(
+            [{"action":a, "zone":z, "slot":t, "weight":round(w,1)}
+             for (a,z,t), w in agg.items() if w >= FAT],
+            key=lambda x: -x["weight"]
+        )[:8]
+
+        trans = list(db.transition_counts.find(
+            {"user_id": uid},
+            {"from_action":1, "to_action":1, "count":1, "time_slot":1, "_id":0}
+        ).sort("count", -1).limit(5))
+
+        skill_doc = db.user_skills.find_one({"user_id": uid})
+        skill_md  = skill_doc.get("skill_md", "") if skill_doc else ""
+
+        result[uid] = {
+            "habits":      habits,
+            "transitions": trans,
+            "skill_md":    skill_md,
+            "obs_count":   len(obs),
+        }
+
+    return jsonify(result), 200
+
+
+@app.route('/demo/trigger_proactive', methods=['POST'])
+def demo_trigger_proactive():
+    data        = request.get_json()
+    user_id     = data.get("user_id",    "User_Mom")
+    prev_action = data.get("prev_action","Eating")
+    time_slot   = data.get("time_slot",  "Evening")
+
+    lookahead = habit_learner.get_2step_lookahead(
+        user_id=user_id,
+        current_action=prev_action,
+        time_slot=time_slot,
+    )
+
+    cutoff = datetime.datetime.utcnow() - datetime.timedelta(
+        hours=CONFIG.SNAPSHOT_TTL_HOURS)
+    need   = lookahead.get("need", "drink") if lookahead else "drink"
+
+    item = db.dynamic_objects.find_one(
+        {"category": need, "last_seen": {"$gte": cutoff}},
+        sort=[("interact_count", -1)]
+    )
+    if not item:
+        item = db.dynamic_objects.find_one(
+            {"category": need},
+            sort=[("interact_count", -1)]
+        )
+
+    if not item:
+        return jsonify({"status": "no_item",
+                        "message": "No available item found"}), 200
+
+    proposal    = proactive_service._generate_proposal(
+        user_id=user_id,
+        lookahead=lookahead or {"need":"drink","confidence":0.5,
+                                "actionable":True,"step1":None,"step2":None},
+        available_item=item,
+        time_slot=time_slot,
+    )
+    proposal_id = proposal_manager.push(user_id, proposal)
+
+    return jsonify({
+        "status":     "ok",
+        "proposal_id": proposal_id,
+        "message":    proposal.get("message", ""),
+        "item":       item["label"],
+        "item_loc":   item.get("last_seen_on", ""),
+        "step1":      lookahead.get("step1", {}).get("action", "")
+                      if lookahead and lookahead.get("step1") else "",
+        "step2":      lookahead.get("step2", {}).get("action", "")
+                      if lookahead and lookahead.get("step2") else "",
+        "confidence": lookahead.get("confidence", 0) if lookahead else 0,
+    }), 200
+
+
+@app.route('/demo/latest_har', methods=['GET'])
+def demo_latest_har():
+    doc = db.eval_logs.find_one({}, sort=[("timestamp", -1)])
+    if not doc:
+        return jsonify({}), 200
+    return jsonify({
+        "user":           doc.get("user", ""),
+        "spatial_action": doc.get("spatial_action", ""),
+        "vlm_confidence": doc.get("vlm_confidence", 0),
+        "upgrade_reason": doc.get("upgrade_reason", ""),
+    }), 200
+
+
+# ── Predict endpoints ─────────────────────────────────────────────────────────
 
 @app.route('/predict', methods=['POST'])
 def predict():
@@ -535,7 +646,6 @@ def _process_predict(episode_id: str, data: dict):
     zone_label     = result.get("zone_label") or result.get("zone_name") or ""
     time_slot      = _get_time_slot(virtual_hour)
 
-    # ── Entropy monitoring ────────────────────────────────────────────────────
     _activity_votes = [result.get("action", "")] if result.get("action") else []
     _body_votes     = [result["result"].get("_body_position", "")]
     _held_votes     = [result["result"].get("_held_event", "none")]
@@ -548,50 +658,38 @@ def _process_predict(episode_id: str, data: dict):
     if spatial_action in ("none", "", "Unknown"):
         return
 
-    # ── Memory Layer: record observation ─────────────────────────────────────
     if zone_label and spatial_action not in {"Walking", "Standing", "StandUp",
                                               "PickingUp", "PuttingDown"}:
-        today   = datetime.datetime.utcnow().strftime("%Y-%m-%d")
-        pos_xy  = [
-            _user_pos.get("x", 0) / 10.0,
-            _user_pos.get("z", 0) / 10.0,
-        ]
+        today  = datetime.datetime.utcnow().strftime("%Y-%m-%d")
+        pos_xy = [_user_pos.get("x", 0) / 10.0,
+                  _user_pos.get("z", 0) / 10.0]
 
         observation_store.record(
-            user_id=_user_id,
-            action=spatial_action,
-            zone_name=zone_label,
-            instance=zone_label,
+            user_id=_user_id, action=spatial_action,
+            zone_name=zone_label, instance=zone_label,
             time_slot=time_slot,
             interacting_items=result.get("items", []),
             spatial_relations=result.get("spatial_relations", {}),
-            pos_xy=pos_xy,
-            room=result.get("room", ""),
+            pos_xy=pos_xy, room=result.get("room", ""),
             raw_desc=result["result"].get("context", ""),
             today=today,
         )
 
-        # Get previous action for transition learning
-        prev_seq = observation_store.get_recent_sequence(_user_id, limit=2)
+        prev_seq    = observation_store.get_recent_sequence(_user_id, limit=2)
         prev_action = prev_seq[-2] if len(prev_seq) >= 2 else "Standing"
 
         habit_learner.on_new_observation(
-            user_id=_user_id,
-            action=spatial_action,
-            prev_action=prev_action,
-            time_slot=time_slot,
+            user_id=_user_id, action=spatial_action,
+            prev_action=prev_action, time_slot=time_slot,
             zone_name=zone_label,
         )
 
         scene_engine.update_user_affinity(
-            user_id=_user_id,
-            zone_name=zone_label,
-            action=spatial_action,
-            room=result.get("room", ""),
+            user_id=_user_id, zone_name=zone_label,
+            action=spatial_action, room=result.get("room", ""),
             virtual_day=virtual_day,
         )
 
-    # ── Memory Layer: manifold training ──────────────────────────────────────
     NO_RECORD = {"Unknown", "Standing", "Walking", "StandUp",
                  "PickingUp", "PuttingDown"}
     if (spatial_action not in NO_RECORD and
@@ -603,35 +701,28 @@ def _process_predict(episode_id: str, data: dict):
 
         try:
             manifold_engine.record_training_sample(
-                user_id=_user_id,
-                virtual_hour=virtual_hour,
-                user_pos=est_pos,
-                prev_action=prev_action,
+                user_id=_user_id, virtual_hour=virtual_hour,
+                user_pos=est_pos, prev_action=prev_action,
                 current_action=spatial_action,
             )
         except Exception:
             pass
 
-    # ── Service Layer: proactive service evaluation ───────────────────────────
-    # Trigger only when user returns to Standing (finished an action)
     prev_seq    = observation_store.get_recent_sequence(_user_id, limit=2)
     prev_action = prev_seq[-2] if len(prev_seq) >= 2 else "Standing"
 
     if spatial_action == "Standing" and prev_action not in ("Standing", "Walking"):
         proposal = proactive_service.evaluate(
-            user_id=_user_id,
-            current_action=spatial_action,
-            prev_action=prev_action,
-            time_slot=time_slot,
+            user_id=_user_id, current_action=spatial_action,
+            prev_action=prev_action, time_slot=time_slot,
             user_pos=est_pos,
         )
         if proposal:
             proposal_manager.push(_user_id, proposal)
 
-    # ── Memory: vector memory ─────────────────────────────────────────────────
-    bound_label = result.get("bound_instance", "Unknown_Area")
-    detected    = result.get("items", [])
-    all_items   = result.get("all_items", [])
+    bound_label  = result.get("bound_instance", "Unknown_Area")
+    detected     = result.get("items", [])
+    all_items    = result.get("all_items", [])
     spatial_rels = result.get("spatial_relations", [])
 
     if bound_label and "Unknown" not in bound_label:
@@ -639,41 +730,32 @@ def _process_predict(episode_id: str, data: dict):
         furniture_pos = furniture_doc.get('pos') if furniture_doc else None
         mongo_id      = furniture_doc.get('_id')  if furniture_doc else None
         vlm_desc      = result["result"].get("context", "")
-
-        spatial_text = " ".join(
+        spatial_text  = " ".join(
             [f"{r['subject']} {r['relation']} {r['object']}"
              for r in spatial_rels]) if spatial_rels else ""
 
         vector_memory.add_memory(
-            user_id=_user_id,
-            action=spatial_action,
+            user_id=_user_id, action=spatial_action,
             furniture_label=bound_label,
             vlm_description=f"{vlm_desc} {spatial_text}".strip(),
-            detected_items=detected,
-            all_items=all_items,
+            detected_items=detected, all_items=all_items,
             spatial_relations=spatial_rels,
-            furniture_pos=furniture_pos,
-            mongo_id=mongo_id,
+            furniture_pos=furniture_pos, mongo_id=mongo_id,
         )
 
-    # ── Manifold: intent prediction for proposal ──────────────────────────────
     try:
         _prev_seq_doc = db.activity_sequences.find_one(
             {"user": _user_id}, sort=[("date", -1)])
         _real_prev = "Standing"
         if _prev_seq_doc and len(_prev_seq_doc.get("sequence", [])) >= 2:
             _real_prev = _prev_seq_doc["sequence"][-2].get("action", "Standing")
-
-        intent_pred = manifold_engine.predict_intent(
-            user_id=_user_id,
-            virtual_hour=virtual_hour,
-            user_pos=est_pos,
-            prev_action=_real_prev,
+        manifold_engine.predict_intent(
+            user_id=_user_id, virtual_hour=virtual_hour,
+            user_pos=est_pos, prev_action=_real_prev,
         )
     except Exception as e:
         print(f"[Manifold] non-critical error: {e}")
 
-    # ── Activity sequence (app-level, for bind label) ─────────────────────────
     final_bound = bound_label if "Unknown" not in bound_label else ""
     if not final_bound and est_pos:
         best_doc  = None
@@ -685,8 +767,7 @@ def _process_predict(episode_id: str, data: dict):
                 continue
             dist = math.sqrt(
                 (est_pos["x"] - pos[0]) ** 2 +
-                (est_pos["z"] - pos[1]) ** 2
-            )
+                (est_pos["z"] - pos[1]) ** 2)
             if dist < best_dist:
                 best_dist = dist
                 best_doc  = doc
@@ -701,13 +782,11 @@ def _process_predict(episode_id: str, data: dict):
         db.activity_sequences.update_one(
             {"user": _user_id, "date": today},
             {
-                "$push": {
-                    "sequence": {
-                        "action":    spatial_action,
-                        "instance":  final_bound,
-                        "timestamp": datetime.datetime.utcnow(),
-                    }
-                },
+                "$push": {"sequence": {
+                    "action":    spatial_action,
+                    "instance":  final_bound,
+                    "timestamp": datetime.datetime.utcnow(),
+                }},
                 "$setOnInsert": {"user": _user_id, "date": today},
             },
             upsert=True,
@@ -715,7 +794,6 @@ def _process_predict(episode_id: str, data: dict):
     except Exception as e:
         print(f"[Sequence] {e}")
 
-    # ── Update eval_logs ──────────────────────────────────────────────────────
     db.eval_logs.update_one(
         {"episode_id": episode_id},
         {"$set": {
@@ -730,13 +808,8 @@ def _process_predict(episode_id: str, data: dict):
     print(f"[Predict] done | {_user_id} | "
           f"{result.get('action')} -> {spatial_action} | {vlm_ms}ms")
 
-@app.route('/set_experiment_type', methods=['POST'])
-def set_experiment_type():
-    data     = request.get_json()
-    exp_type = data.get('type', 'baseline')
-    Config.OBJECT_CONFUSION_ENABLED = (exp_type == 'corruption')
-    print(f"[Experiment] type={exp_type} | confusion={Config.OBJECT_CONFUSION_ENABLED}")
-    return jsonify({"status": "ok", "type": exp_type}), 200
+
+# ── Scene endpoints ───────────────────────────────────────────────────────────
 
 @app.route('/scene', methods=['POST'])
 def handle_scene():
@@ -899,6 +972,7 @@ def dynamic_sync():
         return jsonify({"error": str(e)}), 500
 
 
+# ── Device / position endpoints ───────────────────────────────────────────────
 
 @app.route('/set_device_state', methods=['POST'])
 def set_device_state():
@@ -985,7 +1059,6 @@ def object_event():
     return jsonify({"status": "ok"}), 200
 
 
-
 @app.route('/track_position', methods=['POST'])
 def track_position():
     try:
@@ -1033,6 +1106,7 @@ def set_virtual_hour():
         return jsonify({"error": str(e)}), 500
 
 
+# ── Experiment endpoints ──────────────────────────────────────────────────────
 
 @app.route('/exp_checkpoint', methods=['GET', 'POST'])
 def exp_checkpoint():
@@ -1079,6 +1153,7 @@ def exp_checkpoint():
         return jsonify({"error": str(e)}), 500
 
 
+# ── Manifold endpoints ────────────────────────────────────────────────────────
 
 @app.route('/manifold_status', methods=['GET'])
 def manifold_status():
@@ -1114,14 +1189,7 @@ def manifold_train():
         return jsonify({"error": str(e)}), 500
 
 
-
-@app.route('/nav_target', methods=['GET'])
-def nav_target():
-    return jsonify({
-        "nav_target": _robot_state["nav_target"],
-        "nav_label":  _robot_state["nav_label"],
-    })
-
+# ── Navigation / misc endpoints ───────────────────────────────────────────────
 
 @app.route('/log_navigation', methods=['POST'])
 def log_navigation():
@@ -1145,6 +1213,7 @@ def log_navigation():
         return jsonify({"error": str(e)}), 500
 
 
+# ── Startup ───────────────────────────────────────────────────────────────────
 
 _predict_worker_thread = threading.Thread(
     target=_predict_worker, daemon=True)

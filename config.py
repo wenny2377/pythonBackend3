@@ -6,14 +6,22 @@ def _ask_db() -> str:
     print("\nWhich DB?")
     print("  1) Baseline   (robot_exp_baseline)")
     print("  2) Corruption (robot_exp_corruption)")
+    print("  3) Demo       (robot_exp_demo)")
     try:
         choice = input("Choice [1]: ").strip() or "1"
     except EOFError:
         choice = "1"
-    return {
+
+    db = {
         "1": "robot_exp_baseline",
         "2": "robot_exp_corruption",
+        "3": "robot_exp_demo",
     }.get(choice, "robot_exp_baseline")
+
+    if choice == "3":
+        print("[DEMO MODE] Using robot_exp_demo — experiment DBs untouched.")
+
+    return db
 
 
 class Config:
