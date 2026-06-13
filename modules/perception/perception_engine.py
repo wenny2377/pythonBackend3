@@ -623,6 +623,7 @@ class PerceptionEngine:
         pitch    = float(payload.get("head_pitch",   -999))
         h2h      = float(payload.get("hand_to_head",   -1))
         arm      = float(payload.get("arm_elevation",  -1))
+        hip      = float(payload.get("hip_height",     -1))
         wrist_z  = float(payload.get("wrist_z",      -999))
         l_wrist_z= float(payload.get("left_wrist_z", -999))
         wrist_h  = float(payload.get("wrist_height", -999))
@@ -634,6 +635,7 @@ class PerceptionEngine:
         pitch_valid = pitch > -999
         h2h_valid   = h2h >= 0
         arm_valid   = arm >= 0
+        hip_valid   = hip > 0
         body_position = None
 
         laying_cfg   = _BEHAVIOUR_CFG.get("Laying", {})
@@ -642,6 +644,10 @@ class PerceptionEngine:
 
         if pitch_valid and abs(pitch - laying_ideal) <= laying_tol:
             body_position = "lying"
+        elif hip_valid and hip > 0.50:
+            body_position = "standing"
+        elif hip_valid and hip < 0.45:
+            body_position = "sitting"
         elif pitch_valid and -40 < pitch < 40:
             body_position = "sitting"
         elif arm_valid and arm > 165:

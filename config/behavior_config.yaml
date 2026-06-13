@@ -123,3 +123,14 @@ vision_prototypes:
   Walking: >
     locomotion legs stepping alternating feet forward displacement moving room path hallway.
     arms swinging naturally body coordination walking gait translation motion velocity
+behaviours:
+  Laying:
+    head_pitch:
+      ideal: -83
+      tolerance: 10
+  Sitting:
+    head_pitch:
+      range: [-40, 40]
+  Standing:
+    arm_elevation:
+      min: 165
