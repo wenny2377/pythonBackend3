@@ -1,20 +1,21 @@
 Experiment 2: Corruption Robustness
-Baseline DB   : robot_exp_baseline  (n=64)
-Corruption DB : robot_exp_corruption  (n=25)
+Baseline DB   : robot_exp_baseline  (n=387)
+Corruption DB : robot_exp_corruption  (n=672)
 
 Overall Accuracy:
-  Baseline   : 95.3%
-  Corruption : 84.0%
-  Delta      : -11.3%
+  Baseline   : 90.7%
+  Corruption : 87.4%
+  Delta      : -3.3%
 
 Per-class Results:
 Action             Baseline   Corruption    Delta   Impact
 ----------------------------------------------------------
-SittingDrink          88.9%        83.3%    -5.6%      MED
-Sitting              100.0%        66.7%   -33.3%     HIGH
-Eating               100.0%       100.0%    +0.0%      LOW
+SittingDrink         100.0%        90.9%    -9.1%      MED
+Sitting               73.1%        73.6%    +0.5%      LOW
+Eating               100.0%        73.9%   -26.1%     HIGH
 Cooking              100.0%       100.0%    +0.0%      LOW
-Laying               100.0%       100.0%    +0.0%      LOW
-Watching             100.0%        75.0%   -25.0%     HIGH
-Cleaning             100.0%        80.0%   -20.0%     HIGH
-Typing                33.3%       100.0%   +66.7%      LOW
+Laying               100.0%        98.6%    -1.4%      LOW
+Watching              83.1%        74.8%    -8.3%      MED
+Reading              100.0%       100.0%    +0.0%      LOW
+PhoneUse             100.0%        96.0%    -4.0%      LOW
+Typing               100.0%       100.0%    +0.0%      LOW
