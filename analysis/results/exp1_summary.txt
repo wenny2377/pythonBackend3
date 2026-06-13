@@ -1,17 +1,17 @@
 Experiment 1: HAR Accuracy — Baseline
 DB: robot_exp_baseline
 
-Overall Accuracy: 91.3%  (242/265)
+Overall Accuracy: 90.7%  (351/387)
 
 Per-class Results:
 Action              Acc    TP   Total Status
 ---------------------------------------------
-SittingDrink     100.0%    20      20   OK
-Sitting          73.3%    44      60   WN
-Eating           100.0%     7       7   OK
-Cooking          100.0%     8       8   OK
-Laying           100.0%    24      24   OK
-Watching         84.4%    38      45   OK
-Reading          100.0%    22      22   OK
-PhoneUse         100.0%    57      57   OK
-Typing           100.0%    22      22   OK
+SittingDrink     100.0%    29      29   OK
+Sitting          73.1%    68      93   WN
+Eating           100.0%    11      11   OK
+Cooking          100.0%    12      12   OK
+Laying           100.0%    38      38   OK
+Watching         83.1%    54      65   OK
+Reading          100.0%    30      30   OK
+PhoneUse         100.0%    81      81   OK
+Typing           100.0%    28      28   OK
