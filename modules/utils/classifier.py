@@ -21,10 +21,12 @@ OBJECT_CATEGORIES = {
     },
     "drink": {
         "bottle", "wine glass", "cup", "juice", "cola",
+        "water", "waterbottle",
     },
     "device": {
         "tv", "laptop", "mouse", "remote", "keyboard",
-        "cell phone", "microwave", "oven", "toaster",
+        "cell phone", "phone",
+        "microwave", "oven", "toaster",
         "refrigerator", "sink",
     },
     "personal": {

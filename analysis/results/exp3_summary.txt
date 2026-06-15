@@ -1,26 +1,25 @@
-Experiment 3: Habit Learning
-Baseline DB: robot_exp_baseline
+Experiment 3: Habit Learning Convergence & Personalization
+DB: robot_exp_baseline  |  FAT = 5  |  Day 1–21
 
-FAT threshold: 5
+User_Mom  (8 stable habits):
+    PhoneUse         weight=54
+    Reading          weight=30
+    SittingDrink     weight=29
+    Watching         weight=27
+    Sitting          weight=17
+    Laying           weight=13
+    Cooking          weight=12
+    Eating           weight=11
 
-Habit profiles per user:
+User_Dad  (6 stable habits):
+    Sitting          weight=61
+    Typing           weight=28
+    Watching         weight=27
+    Laying           weight=24
+    PhoneUse         weight=24
+    Reading          weight=19
 
-  User_Mom (19 observations, 11 stable habits):
-    SittingDrink   @ Opening_Zone_2       weight=58.0
-    Watching       @ Sitting_Zone         weight=54.0
-    PhoneUse       @ Cleaning_Zone        weight=40.0
-    PhoneUse       @ Opening_Zone_3       weight=38.0
-    Reading        @ Watching_Zone_2      weight=38.0
-    PhoneUse       @ Typing_Zone          weight=36.0
-    Sitting        @ Sitting_Zone         weight=34.0
-    Cooking        @ Cooking_Zone         weight=24.0
-
-  User_Dad (15 observations, 8 stable habits):
-    Sitting        @ Sitting_Zone         weight=124.0
-    Typing         @ Typing_Zone          weight=56.0
-    Watching       @ Sitting_Zone         weight=54.0
-    PhoneUse       @ Watching_Zone_2      weight=48.0
-    Reading        @ Sitting_Zone         weight=44.0
-    Laying         @ Sitting_Zone         weight=18.0
-    Laying         @ Laying_Zone          weight=15.0
-    SittingDrink   @ Sitting_Zone         weight=6.0
+Personalization:
+  Shared   : ['Laying', 'PhoneUse', 'Reading', 'Sitting', 'Watching']
+  Mom-only : ['Cooking', 'Eating', 'SittingDrink']
+  Dad-only : ['Typing']

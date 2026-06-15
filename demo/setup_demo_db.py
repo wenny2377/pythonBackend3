@@ -19,7 +19,6 @@ COLLECTIONS = [
     "user_spatial_affinity", "zone_anchors",
     "user_skills", "skill_chunks",
     "object_events",
-    "object_events",
 ]
 
 USERS = ["User_Mom", "User_Dad"]
@@ -28,8 +27,8 @@ DRINK_ACTIONS = {"Drinking", "SittingDrink"}
 FOOD_ACTIONS  = {"Eating", "Cooking"}
 
 LABEL_NORMALIZE = {
-    "waterbottle":  "bottle",
-    "water bottle": "bottle",
+    "waterbottle":  "water",   # ← 修正（原本是 bottle）
+    "water bottle": "water",   # ← 修正（原本是 bottle）
     "juicebottle":  "juice",
     "juice bottle": "juice",
     "orange juice": "juice",
@@ -49,48 +48,60 @@ LABEL_NORMALIZE = {
     "tea cup":      "cup",
 }
 
-PREF_KEYWORD = ["enjoys", "likes", "frequently", "drinks", "eats", "prefers"]
-
 
 def _normalize_label(label: str) -> str:
     return LABEL_NORMALIZE.get(label.lower().strip(), label.lower().strip())
 
 
-def _get_top_item_from_events(db, user_id, actions, category):
+def _get_top_drink(db, user_id):
+    """
+    Infer preferred drink from object_events (what the user actually picked up
+    during Drinking/SittingDrink actions). Falls back to dynamic_objects if
+    no pickup events found.
+    """
     item_counts = defaultdict(int)
     for d in db.object_events.find(
         {"user": user_id, "pickup_time": {"$exists": True}},
         {"object": 1}
     ):
-        raw   = d.get("object", "")
+        raw   = d.get("object", "").strip()
         label = _normalize_label(raw)
-        obj   = db.dynamic_objects.find_one({"label": label, "category": category})
+        obj   = db.dynamic_objects.find_one({"label": label, "category": "drink"})
         if obj:
             item_counts[label] += 1
 
     if item_counts:
         return max(item_counts, key=item_counts.get)
 
-    obs = list(db.observation_logs.find(
-        {"user": user_id, "action": {"$in": list(actions)}},
-        {"zone_name": 1, "weight": 1}
-    ).sort("weight", -1).limit(5))
-
-    zone_counts = defaultdict(float)
-    for d in obs:
-        zone_counts[d.get("zone_name", "")] += d.get("weight", 1)
-
-    top_zone = max(zone_counts, key=zone_counts.get) if zone_counts else ""
-
+    # Fallback: find drink object with highest interact_count
     obj = db.dynamic_objects.find_one(
-        {"category": category, "last_seen_on": top_zone},
+        {"category": "drink"},
         sort=[("interact_count", -1)]
     )
-    if obj:
-        return obj["label"]
+    return obj["label"] if obj else None
+
+
+def _get_top_food(db, user_id):
+    """
+    Infer preferred food from object_events.
+    Falls back to dynamic_objects if no pickup events found.
+    """
+    item_counts = defaultdict(int)
+    for d in db.object_events.find(
+        {"user": user_id, "pickup_time": {"$exists": True}},
+        {"object": 1}
+    ):
+        raw   = d.get("object", "").strip()
+        label = _normalize_label(raw)
+        obj   = db.dynamic_objects.find_one({"label": label, "category": "food"})
+        if obj:
+            item_counts[label] += 1
+
+    if item_counts:
+        return max(item_counts, key=item_counts.get)
 
     obj = db.dynamic_objects.find_one(
-        {"category": category},
+        {"category": "food"},
         sort=[("interact_count", -1)]
     )
     return obj["label"] if obj else None
@@ -128,8 +139,8 @@ def generate_skill(db, user_id):
         for d in obs
     ) or "- No habits recorded yet"
 
-    drink_item = _get_top_item_from_events(db, user_id, DRINK_ACTIONS, "drink")
-    food_item  = _get_top_item_from_events(db, user_id, FOOD_ACTIONS,  "food")
+    drink_item = _get_top_drink(db, user_id)
+    food_item  = _get_top_food(db, user_id)
 
     skill_md = _build_skill_md(user_id, drink_item, food_item, obs_lines)
 
@@ -145,6 +156,25 @@ def generate_skill(db, user_id):
         print(f"    food:  {food_item}")
 
 
+def rebuild_skill_chunks(client, user_id, db_name):
+    """Rebuild FAISS skill_chunks after SKILL.md update."""
+    try:
+        from modules.memory.skill_manager import SkillManager
+        db = client[db_name]
+        sm = SkillManager(
+            db_client=client,
+            ollama_url="http://localhost:11434",
+            model_name="llama3.1:8b",
+            db_name=db_name,
+        )
+        doc = db.user_skills.find_one({"user_id": user_id})
+        if doc:
+            sm._chunk_skill_md(doc["skill_md"], user_id)
+            print(f"  skill_chunks rebuilt for {user_id}")
+    except Exception as e:
+        print(f"  [warn] skill_chunks rebuild failed: {e}")
+
+
 def main():
     client = MongoClient(MONGO_URI)
     src    = client[SRC_DB]
@@ -155,7 +185,9 @@ def main():
 
     existing = dst.list_collection_names()
     if existing:
-        confirm = input(f"[!] {DST_DB} already exists. Overwrite? [y/N]: ").strip().lower()
+        confirm = input(
+            f"[!] {DST_DB} already exists. Overwrite? [y/N]: "
+        ).strip().lower()
         if confirm != "y":
             print("Aborted.")
             return
@@ -164,7 +196,11 @@ def main():
         print("  Cleared existing demo DB.")
 
     total = 0
+    seen  = set()
     for col in COLLECTIONS:
+        if col in seen:
+            continue
+        seen.add(col)
         docs = list(src[col].find({}))
         if not docs:
             print(f"  {col:<30} skipped (empty)")
@@ -175,22 +211,49 @@ def main():
         print(f"  {col:<30} {len(docs)} docs")
         total += len(docs)
 
+    # Refresh object timestamps so TTL doesn't expire
+    now = datetime.utcnow()
+    dst.dynamic_objects.update_many({}, {"$set": {"last_seen": now}})
+    print(f"  Refreshed last_seen on dynamic_objects")
+
     print()
-    print("Generating SKILL.md from object_events + observation_logs...")
+    print("Generating SKILL.md from object_events...")
+    dst.user_skills.drop()
+    dst.skill_chunks.drop()
+
     for uid in USERS:
         generate_skill(dst, uid)
 
     print()
+    print("Rebuilding skill_chunks FAISS index...")
+    for uid in USERS:
+        rebuild_skill_chunks(client, uid, DST_DB)
+
+    print()
     print("=" * 50)
     print(f"Done. {total} documents copied to {DST_DB}")
+
+    # Verify preferences
+    print()
+    print("Preferences inferred:")
+    import re
+    for uid in USERS:
+        doc = dst.user_skills.find_one({"user_id": uid})
+        if doc:
+            m = re.search(
+                r"## Preferences\n(.*?)(?=\n## )",
+                doc["skill_md"], re.DOTALL
+            )
+            prefs = m.group(1).strip() if m else "N/A"
+            print(f"  {uid}: {prefs}")
+
     print()
     print("Next steps:")
     print("  python3 app.py  → choose 3 (Demo)")
     print("  open demo/index.html in browser")
     print()
     print("Rules:")
-    print("  NEVER run Unity against robot_exp_demo")
-    print("  NEVER run resetall.py on robot_exp_demo")
+    print("  NEVER run Unity Experiment mode against robot_exp_demo")
     print("  NEVER run analysis scripts against robot_exp_demo")
 
 

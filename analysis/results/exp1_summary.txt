@@ -1,17 +1,22 @@
-Experiment 1: HAR Accuracy — Baseline
+Experiment 1: HAR Baseline + Ablation
 DB: robot_exp_baseline
+Episodes: 387  Correct: 351  Overall: 90.7%
 
-Overall Accuracy: 90.7%  (351/387)
+Per-class Accuracy:
+Action              Acc    TP   Total
+--------------------------------------
+SittingDrink     100.0%    29      29
+Sitting          73.1%    68      93
+Eating           100.0%    11      11
+Cooking          100.0%    12      12
+Laying           100.0%    38      38
+Watching         83.1%    54      65
+Reading          100.0%    30      30
+PhoneUse         100.0%    81      81
+Typing           100.0%    28      28
 
-Per-class Results:
-Action              Acc    TP   Total Status
----------------------------------------------
-SittingDrink     100.0%    29      29   OK
-Sitting          73.1%    68      93   WN
-Eating           100.0%    11      11   OK
-Cooking          100.0%    12      12   OK
-Laying           100.0%    38      38   OK
-Watching         83.1%    54      65   OK
-Reading          100.0%    30      30   OK
-PhoneUse         100.0%    81      81   OK
-Typing           100.0%    28      28   OK
+Ablation Results:
+  Full System                90.7%
+  w/o Skeleton               67.2%
+  w/o Object Events          37.0%
+  w/o Spatial Context        61.2%

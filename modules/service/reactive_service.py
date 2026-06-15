@@ -19,7 +19,7 @@ MAX_ITEMS   = Config.SNAPSHOT_MAX_ITEMS
 HIGH_WEIGHT     = 10
 SESSION_TTL     = 30
 MAX_HISTORY     = 5
-SBERT_THRESHOLD = 0.20
+SBERT_THRESHOLD = 0.40
 
 OBJECT_EXCLUDES = {
     "user_mom", "user_dad", "user", "person", "people",

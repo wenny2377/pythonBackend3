@@ -1,0 +1,7 @@
+Experiment 7: MLP Prediction Quality (Appendix)
+DB: robot_exp_baseline  |  Total samples: 356
+Threshold: Silhouette ≥ 0.5
+
+  Overall      score=-0.0366  [FAIL]
+  User Mom     score=0.2082  [FAIL]
+  User Dad     score=0.0303  [FAIL]
