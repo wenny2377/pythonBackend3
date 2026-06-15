@@ -5,487 +5,309 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>robotBrain Demo</title>
 <style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
+* { box-sizing: border-box; margin: 0; padding: 0; }
 
-  :root {
-    --bg:       #0f1117;
-    --panel:    #1a1d27;
-    --border:   #2a2d3e;
-    --accent:   #5b8dee;
-    --green:    #4caf7d;
-    --red:      #e05c5c;
-    --orange:   #f0a04b;
-    --text:     #e2e6f0;
-    --muted:    #6b7280;
-    --mom:      #e879a0;
-    --dad:      #5b8dee;
-    --radius:   10px;
-    --mono:     'JetBrains Mono', 'Fira Code', monospace;
-    --sans:     'Inter', system-ui, sans-serif;
-  }
+:root {
+  --bg:      #0f1117;
+  --panel:   #1a1d27;
+  --border:  #2a2d3e;
+  --accent:  #5b8dee;
+  --green:   #4caf7d;
+  --red:     #e05c5c;
+  --orange:  #f0a04b;
+  --text:    #e2e6f0;
+  --muted:   #6b7280;
+  --mom:     #e879a0;
+  --dad:     #5b8dee;
+  --radius:  10px;
+  --mono:    'JetBrains Mono', 'Fira Code', monospace;
+  --sans:    'Inter', system-ui, sans-serif;
+}
 
-  body {
-    background: var(--bg);
-    color: var(--text);
-    font-family: var(--sans);
-    font-size: 14px;
-    height: 100vh;
-    display: grid;
-    grid-template-rows: 52px 1fr;
-    overflow: hidden;
-  }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 14px;
+  height: 100vh;
+  display: grid;
+  grid-template-rows: 52px 36px 1fr;
+  overflow: hidden;
+}
 
-  /* ── Header ── */
-  header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0 20px;
-    background: var(--panel);
-    border-bottom: 1px solid var(--border);
-  }
-  .logo {
-    font-size: 16px;
-    font-weight: 700;
-    letter-spacing: .5px;
-    color: var(--accent);
-  }
-  .logo span { color: var(--text); font-weight: 400; }
-  .status-pill {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 12px;
-    color: var(--muted);
-  }
-  .dot {
-    width: 8px; height: 8px;
-    border-radius: 50%;
-    background: var(--red);
-    transition: background .4s;
-  }
-  .dot.online { background: var(--green); }
+/* ── Header ── */
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+}
+.logo { font-size: 16px; font-weight: 700; color: var(--accent); }
+.logo span { color: var(--text); font-weight: 400; }
+.status-pill { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--red); transition: background .4s; }
+.dot.online { background: var(--green); }
 
-  /* ── Main grid ── */
-  main {
-    display: grid;
-    grid-template-columns: 300px 1fr 300px;
-    grid-template-rows: 1fr 200px;
-    gap: 12px;
-    padding: 12px;
-    overflow: hidden;
-  }
+/* ── Scene Progress ── */
+.scene-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 20px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  font-size: 11px;
+}
+.scene-label { color: var(--muted); margin-right: 4px; font-weight: 600; letter-spacing: .5px; text-transform: uppercase; }
+.scene-step {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 10px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 11px;
+  transition: all .3s;
+}
+.scene-step.done    { background: rgba(76,175,125,.15); border-color: var(--green); color: var(--green); }
+.scene-step.active  { background: rgba(91,141,238,.2);  border-color: var(--accent); color: var(--accent); font-weight: 700; }
 
-  /* ── Panel base ── */
-  .panel {
-    background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-  }
-  .panel-header {
-    padding: 10px 14px;
-    border-bottom: 1px solid var(--border);
-    font-size: 11px;
-    font-weight: 600;
-    letter-spacing: .8px;
-    text-transform: uppercase;
-    color: var(--muted);
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    flex-shrink: 0;
-  }
-  .panel-body {
-    flex: 1;
-    overflow-y: auto;
-    padding: 12px 14px;
-  }
-  .panel-body::-webkit-scrollbar { width: 4px; }
-  .panel-body::-webkit-scrollbar-track { background: transparent; }
-  .panel-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+/* ── Main grid ── */
+main {
+  display: grid;
+  grid-template-columns: 280px 1fr 280px;
+  grid-template-rows: 1fr 190px;
+  gap: 10px;
+  padding: 10px;
+  overflow: hidden;
+}
 
-  /* ── HAR panel (left top) ── */
-  #har-panel { grid-column: 1; grid-row: 1; }
+/* ── Panel ── */
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.panel-header {
+  padding: 9px 14px;
+  border-bottom: 1px solid var(--border);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .8px;
+  text-transform: uppercase;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+}
+.panel-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 14px;
+}
+.panel-body::-webkit-scrollbar { width: 3px; }
+.panel-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 
-  .har-user {
-    font-size: 11px;
-    color: var(--muted);
-    margin-bottom: 4px;
-    text-transform: uppercase;
-    letter-spacing: .5px;
-  }
-  .har-action {
-    font-size: 26px;
-    font-weight: 700;
-    color: var(--text);
-    margin-bottom: 2px;
-    min-height: 36px;
-  }
-  .har-zone {
-    font-size: 12px;
-    color: var(--muted);
-    margin-bottom: 12px;
-  }
+/* ── HAR Panel ── */
+#har-panel { grid-column: 1; grid-row: 1; }
+.har-user   { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; margin-bottom: 4px; }
+.har-action { font-size: 28px; font-weight: 700; color: var(--text); margin-bottom: 2px; min-height: 38px; }
+.har-zone   { font-size: 12px; color: var(--muted); margin-bottom: 10px; }
+.conf-wrap  { margin-bottom: 12px; }
+.conf-label { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); margin-bottom: 4px; }
+.conf-bar   { height: 4px; background: var(--border); border-radius: 4px; overflow: hidden; }
+.conf-fill  { height: 100%; background: var(--accent); border-radius: 4px; transition: width .5s ease; width: 0%; }
+.har-reason { font-size: 11px; color: var(--muted); font-family: var(--mono); line-height: 1.6; }
 
-  .conf-bar-wrap {
-    margin-bottom: 16px;
-  }
-  .conf-label {
-    display: flex;
-    justify-content: space-between;
-    font-size: 11px;
-    color: var(--muted);
-    margin-bottom: 4px;
-  }
-  .conf-bar {
-    height: 4px;
-    background: var(--border);
-    border-radius: 4px;
-    overflow: hidden;
-  }
-  .conf-fill {
-    height: 100%;
-    background: var(--accent);
-    border-radius: 4px;
-    transition: width .4s ease;
-    width: 0%;
-  }
+/* ── Chat Panel ── */
+#chat-panel { grid-column: 2; grid-row: 1 / 3; display: flex; flex-direction: column; }
 
-  .har-meta {
-    font-size: 11px;
-    color: var(--muted);
-    line-height: 1.8;
-    font-family: var(--mono);
-  }
-  .har-meta b { color: var(--text); }
+.user-tabs {
+  display: flex;
+  gap: 6px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  align-items: center;
+}
+.tab {
+  padding: 5px 14px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--muted);
+  transition: all .2s;
+}
+.tab.mom.active { background: rgba(232,121,160,.15); color: var(--mom); border-color: var(--mom); }
+.tab.dad.active { background: rgba(91,141,238,.15);  color: var(--dad); border-color: var(--dad); }
 
-  .upgrade-tag {
-    display: inline-block;
-    margin-top: 8px;
-    padding: 3px 8px;
-    border-radius: 4px;
-    background: rgba(91,141,238,.15);
-    color: var(--accent);
-    font-size: 11px;
-    font-family: var(--mono);
-    word-break: break-all;
-  }
+.auto-badge {
+  margin-left: auto;
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: rgba(240,160,75,.15);
+  color: var(--orange);
+  font-weight: 600;
+  display: none;
+}
+.auto-badge.visible { display: block; }
 
-  /* ── Chat panel (center) ── */
-  #chat-panel {
-    grid-column: 2;
-    grid-row: 1 / 3;
-  }
+.messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.messages::-webkit-scrollbar { width: 3px; }
+.messages::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 
-  .user-tabs {
-    display: flex;
-    gap: 6px;
-    padding: 10px 14px;
-    border-bottom: 1px solid var(--border);
-    flex-shrink: 0;
-  }
-  .tab {
-    padding: 5px 14px;
-    border-radius: 6px;
-    font-size: 12px;
-    font-weight: 600;
-    cursor: pointer;
-    border: 1px solid var(--border);
-    background: transparent;
-    color: var(--muted);
-    transition: all .2s;
-  }
-  .tab.mom.active  { background: rgba(232,121,160,.15); color: var(--mom); border-color: var(--mom); }
-  .tab.dad.active  { background: rgba(91,141,238,.15);  color: var(--dad); border-color: var(--dad); }
-  .tab:not(.active):hover { border-color: var(--text); color: var(--text); }
+.msg { max-width: 82%; padding: 10px 14px; border-radius: 12px; font-size: 13px; line-height: 1.5; }
+.msg.user { align-self: flex-end; border-bottom-right-radius: 4px; }
+.msg.user.mom { background: rgba(232,121,160,.2); color: var(--mom); }
+.msg.user.dad { background: rgba(91,141,238,.2);  color: var(--dad); }
+.msg.bot  { align-self: flex-start; background: var(--border); color: var(--text); border-bottom-left-radius: 4px; }
+.msg-label { font-size: 10px; font-weight: 600; letter-spacing: .5px; text-transform: uppercase; margin-bottom: 4px; opacity: .6; }
 
-  .messages {
-    flex: 1;
-    overflow-y: auto;
-    padding: 16px;
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-  }
-  .messages::-webkit-scrollbar { width: 4px; }
-  .messages::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+.typing-dots span {
+  display: inline-block; width: 6px; height: 6px;
+  border-radius: 50%; background: var(--muted); margin: 0 2px;
+  animation: bounce .8s infinite;
+}
+.typing-dots span:nth-child(2) { animation-delay: .15s; }
+.typing-dots span:nth-child(3) { animation-delay: .30s; }
+@keyframes bounce { 0%,80%,100%{transform:translateY(0)} 40%{transform:translateY(-6px)} }
 
-  .msg {
-    max-width: 80%;
-    padding: 10px 14px;
-    border-radius: 12px;
-    font-size: 13px;
-    line-height: 1.5;
-  }
-  .msg.user {
-    align-self: flex-end;
-    border-bottom-right-radius: 4px;
-  }
-  .msg.user.mom { background: rgba(232,121,160,.2); color: var(--mom); }
-  .msg.user.dad { background: rgba(91,141,238,.2);  color: var(--dad); }
-  .msg.bot {
-    align-self: flex-start;
-    background: var(--border);
-    color: var(--text);
-    border-bottom-left-radius: 4px;
-  }
-  .msg.typing {
-    align-self: flex-start;
-    background: var(--border);
-    padding: 12px 16px;
-  }
-  .typing-dots span {
-    display: inline-block;
-    width: 6px; height: 6px;
-    border-radius: 50%;
-    background: var(--muted);
-    margin: 0 2px;
-    animation: bounce .8s infinite;
-  }
-  .typing-dots span:nth-child(2) { animation-delay: .15s; }
-  .typing-dots span:nth-child(3) { animation-delay: .30s; }
-  @keyframes bounce {
-    0%, 80%, 100% { transform: translateY(0); }
-    40%           { transform: translateY(-6px); }
-  }
+.input-row {
+  display: flex; gap: 8px; padding: 10px 14px;
+  border-top: 1px solid var(--border); flex-shrink: 0;
+}
+.input-row input {
+  flex: 1; background: var(--bg); border: 1px solid var(--border);
+  border-radius: 8px; padding: 9px 14px; font-size: 13px;
+  color: var(--text); outline: none; transition: border-color .2s;
+}
+.input-row input:focus { border-color: var(--accent); }
+.input-row input::placeholder { color: var(--muted); }
+.send-btn {
+  padding: 9px 18px; background: var(--accent); color: #fff;
+  border: none; border-radius: 8px; font-size: 13px;
+  font-weight: 600; cursor: pointer; transition: opacity .2s;
+}
+.send-btn:hover { opacity: .85; }
+.send-btn:disabled { opacity: .4; cursor: not-allowed; }
 
-  .msg-label {
-    font-size: 10px;
-    font-weight: 600;
-    letter-spacing: .5px;
-    text-transform: uppercase;
-    margin-bottom: 4px;
-    opacity: .6;
-  }
+/* ── Habits Panel ── */
+#habits-panel { grid-column: 3; grid-row: 1; }
+.habit-user-label {
+  font-size: 11px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .5px; margin-bottom: 8px;
+  display: flex; align-items: center; gap: 6px;
+}
+.habit-user-label.mom { color: var(--mom); }
+.habit-user-label.dad { color: var(--dad); }
+.habit-count { font-size: 10px; font-weight: 400; color: var(--muted); text-transform: none; letter-spacing: 0; }
+.habit-item {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 5px 0; border-bottom: 1px solid var(--border); font-size: 12px;
+}
+.habit-item:last-child { border-bottom: none; }
+.habit-action { color: var(--text); }
+.habit-slot   { color: var(--muted); font-size: 11px; }
+.habit-w      { font-family: var(--mono); font-size: 11px; color: var(--accent); min-width: 28px; text-align: right; }
+.habit-section { margin-bottom: 14px; }
 
-  .input-row {
-    display: flex;
-    gap: 8px;
-    padding: 12px 14px;
-    border-top: 1px solid var(--border);
-    flex-shrink: 0;
-  }
-  .input-row input {
-    flex: 1;
-    background: var(--bg);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 10px 14px;
-    font-size: 13px;
-    color: var(--text);
-    font-family: var(--sans);
-    outline: none;
-    transition: border-color .2s;
-  }
-  .input-row input:focus { border-color: var(--accent); }
-  .input-row input::placeholder { color: var(--muted); }
-  .send-btn {
-    padding: 10px 18px;
-    background: var(--accent);
-    color: #fff;
-    border: none;
-    border-radius: 8px;
-    font-size: 13px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: opacity .2s;
-  }
-  .send-btn:hover { opacity: .85; }
-  .send-btn:disabled { opacity: .4; cursor: not-allowed; }
+/* ── Proactive Panel ── */
+#proactive-panel { grid-column: 1; grid-row: 2; }
+.proposal-box {
+  background: rgba(91,141,238,.08); border: 1px solid rgba(91,141,238,.3);
+  border-radius: 8px; padding: 10px 12px; margin-bottom: 8px;
+}
+.proposal-msg  { font-size: 13px; color: var(--text); margin-bottom: 6px; line-height: 1.5; }
+.proposal-meta { font-size: 11px; color: var(--muted); margin-bottom: 8px; font-family: var(--mono); }
+.proposal-btns { display: flex; gap: 6px; }
+.prop-btn { padding: 5px 12px; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; border: none; transition: opacity .2s; }
+.prop-btn:hover { opacity: .85; }
+.prop-btn.accept { background: var(--green); color: #fff; }
+.prop-btn.reject { background: var(--border); color: var(--text); }
+.empty-state { color: var(--muted); font-size: 12px; text-align: center; padding: 16px 0; }
 
-  /* ── Habits panel (right top) ── */
-  #habits-panel { grid-column: 3; grid-row: 1; }
+/* ── Nav Panel ── */
+#nav-panel { grid-column: 3; grid-row: 2; }
+.nav-item { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 12px; }
+.nav-label { color: var(--text); }
+.nav-pos   { font-family: var(--mono); font-size: 11px; color: var(--accent); }
 
-  .habit-user-section { margin-bottom: 16px; }
-  .habit-user-label {
-    font-size: 11px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: .5px;
-    margin-bottom: 8px;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-  }
-  .habit-user-label.mom { color: var(--mom); }
-  .habit-user-label.dad { color: var(--dad); }
-  .habit-count {
-    font-size: 10px;
-    font-weight: 400;
-    color: var(--muted);
-    text-transform: none;
-    letter-spacing: 0;
-  }
-
-  .habit-item {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 5px 0;
-    border-bottom: 1px solid var(--border);
-    font-size: 12px;
-  }
-  .habit-item:last-child { border-bottom: none; }
-  .habit-action { color: var(--text); }
-  .habit-meta { color: var(--muted); font-size: 11px; }
-  .habit-w {
-    font-family: var(--mono);
-    font-size: 11px;
-    color: var(--accent);
-    min-width: 28px;
-    text-align: right;
-  }
-
-  /* ── Proactive panel (right bottom + left bottom) ── */
-  #proactive-panel { grid-column: 1; grid-row: 2; }
-  #nav-panel       { grid-column: 3; grid-row: 2; }
-
-  .proposal-box {
-    background: rgba(91,141,238,.08);
-    border: 1px solid rgba(91,141,238,.3);
-    border-radius: 8px;
-    padding: 10px 12px;
-    margin-bottom: 8px;
-  }
-  .proposal-msg {
-    font-size: 13px;
-    color: var(--text);
-    margin-bottom: 8px;
-    line-height: 1.5;
-  }
-  .proposal-meta {
-    font-size: 11px;
-    color: var(--muted);
-    margin-bottom: 8px;
-    font-family: var(--mono);
-  }
-  .proposal-btns { display: flex; gap: 6px; }
-  .prop-btn {
-    padding: 5px 12px;
-    border-radius: 6px;
-    font-size: 12px;
-    font-weight: 600;
-    cursor: pointer;
-    border: none;
-    transition: opacity .2s;
-  }
-  .prop-btn:hover { opacity: .85; }
-  .prop-btn.accept { background: var(--green); color: #fff; }
-  .prop-btn.reject { background: var(--border); color: var(--text); }
-
-  .trigger-btn {
-    width: 100%;
-    padding: 10px;
-    background: rgba(240,160,75,.1);
-    border: 1px solid rgba(240,160,75,.4);
-    border-radius: 8px;
-    color: var(--orange);
-    font-size: 12px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all .2s;
-    margin-top: 4px;
-  }
-  .trigger-btn:hover { background: rgba(240,160,75,.2); }
-
-  .trigger-row {
-    display: flex;
-    gap: 6px;
-    margin-top: 8px;
-  }
-  .trigger-select {
-    flex: 1;
-    background: var(--bg);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 6px 10px;
-    color: var(--text);
-    font-size: 12px;
-    outline: none;
-  }
-
-  /* ── Nav panel ── */
-  .nav-item {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 6px 0;
-    border-bottom: 1px solid var(--border);
-    font-size: 12px;
-  }
-  .nav-label { color: var(--text); }
-  .nav-pos {
-    font-family: var(--mono);
-    font-size: 11px;
-    color: var(--accent);
-  }
-  .empty-state {
-    color: var(--muted);
-    font-size: 12px;
-    text-align: center;
-    padding: 20px 0;
-  }
-
-  /* ── Badge ── */
-  .badge {
-    display: inline-block;
-    padding: 2px 7px;
-    border-radius: 4px;
-    font-size: 10px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: .3px;
-  }
-  .badge.need   { background: rgba(91,141,238,.2); color: var(--accent); }
-  .badge.query  { background: rgba(76,175,125,.2); color: var(--green); }
-  .badge.chat   { background: rgba(107,114,128,.2); color: var(--muted); }
-  .badge.personalized { background: rgba(232,121,160,.2); color: var(--mom); }
+.badge { display: inline-block; padding: 2px 7px; border-radius: 4px; font-size: 10px; font-weight: 700; text-transform: uppercase; margin-left: 4px; }
+.badge.need  { background: rgba(91,141,238,.2);  color: var(--accent); }
+.badge.query { background: rgba(76,175,125,.2);  color: var(--green); }
+.badge.chat  { background: rgba(107,114,128,.2); color: var(--muted); }
+.badge.pers  { background: rgba(232,121,160,.2); color: var(--mom); }
 </style>
 </head>
 <body>
 
 <header>
-  <div class="logo">robot<span>Brain</span> <span style="color:var(--muted);font-size:12px;margin-left:8px;">Demo Dashboard</span></div>
+  <div class="logo">robot<span>Brain</span> <span style="color:var(--muted);font-size:12px;margin-left:8px;">Demo</span></div>
   <div class="status-pill">
     <div class="dot" id="status-dot"></div>
     <span id="status-text">Connecting...</span>
   </div>
 </header>
 
+<!-- Scene progress bar -->
+<div class="scene-bar">
+  <span class="scene-label">Scene</span>
+  <div class="scene-step" id="sc1">1 · Cooking</div>
+  <div class="scene-step" id="sc2">2 · Proactive</div>
+  <div class="scene-step" id="sc3">3 · Watching</div>
+  <div class="scene-step" id="sc4">4 · Dad chat</div>
+  <div class="scene-step" id="sc5">5 · Mom chat</div>
+  <div class="scene-step" id="sc6">6 · End</div>
+</div>
+
 <main>
 
-  <!-- ── HAR Panel ── -->
+  <!-- HAR -->
   <div class="panel" id="har-panel">
     <div class="panel-header">
       <span>Live HAR</span>
       <span id="har-day" style="color:var(--accent);font-size:11px;"></span>
     </div>
     <div class="panel-body">
-      <div class="har-user" id="har-user">—</div>
+      <div class="har-user"   id="har-user">—</div>
       <div class="har-action" id="har-action">Waiting...</div>
-      <div class="har-zone" id="har-zone"></div>
-      <div class="conf-bar-wrap">
+      <div class="har-zone"   id="har-zone"></div>
+      <div class="conf-wrap">
         <div class="conf-label">
           <span>VLM Confidence</span>
           <span id="har-conf-val">—</span>
         </div>
         <div class="conf-bar"><div class="conf-fill" id="har-conf-fill"></div></div>
       </div>
-      <div class="har-meta" id="har-meta"></div>
-      <div id="har-upgrade" style="margin-top:8px;"></div>
+      <div class="har-reason" id="har-reason"></div>
     </div>
   </div>
 
-  <!-- ── Chat Panel ── -->
-  <div class="panel" id="chat-panel" style="display:flex;flex-direction:column;">
+  <!-- Chat -->
+  <div class="panel" id="chat-panel">
     <div class="panel-header" style="padding:0;">
-      <div class="user-tabs" style="border-bottom:none;padding:10px 14px;width:100%;">
+      <div class="user-tabs" style="border-bottom:none;width:100%;">
         <button class="tab mom active" onclick="selectUser('User_Mom',this)">User Mom</button>
-        <button class="tab dad" onclick="selectUser('User_Dad',this)">User Dad</button>
-        <span id="active-user-badge" style="margin-left:auto;font-size:11px;color:var(--muted);">User_Mom</span>
+        <button class="tab dad"        onclick="selectUser('User_Dad',this)">User Dad</button>
+        <span class="auto-badge" id="auto-badge">AUTO</span>
       </div>
     </div>
     <div class="messages" id="messages"></div>
@@ -497,46 +319,30 @@
     </div>
   </div>
 
-  <!-- ── Habits Panel ── -->
+  <!-- Habits -->
   <div class="panel" id="habits-panel">
     <div class="panel-header">
       <span>Learned Habits</span>
-      <span style="font-size:10px;color:var(--accent);">FAT = 5</span>
+      <span style="color:var(--accent);font-size:10px;">FAT = 5</span>
     </div>
     <div class="panel-body" id="habits-body">
-      <div class="empty-state">Loading habits...</div>
+      <div class="empty-state">Loading...</div>
     </div>
   </div>
 
-  <!-- ── Proactive Panel ── -->
+  <!-- Proactive -->
   <div class="panel" id="proactive-panel">
     <div class="panel-header">Proactive Service</div>
     <div class="panel-body">
-      <div id="proposal-area">
-        <div class="empty-state">No pending proposals</div>
-      </div>
-      <div class="trigger-row">
-        <select class="trigger-select" id="trigger-user">
-          <option value="User_Mom">User Mom</option>
-          <option value="User_Dad">User Dad</option>
-        </select>
-        <select class="trigger-select" id="trigger-action">
-          <option value="Eating">After Eating</option>
-          <option value="Watching">After Watching</option>
-          <option value="Reading">After Reading</option>
-        </select>
-      </div>
-      <button class="trigger-btn" onclick="triggerProactive()">
-        ⚡ Trigger Proactive Service
-      </button>
+      <div id="proposal-area"><div class="empty-state">No proposals</div></div>
     </div>
   </div>
 
-  <!-- ── Nav Panel ── -->
+  <!-- Nav -->
   <div class="panel" id="nav-panel">
     <div class="panel-header">Navigation Target</div>
     <div class="panel-body" id="nav-body">
-      <div class="empty-state">No navigation target</div>
+      <div class="empty-state">No target</div>
     </div>
   </div>
 
@@ -546,27 +352,63 @@
 const BACKEND = 'http://localhost:5000'
 let activeUser = 'User_Mom'
 let streaming  = false
+let autoMode   = false
+let lastScene  = 0
 
-// ── User selection ────────────────────────────────────────────────────────────
+// ── Scene scripts ─────────────────────────────────────────────────
+const SCENE_SCRIPTS = {
+  4: {
+    user: 'User_Dad',
+    questions: [
+      'Is there any cheese?',
+      'I am thirsty'
+    ]
+  },
+  5: {
+    user: 'User_Mom',
+    questions: [
+      'I am thirsty'
+    ]
+  }
+}
+
+// ── Scene progress UI ─────────────────────────────────────────────
+function updateSceneUI(scene) {
+  for (let i = 1; i <= 6; i++) {
+    const el = document.getElementById(`sc${i}`)
+    el.classList.remove('done', 'active')
+    if (i < scene)  el.classList.add('done')
+    if (i === scene) el.classList.add('active')
+  }
+}
+
+// ── User selection ────────────────────────────────────────────────
 function selectUser(uid, btn) {
   activeUser = uid
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'))
-  btn.classList.add('active')
-  document.getElementById('active-user-badge').textContent = uid
+  if (btn) btn.classList.add('active')
+  else {
+    const cls = uid === 'User_Mom' ? 'mom' : 'dad'
+    document.querySelector(`.tab.${cls}`)?.classList.add('active')
+  }
 }
 
-// ── Send message ──────────────────────────────────────────────────────────────
+// ── Manual send ───────────────────────────────────────────────────
 async function sendMsg() {
   const input = document.getElementById('chat-input')
   const query = input.value.trim()
   if (!query || streaming) return
-
   input.value = ''
-  appendMsg('user', query, activeUser)
+  await sendQuestion(query, activeUser)
+}
 
-  const typingEl = appendTyping()
+// ── Core send function ────────────────────────────────────────────
+async function sendQuestion(query, userId) {
   streaming = true
   document.getElementById('send-btn').disabled = true
+
+  appendMsg('user', query, userId)
+  const typingEl = appendTyping()
 
   let fullAnswer = ''
   let intentType = ''
@@ -578,75 +420,234 @@ async function sendMsg() {
     const resp = await fetch(`${BACKEND}/interact/stream`, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({query, userID: activeUser, room: ''})
+      body: JSON.stringify({query, userID: userId, room: ''})
     })
 
     const reader = resp.body.getReader()
-    const dec    = new TextDecoder()
-    let botEl    = null
+    const dec = new TextDecoder()
+    let botEl = null
 
     while (true) {
       const {done, value} = await reader.read()
       if (done) break
-
       const lines = dec.decode(value).split('\n')
       for (const line of lines) {
         if (!line.startsWith('data: ')) continue
         try {
           const ev = JSON.parse(line.slice(6))
-
           if (ev.type === 'token') {
-            if (!botEl) {
-              typingEl.remove()
-              botEl = appendMsg('bot', '', activeUser)
-            }
+            if (!botEl) { typingEl.remove(); botEl = appendMsg('bot', '', userId) }
             fullAnswer += ev.content
             botEl.querySelector('.msg-text').textContent = fullAnswer
             scrollMessages()
           }
-
           if (ev.type === 'done') {
             intentType     = ev.intent_type || ''
             isPersonalized = ev.is_personalized || false
-            navLabel       = ev.nav_label || null
-            navTarget      = ev.nav_target || null
-
+            navLabel  = ev.nav_label  || null
+            navTarget = ev.nav_target || null
             if (botEl && intentType) {
-              const badge = document.createElement('span')
-              badge.className = `badge ${intentType.startsWith('need') ? 'need' : intentType === 'query' ? 'query' : 'chat'}`
-              badge.textContent = intentType
-              botEl.appendChild(badge)
+              const b = document.createElement('span')
+              b.className = `badge ${intentType.startsWith('need') ? 'need' : intentType === 'query' ? 'query' : 'chat'}`
+              b.textContent = intentType
+              botEl.appendChild(b)
               if (isPersonalized) {
                 const pb = document.createElement('span')
-                pb.className = 'badge personalized'
-                pb.style.marginLeft = '4px'
+                pb.className = 'badge pers'
                 pb.textContent = '★ personalized'
                 botEl.appendChild(pb)
               }
             }
-
-            if (navLabel && navTarget) {
-              updateNav(navLabel, navTarget)
-            }
+            if (navLabel && navTarget) updateNav(navLabel, navTarget)
           }
         } catch(e) {}
       }
     }
   } catch(e) {
     typingEl?.remove()
-    appendMsg('bot', `Error: ${e.message}`, activeUser)
+    appendMsg('bot', `Error: ${e.message}`, userId)
   }
 
   streaming = false
   document.getElementById('send-btn').disabled = false
-  input.focus()
 }
 
+// ── Auto scene execution ──────────────────────────────────────────
+async function runSceneScript(scene) {
+  const script = SCENE_SCRIPTS[scene]
+  if (!script) return
+
+  autoMode = true
+  document.getElementById('auto-badge').classList.add('visible')
+
+  // Switch user tab
+  selectUser(script.user, null)
+  await sleep(500)
+
+  for (const question of script.questions) {
+    // Typewriter effect
+    await typeIntoInput(question)
+    await sleep(300)
+
+    // Send and wait for LLM done
+    await sendQuestion(question, script.user)
+    await sleep(2000)
+  }
+
+  // Notify Python that scene is done
+  await fetch(`${BACKEND}/demo/scene_done`, {method: 'POST'})
+  console.log(`[Demo] Scene ${scene} done → notified Python`)
+
+  autoMode = false
+  document.getElementById('auto-badge').classList.remove('visible')
+}
+
+async function typeIntoInput(text) {
+  const input = document.getElementById('chat-input')
+  input.value = ''
+  for (const char of text) {
+    input.value += char
+    await sleep(45)
+  }
+}
+
+// ── Poll scene ────────────────────────────────────────────────────
+async function pollScene() {
+  try {
+    const r = await fetch(`${BACKEND}/demo/current_scene`)
+    if (!r.ok) return
+    const d = await r.json()
+
+    const scene = d.current_scene || 0
+    if (scene !== lastScene && scene > 0) {
+      lastScene = scene
+      updateSceneUI(scene)
+      console.log(`[Demo] Scene changed → ${scene}`)
+
+      // Auto-run dialogue scenes
+      if (SCENE_SCRIPTS[scene]) {
+        await runSceneScript(scene)
+      }
+    }
+  } catch(e) {}
+}
+
+// ── HAR polling ───────────────────────────────────────────────────
+async function pollHAR() {
+  try {
+    const r = await fetch(`${BACKEND}/demo/latest_har`)
+    if (!r.ok) return
+    const d = await r.json()
+    if (!d.user) return
+    document.getElementById('har-user').textContent   = d.user.replace('_',' ')
+    document.getElementById('har-action').textContent = d.spatial_action || '—'
+    document.getElementById('har-zone').textContent   = d.time_slot || ''
+    document.getElementById('har-day').textContent    = d.virtual_day ? `Day ${d.virtual_day}` : ''
+    const conf = Math.round((d.vlm_confidence || 0) * 100)
+    document.getElementById('har-conf-val').textContent  = `${conf}%`
+    document.getElementById('har-conf-fill').style.width = `${conf}%`
+    document.getElementById('har-reason').textContent    =
+      d.upgrade_reason ? d.upgrade_reason.replace('pmi_llm:','') : ''
+  } catch(e) {}
+}
+
+// ── Habits polling ────────────────────────────────────────────────
+async function pollHabits() {
+  try {
+    const r = await fetch(`${BACKEND}/demo/habits`)
+    if (!r.ok) return
+    const d = await r.json()
+    const body = document.getElementById('habits-body')
+    let html = ''
+    for (const [uid, info] of Object.entries(d)) {
+      const cls    = uid === 'User_Mom' ? 'mom' : 'dad'
+      const label  = uid.replace('_',' ')
+      const habits = info.habits || []
+      html += `<div class="habit-section">
+        <div class="habit-user-label ${cls}">
+          ${label} <span class="habit-count">${habits.length} habits</span>
+        </div>`
+      for (const h of habits.slice(0, 5)) {
+        html += `<div class="habit-item">
+          <span class="habit-action">${h.action}</span>
+          <span class="habit-slot">${h.slot || ''}</span>
+          <span class="habit-w">${Math.round(h.weight)}</span>
+        </div>`
+      }
+      html += `</div>`
+    }
+    body.innerHTML = html || '<div class="empty-state">No data</div>'
+  } catch(e) {}
+}
+
+// ── Proposal polling ──────────────────────────────────────────────
+async function pollProposal() {
+  try {
+    const r = await fetch(`${BACKEND}/service_proposal`)
+    if (!r.ok) return
+    const d = await r.json()
+    const area = document.getElementById('proposal-area')
+    if (!d.proposal_id) {
+      area.innerHTML = '<div class="empty-state">No proposals</div>'
+      return
+    }
+    area.innerHTML = `
+      <div class="proposal-box">
+        <div class="proposal-msg">💡 ${d.message}</div>
+        <div class="proposal-meta">${d.user_id} · ${d.item} @ ${d.item_loc || '?'}</div>
+        <div class="proposal-btns">
+          <button class="prop-btn accept"
+            onclick="respondProposal('${d.proposal_id}','${d.user_id}','accepted')">Accept</button>
+          <button class="prop-btn reject"
+            onclick="respondProposal('${d.proposal_id}','${d.user_id}','rejected')">Reject</button>
+        </div>
+      </div>`
+  } catch(e) {}
+}
+
+async function respondProposal(pid, uid, result) {
+  await fetch(`${BACKEND}/service_response`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({proposal_id: pid, user_id: uid, result})
+  })
+  document.getElementById('proposal-area').innerHTML =
+    `<div class="empty-state">Response: ${result}</div>`
+}
+
+// ── Nav update ────────────────────────────────────────────────────
+function updateNav(label, target) {
+  const pos = Array.isArray(target)
+    ? `[${target.map(v => v.toFixed(1)).join(', ')}]`
+    : JSON.stringify(target)
+  document.getElementById('nav-body').innerHTML = `
+    <div class="nav-item">
+      <span class="nav-label">📍 ${label}</span>
+      <span class="nav-pos">${pos}</span>
+    </div>
+    <div style="margin-top:8px;font-size:11px;color:var(--muted);">
+      Navigating to retrieve item
+    </div>`
+}
+
+// ── Status check ──────────────────────────────────────────────────
+async function checkStatus() {
+  try {
+    const r = await fetch(`${BACKEND}/ready`, {signal: AbortSignal.timeout(3000)})
+    const ok = r.ok
+    document.getElementById('status-dot').className  = `dot ${ok ? 'online' : ''}`
+    document.getElementById('status-text').textContent = ok ? 'Backend connected' : 'Backend offline'
+  } catch(e) {
+    document.getElementById('status-dot').className  = 'dot'
+    document.getElementById('status-text').textContent = 'Backend offline'
+  }
+}
+
+// ── Helpers ───────────────────────────────────────────────────────
 function appendMsg(role, text, uid) {
   const msgs = document.getElementById('messages')
   const div  = document.createElement('div')
   const cls  = uid === 'User_Mom' ? 'mom' : 'dad'
-
   if (role === 'user') {
     div.className = `msg user ${cls}`
     div.innerHTML = `<div class="msg-label">${uid.replace('_',' ')}</div><div class="msg-text">${text}</div>`
@@ -662,7 +663,7 @@ function appendMsg(role, text, uid) {
 function appendTyping() {
   const msgs = document.getElementById('messages')
   const div  = document.createElement('div')
-  div.className = 'msg typing'
+  div.className = 'msg bot'
   div.innerHTML = `<div class="typing-dots"><span></span><span></span><span></span></div>`
   msgs.appendChild(div)
   scrollMessages()
@@ -674,180 +675,20 @@ function scrollMessages() {
   msgs.scrollTop = msgs.scrollHeight
 }
 
-// ── Nav update ────────────────────────────────────────────────────────────────
-function updateNav(label, target) {
-  const body = document.getElementById('nav-body')
-  const pos  = Array.isArray(target)
-    ? `[${target.map(v => v.toFixed(1)).join(', ')}]`
-    : JSON.stringify(target)
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)) }
 
-  body.innerHTML = `
-    <div class="nav-item">
-      <span class="nav-label">📍 ${label}</span>
-      <span class="nav-pos">${pos}</span>
-    </div>
-    <div style="margin-top:10px;font-size:11px;color:var(--muted);">
-      Robot navigating to retrieve item
-    </div>`
-}
-
-// ── HAR polling ───────────────────────────────────────────────────────────────
-async function pollHAR() {
-  try {
-    const r = await fetch(`${BACKEND}/demo/latest_har`)
-    if (!r.ok) return
-    const d = await r.json()
-    if (!d.user) return
-
-    document.getElementById('har-user').textContent = d.user.replace('_',' ')
-    document.getElementById('har-action').textContent = d.spatial_action || '—'
-    document.getElementById('har-zone').textContent = d.time_slot || ''
-    document.getElementById('har-day').textContent = d.virtual_day ? `Day ${d.virtual_day}` : ''
-
-    const conf = Math.round((d.vlm_confidence || 0) * 100)
-    document.getElementById('har-conf-val').textContent = `${conf}%`
-    document.getElementById('har-conf-fill').style.width = `${conf}%`
-
-    const meta = document.getElementById('har-meta')
-    meta.innerHTML = d.upgrade_reason
-      ? `<b>Reason:</b> ${d.upgrade_reason.replace('pmi_llm:','')}`
-      : ''
-
-  } catch(e) {}
-}
-
-// ── Habits polling ────────────────────────────────────────────────────────────
-async function pollHabits() {
-  try {
-    const r = await fetch(`${BACKEND}/demo/habits`)
-    if (!r.ok) return
-    const d = await r.json()
-
-    const body = document.getElementById('habits-body')
-    let html = ''
-
-    for (const [uid, info] of Object.entries(d)) {
-      const cls   = uid === 'User_Mom' ? 'mom' : 'dad'
-      const label = uid.replace('_', ' ')
-      const habits = info.habits || []
-
-      html += `<div class="habit-user-section">
-        <div class="habit-user-label ${cls}">
-          ${label}
-          <span class="habit-count">${habits.length} habits</span>
-        </div>`
-
-      if (habits.length === 0) {
-        html += `<div class="empty-state" style="padding:8px 0;">No stable habits yet</div>`
-      } else {
-        for (const h of habits.slice(0, 6)) {
-          html += `<div class="habit-item">
-            <span class="habit-action">${h.action}</span>
-            <span class="habit-meta">${h.slot || ''}</span>
-            <span class="habit-w">${Math.round(h.weight)}</span>
-          </div>`
-        }
-      }
-      html += `</div>`
-    }
-
-    body.innerHTML = html || '<div class="empty-state">No habit data</div>'
-  } catch(e) {}
-}
-
-// ── Proposal polling ──────────────────────────────────────────────────────────
-async function pollProposal() {
-  try {
-    const r = await fetch(`${BACKEND}/service_proposal`)
-    if (!r.ok) return
-    const d = await r.json()
-
-    const area = document.getElementById('proposal-area')
-    if (!d.proposal_id) {
-      area.innerHTML = '<div class="empty-state">No pending proposals</div>'
-      return
-    }
-
-    area.innerHTML = `
-      <div class="proposal-box">
-        <div class="proposal-msg">💡 ${d.message}</div>
-        <div class="proposal-meta">User: ${d.user_id} | Item: ${d.item} @ ${d.item_loc || '?'}</div>
-        <div class="proposal-btns">
-          <button class="prop-btn accept" onclick="respondProposal('${d.proposal_id}','${d.user_id}','accepted')">Accept</button>
-          <button class="prop-btn reject" onclick="respondProposal('${d.proposal_id}','${d.user_id}','rejected')">Reject</button>
-        </div>
-      </div>`
-  } catch(e) {}
-}
-
-async function respondProposal(pid, uid, result) {
-  await fetch(`${BACKEND}/service_response`, {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({proposal_id: pid, user_id: uid, result})
-  })
-  document.getElementById('proposal-area').innerHTML =
-    `<div class="empty-state">Response sent: ${result}</div>`
-}
-
-// ── Trigger proactive ─────────────────────────────────────────────────────────
-async function triggerProactive() {
-  const uid    = document.getElementById('trigger-user').value
-  const action = document.getElementById('trigger-action').value
-
-  try {
-    const r = await fetch(`${BACKEND}/demo/trigger_proactive`, {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({
-        user_id: uid,
-        prev_action: action,
-        time_slot: 'Evening'
-      })
-    })
-    const d = await r.json()
-    if (d.status === 'ok') {
-      document.getElementById('proposal-area').innerHTML = `
-        <div class="proposal-box">
-          <div class="proposal-msg">💡 ${d.message}</div>
-          <div class="proposal-meta">Item: ${d.item} @ ${d.item_loc} | conf: ${(d.confidence*100).toFixed(0)}%</div>
-          <div class="proposal-btns">
-            <button class="prop-btn accept" onclick="respondProposal('${d.proposal_id}','${uid}','accepted')">Accept</button>
-            <button class="prop-btn reject" onclick="respondProposal('${d.proposal_id}','${uid}','rejected')">Reject</button>
-          </div>
-        </div>`
-    } else {
-      document.getElementById('proposal-area').innerHTML =
-        `<div class="empty-state">${d.message || 'No proposal generated'}</div>`
-    }
-  } catch(e) {
-    alert(`Error: ${e.message}`)
-  }
-}
-
-// ── Status check ──────────────────────────────────────────────────────────────
-async function checkStatus() {
-  try {
-    const r = await fetch(`${BACKEND}/ready`, {signal: AbortSignal.timeout(3000)})
-    const online = r.ok
-    document.getElementById('status-dot').className  = `dot ${online ? 'online' : ''}`
-    document.getElementById('status-text').textContent = online ? 'Backend connected' : 'Backend offline'
-  } catch(e) {
-    document.getElementById('status-dot').className  = 'dot'
-    document.getElementById('status-text').textContent = 'Backend offline'
-  }
-}
-
-// ── Init ──────────────────────────────────────────────────────────────────────
+// ── Init ──────────────────────────────────────────────────────────
 checkStatus()
 pollHAR()
 pollHabits()
 pollProposal()
+pollScene()
 
-setInterval(checkStatus,   5000)
-setInterval(pollHAR,       2000)
-setInterval(pollHabits,   10000)
-setInterval(pollProposal,  3000)
+setInterval(checkStatus,  5000)
+setInterval(pollHAR,      2000)
+setInterval(pollHabits,  10000)
+setInterval(pollProposal, 3000)
+setInterval(pollScene,    2000)
 
 document.getElementById('chat-input').focus()
 </script>

@@ -176,6 +176,12 @@ _robot_state = {
     "highlight":   "",
 }
 
+_demo_state = {
+    "current_scene": 0,
+    "scene_done":    False,
+    "scene_user":    "",
+}
+
 
 def preview_images(image_list, source_nodes, hint_user_id, activity):
     save_dir = "debug_images"
@@ -270,8 +276,6 @@ def nightly_maintenance():
     threading.Timer(86400, nightly_maintenance).start()
 
 
-# ── System endpoints ──────────────────────────────────────────────────────────
-
 @app.route("/ready", methods=["GET"])
 def ready():
     status = scene_engine.status()
@@ -302,8 +306,6 @@ def set_experiment_type():
     return jsonify({"status": "ok", "type": exp_type}), 200
 
 
-# ── Robot state endpoints ─────────────────────────────────────────────────────
-
 @app.route('/nav_target', methods=['GET'])
 def get_nav_target():
     return jsonify({"nav_target": _robot_state["nav_target"], "nav_label": _robot_state["nav_label"]})
@@ -318,8 +320,6 @@ def get_highlight():
 def get_last_answer():
     return jsonify({"answer": _robot_state["last_answer"]})
 
-
-# ── Interact endpoints ────────────────────────────────────────────────────────
 
 @app.route('/interact/stream', methods=['POST'])
 def interact_stream():
@@ -377,8 +377,6 @@ def interact_confirm():
     return jsonify({"status": "cancelled", "message": "Cancelled."})
 
 
-# ── Service endpoints ─────────────────────────────────────────────────────────
-
 @app.route('/service_proposal', methods=['GET'])
 def service_proposal():
     proposal = proposal_manager.get_next()
@@ -405,8 +403,6 @@ def service_history():
     proposals = proposal_manager.get_history(user_id=user_id)
     return jsonify({"proposals": proposals, "total": len(proposals)}), 200
 
-
-# ── Demo endpoints ────────────────────────────────────────────────────────────
 
 @app.route('/demo/habits', methods=['GET'])
 def demo_habits():
@@ -469,7 +465,7 @@ def demo_trigger_proactive():
     if not item:
         return jsonify({"status": "no_item", "message": "No available item found"}), 200
 
-    proposal    = proactive_service._generate_proposal(
+    proposal = proactive_service._generate_proposal(
         user_id=user_id,
         lookahead=lookahead or {"need":"drink","confidence":0.5,"actionable":True,"step1":None,"step2":None},
         available_item=item,
@@ -504,7 +500,59 @@ def demo_latest_har():
     }), 200
 
 
-# ── Predict endpoints ─────────────────────────────────────────────────────────
+@app.route('/demo/scene_ready', methods=['POST'])
+def demo_scene_ready():
+    data = request.get_json()
+    _demo_state["current_scene"] = data.get("scene", 0)
+    _demo_state["scene_done"]    = False
+    _demo_state["scene_user"]    = data.get("user_id", "")
+    print(f"[Demo] Scene {_demo_state['current_scene']} ready | user={_demo_state['scene_user']}")
+    return jsonify({"status": "ok"}), 200
+
+
+@app.route('/demo/current_scene', methods=['GET'])
+def demo_current_scene():
+    return jsonify(_demo_state), 200
+
+
+@app.route('/demo/scene_done', methods=['POST'])
+def demo_scene_done():
+    _demo_state["scene_done"] = True
+    print(f"[Demo] Scene {_demo_state['current_scene']} done")
+    return jsonify({"status": "ok"}), 200
+
+
+@app.route('/demo/wait_scene_done', methods=['GET'])
+def demo_wait_scene_done():
+    return jsonify({
+        "done":  _demo_state["scene_done"],
+        "scene": _demo_state["current_scene"],
+    }), 200
+
+
+@app.route('/demo/action_event', methods=['POST'])
+def demo_action_event():
+    data        = request.get_json()
+    user_id     = data.get("user_id",     "User_Mom")
+    prev_action = data.get("prev_action", "Eating")
+    time_slot   = data.get("time_slot",   "Evening")
+
+    try:
+        proposal = proactive_service.evaluate(
+            user_id=user_id,
+            current_action="Sitting",
+            prev_action=prev_action,
+            time_slot=time_slot,
+            user_pos=None,
+        )
+        if proposal:
+            proposal_manager.push(user_id, proposal)
+            print(f"[Demo] ProactiveService triggered for {user_id}")
+    except Exception as e:
+        print(f"[Demo] action_event error: {e}")
+
+    return jsonify({"status": "ok"}), 200
+
 
 @app.route('/predict', methods=['POST'])
 def predict():
@@ -778,8 +826,6 @@ def _process_predict(episode_id: str, data: dict):
     print(f"[Predict] done | {_user_id} | {result.get('action')} -> {spatial_action} | {vlm_ms}ms")
 
 
-# ── Scene endpoints ───────────────────────────────────────────────────────────
-
 @app.route('/scene', methods=['POST'])
 def handle_scene():
     try:
@@ -839,9 +885,8 @@ def dynamic_sync():
         if not objects:
             return jsonify({"status": "empty"}), 200
 
-        now     = datetime.datetime.utcnow()
-        vt      = _parse_virtual_time(data)
-        count   = 0
+        now   = datetime.datetime.utcnow()
+        count = 0
 
         for obj in objects:
             label  = obj.get('label', '').lower().strip()
@@ -939,8 +984,6 @@ def dynamic_sync():
         print(f"[DynamicSync Error] {e}\n{traceback.format_exc()}")
         return jsonify({"error": str(e)}), 500
 
-
-# ── Device / position endpoints ───────────────────────────────────────────────
 
 @app.route('/set_device_state', methods=['POST'])
 def set_device_state():
@@ -1047,8 +1090,6 @@ def set_virtual_hour():
         return jsonify({"error": str(e)}), 500
 
 
-# ── Experiment endpoints ──────────────────────────────────────────────────────
-
 @app.route('/exp_checkpoint', methods=['GET', 'POST'])
 def exp_checkpoint():
     try:
@@ -1093,8 +1134,6 @@ def exp_checkpoint():
         return jsonify({"error": str(e)}), 500
 
 
-# ── Manifold endpoints ────────────────────────────────────────────────────────
-
 @app.route('/manifold_status', methods=['GET'])
 def manifold_status():
     try:
@@ -1122,8 +1161,6 @@ def manifold_train():
         return jsonify({"error": str(e)}), 500
 
 
-# ── Navigation / misc endpoints ───────────────────────────────────────────────
-
 @app.route('/log_navigation', methods=['POST'])
 def log_navigation():
     try:
@@ -1145,8 +1182,6 @@ def log_navigation():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-
-# ── Startup ───────────────────────────────────────────────────────────────────
 
 _predict_worker_thread = threading.Thread(target=_predict_worker, daemon=True)
 _predict_worker_thread.start()
