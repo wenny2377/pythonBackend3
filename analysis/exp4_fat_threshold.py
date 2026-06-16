@@ -32,20 +32,14 @@ def load_episodes(db_name):
         {"spatial_action": {"$exists": True, "$nin": list(NO_RECORD)},
          "zone_label":     {"$exists": True, "$ne": ""},
          "virtual_day":    {"$lte": MAX_DAY, "$exists": True}},
-        {"user": 1, "spatial_action": 1,
+        {"user": 1, "spatial_action": 1, "ground_truth": 1,
          "virtual_day": 1, "virtual_hour": 1}
     ).sort([("virtual_day", 1), ("virtual_hour", 1)]))
 
 
 def compute_learning_timeline(episodes, uid, fat):
-    """
-    Returns:
-      - days: list of day numbers (1..MAX_DAY)
-      - counts: cumulative habit count at each day
-      - new_habits: {day: [action, ...]} — which habits were newly learned
-    """
-    weight    = defaultdict(float)
-    learned   = set()
+    weight     = defaultdict(float)
+    learned    = set()
     new_habits = defaultdict(list)
     days_list  = list(range(1, MAX_DAY + 1))
     counts     = []
@@ -53,15 +47,15 @@ def compute_learning_timeline(episodes, uid, fat):
     eps_u = [e for e in episodes if e.get("user") == uid]
 
     for day in days_list:
-        # Add observations for this day
         for ep in eps_u:
             if ep.get("virtual_day") == day:
-                a = ep.get("spatial_action", "")
-                if a and a in ADL_LABELS:
-                    weight[a] += 1
-                    if weight[a] >= fat and a not in learned:
-                        learned.add(a)
-                        new_habits[day].append(a)
+                gt   = ep.get("ground_truth", "")
+                pred = ep.get("spatial_action") or ep.get("vlm_output", "")
+                if gt and gt == pred and gt in ADL_LABELS:
+                    weight[gt] += 1
+                    if weight[gt] >= fat and gt not in learned:
+                        learned.add(gt)
+                        new_habits[day].append(gt)
         counts.append(len(learned))
 
     return days_list, counts, new_habits
@@ -70,19 +64,16 @@ def compute_learning_timeline(episodes, uid, fat):
 def plot_learning_speed(episodes, save_path):
     fig, ax = plt.subplots(figsize=(11, 6))
 
-    # Vertical offset for labels to avoid overlap
     label_offsets = {}
 
     for uid, style in USER_STYLES.items():
         days, counts, new_habits = compute_learning_timeline(
             episodes, uid, FAT)
 
-        # Plot step line
         ax.step(days, counts, where="post",
                 color=style["color"], lw=LINE_WIDTH + 0.5,
                 label=style["label"])
 
-        # Mark each new habit learned
         for day, actions in new_habits.items():
             y_val = counts[days.index(day)]
 
@@ -92,8 +83,7 @@ def plot_learning_speed(episodes, save_path):
                     ms=MARKER_SIZE + 1,
                     mfc=style["color"], mew=1.5, zorder=5)
 
-            # Stagger labels to avoid overlap
-            key = (day, y_val)
+            key    = (day, y_val)
             offset = label_offsets.get(key, 0)
             label_offsets[key] = offset + 0.6
 
@@ -110,14 +100,13 @@ def plot_learning_speed(episodes, save_path):
                         lw=0.8, alpha=0.5),
                 )
 
-    # Convergence annotation
     _, counts_m, _ = compute_learning_timeline(episodes, "User_Mom", FAT)
     _, counts_d, _ = compute_learning_timeline(episodes, "User_Dad", FAT)
 
     stable_m = next((i+1 for i in range(len(counts_m)-2)
-                     if counts_m[i]==counts_m[i+1]==counts_m[i+2]), MAX_DAY)
+                     if counts_m[i] == counts_m[i+1] == counts_m[i+2]), MAX_DAY)
     stable_d = next((i+1 for i in range(len(counts_d)-2)
-                     if counts_d[i]==counts_d[i+1]==counts_d[i+2]), MAX_DAY)
+                     if counts_d[i] == counts_d[i+1] == counts_d[i+2]), MAX_DAY)
 
     ax.axvline(stable_m, color=C["mom"], linestyle=":",
                lw=1.2, alpha=0.5)
@@ -137,8 +126,8 @@ def plot_learning_speed(episodes, save_path):
     ax.set_ylim(0, max(max(counts_m), max(counts_d)) + 3)
     ax.set_xticks(range(0, MAX_DAY + 1, 3))
     ax.set_title(
-        f"Habit Learning Speed  (FAT = {FAT}, Day 1–{MAX_DAY})\n"
-        "Each annotation shows which habit was newly learned on that day",
+        f"Habit Learning Speed  (FAT = {FAT}, Day 1-{MAX_DAY})\n"
+        "Only correctly recognised episodes contribute to habit weight",
         fontsize=FONT_TITLE, fontweight="bold", pad=10)
     ax.legend(fontsize=FONT_TICK, loc="upper left")
 
@@ -151,20 +140,21 @@ def plot_learning_speed(episodes, save_path):
 def save_summary(episodes, save_path):
     lines = [
         "Experiment 4: Habit Learning Speed",
-        f"DB: {DB_BASELINE}  |  FAT = {FAT}  |  Day 1–{MAX_DAY}",
+        f"DB: {DB_BASELINE}  |  FAT = {FAT}  |  Day 1-{MAX_DAY}",
+        "Note: Only correctly recognised episodes (spatial_action == ground_truth) count toward habit weight",
         "",
     ]
     for uid in USERS:
         days, counts, new_habits = compute_learning_timeline(
             episodes, uid, FAT)
         stable = next((i+1 for i in range(len(counts)-2)
-                       if counts[i]==counts[i+1]==counts[i+2]), MAX_DAY)
+                       if counts[i] == counts[i+1] == counts[i+2]), MAX_DAY)
         lines += [
             f"{uid}  (stable by Day {stable}, {counts[-1]} habits total):",
         ]
         for day in sorted(new_habits.keys()):
             for action in new_habits[day]:
-                lines.append(f"    Day {day:2d} → learned: {action}")
+                lines.append(f"    Day {day:2d} -> learned: {action}")
         lines.append("")
 
     with open(save_path, "w") as f:
@@ -177,7 +167,8 @@ def main():
     os.makedirs(RESULTS_DIR, exist_ok=True)
     episodes = load_episodes(DB_BASELINE)
     if not episodes:
-        print(f"[exp4] No data in {DB_BASELINE}"); return
+        print(f"[exp4] No data in {DB_BASELINE}")
+        return
     print(f"[exp4] {len(episodes)} episodes")
     plot_learning_speed(
         episodes,

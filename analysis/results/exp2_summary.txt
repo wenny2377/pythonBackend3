@@ -1,23 +1,23 @@
 Experiment 2: Robustness Under Sensor Noise
 Both DBs truncated to first 21 virtual days
-Baseline   : robot_exp_baseline   (n=379)
-Corruption : robot_exp_corruption (n=458)
+Baseline   : robot_exp_baseline   (n=278)
+Corruption : robot_exp_corruption (n=245)
 
 Overall Accuracy:
-  Baseline   : 91.3%
-  Corruption : 88.0%
-  Delta      : -3.3%
+  Baseline   : 93.2%
+  Corruption : 84.9%
+  Delta      : -8.3%
 
 Action             Baseline   Corruption    Delta
 --------------------------------------------------
-Drinking                N/A          N/A         
-SittingDrink         100.0%        90.3%    -9.7%
-Sitting               75.3%        78.4%    +3.1%
-Eating               100.0%        68.8%   -31.2%
+Drinking             100.0%        75.0%   -25.0%
+SittingDrink         100.0%        92.9%    -7.1%
+Sitting               78.0%        57.9%   -20.1%
+Eating               100.0%        71.4%   -28.6%
 Cooking              100.0%       100.0%    +0.0%
-Laying               100.0%        98.0%    -2.0%
-Watching              83.1%        75.3%    -7.8%
+Laying               100.0%       100.0%    +0.0%
+Watching              77.1%        68.6%    -8.6%
 Reading              100.0%       100.0%    +0.0%
 Cleaning                N/A          N/A         
-PhoneUse             100.0%        96.0%    -4.0%
+PhoneUse             100.0%        93.4%    -6.6%
 Typing               100.0%       100.0%    +0.0%

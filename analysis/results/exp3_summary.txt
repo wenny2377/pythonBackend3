@@ -1,25 +1,27 @@
 Experiment 3: Habit Learning Convergence & Personalization
-DB: robot_exp_baseline  |  FAT = 5  |  Day 1–21
+DB: robot_exp_baseline  |  FAT = 5  |  Day 1-21
+Note: Only correctly recognised episodes (spatial_action == ground_truth) count toward habit weight
 
 User_Mom  (8 stable habits):
-    PhoneUse         weight=54
-    Reading          weight=30
-    SittingDrink     weight=29
-    Watching         weight=27
-    Sitting          weight=17
-    Laying           weight=13
-    Cooking          weight=12
-    Eating           weight=11
+    PhoneUse         weight=38
+    SittingDrink     weight=23
+    Reading          weight=20
+    Watching         weight=17
+    Sitting          weight=11
+    Laying           weight=9
+    Eating           weight=7
+    Cooking          weight=6
 
-User_Dad  (6 stable habits):
-    Sitting          weight=61
-    Typing           weight=28
-    Watching         weight=27
-    Laying           weight=24
-    PhoneUse         weight=24
-    Reading          weight=19
+User_Dad  (7 stable habits):
+    PhoneUse         weight=31
+    Sitting          weight=28
+    Typing           weight=25
+    Laying           weight=15
+    Drinking         weight=10
+    Watching         weight=10
+    SittingDrink     weight=9
 
 Personalization:
-  Shared   : ['Laying', 'PhoneUse', 'Reading', 'Sitting', 'Watching']
-  Mom-only : ['Cooking', 'Eating', 'SittingDrink']
-  Dad-only : ['Typing']
+  Shared   : ['Laying', 'PhoneUse', 'Sitting', 'SittingDrink', 'Watching']
+  Mom-only : ['Cooking', 'Eating', 'Reading']
+  Dad-only : ['Drinking', 'Typing']

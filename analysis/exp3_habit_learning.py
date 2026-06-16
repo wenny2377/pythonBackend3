@@ -1,4 +1,3 @@
-
 import os, sys
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, _ROOT)
@@ -29,23 +28,24 @@ def load_episodes(db_name):
         {"spatial_action": {"$exists": True, "$nin": list(NO_RECORD)},
          "zone_label":     {"$exists": True, "$ne": ""},
          "virtual_day":    {"$lte": MAX_DAY, "$exists": True}},
-        {"user": 1, "spatial_action": 1, "virtual_day": 1, "virtual_hour": 1}
+        {"user": 1, "spatial_action": 1, "ground_truth": 1,
+         "virtual_day": 1, "virtual_hour": 1}
     ).sort([("virtual_day", 1), ("virtual_hour", 1)]))
 
 
-def habits_at_day(episodes, fat, target_day):
+def habits_at_day(episodes, uid, fat, target_day):
     weight = defaultdict(float)
     for ep in episodes:
         if ep.get("virtual_day", 0) > target_day:
             break
-        u = ep.get("user", "")
-        a = ep.get("spatial_action", "")
-        if u and a:
-            weight[(u, a)] += 1
-    return {k for k, w in weight.items() if w >= fat}
+        if ep.get("user") != uid:
+            continue
+        gt   = ep.get("ground_truth", "")
+        pred = ep.get("spatial_action") or ep.get("vlm_output", "")
+        if gt and gt == pred and gt in ADL_LABELS:
+            weight[gt] += 1
+    return {a for a, w in weight.items() if w >= fat}
 
-
-# ── Plot 1: Convergence (baseline only, per user) ─────────────────────────────
 
 def plot_convergence(episodes, save_path):
     days = list(range(1, MAX_DAY + 1))
@@ -57,15 +57,8 @@ def plot_convergence(episodes, save_path):
         [C["mom"], C["dad"]],
         ["o", "s"]
     ):
-        eps_u = [e for e in episodes if e.get("user") == uid]
-        ys    = [len({a for (u,a) in habits_at_day(eps_u, FAT, d) if u == uid})
-                 for d in days]
-
-        # fix: count only this user's habits
-        ys_fixed = []
-        for d in days:
-            h = habits_at_day(eps_u, FAT, d)
-            ys_fixed.append(len(h))
+        eps_u    = [e for e in episodes if e.get("user") == uid]
+        ys_fixed = [len(habits_at_day(eps_u, uid, FAT, d)) for d in days]
 
         ax.plot(days, ys_fixed,
                 marker + "-", color=color,
@@ -73,7 +66,6 @@ def plot_convergence(episodes, save_path):
                 mfc="white", mew=2,
                 label=uid.replace("_", " "))
 
-        # Convergence marker
         stable_day = None
         for i in range(len(ys_fixed) - 2):
             if ys_fixed[i] == ys_fixed[i+1] == ys_fixed[i+2]:
@@ -88,7 +80,6 @@ def plot_convergence(episodes, save_path):
                     f"Stable\nDay {stable_day}",
                     fontsize=FONT_ANNOT - 1, color=color, alpha=0.8)
 
-        # Final count label
         ax.text(days[-1] + 0.3, ys_fixed[-1],
                 f"{ys_fixed[-1]} habits",
                 fontsize=FONT_ANNOT, color=color, va="center")
@@ -100,7 +91,7 @@ def plot_convergence(episodes, save_path):
     ax.set_xticks(range(0, MAX_DAY + 1, 3))
     ax.set_title(
         f"Habit Learning Convergence  (FAT = {FAT}, Day 1–{MAX_DAY})\n"
-        "System progressively learns stable habits from passive observation",
+        "Only correctly recognised episodes contribute to habit weight",
         fontsize=FONT_TITLE, fontweight="bold", pad=10)
     ax.legend(fontsize=FONT_TICK, loc="lower right")
 
@@ -110,15 +101,14 @@ def plot_convergence(episodes, save_path):
     print(f"[exp3] Saved: {save_path}")
 
 
-# ── Plot 2: Personalization ───────────────────────────────────────────────────
-
 def plot_personalization(episodes, save_path):
     weight = defaultdict(float)
     for ep in episodes:
-        u = ep.get("user", "")
-        a = ep.get("spatial_action", "")
-        if u and a and a in ADL_LABELS:
-            weight[(u, a)] += 1
+        u    = ep.get("user", "")
+        gt   = ep.get("ground_truth", "")
+        pred = ep.get("spatial_action") or ep.get("vlm_output", "")
+        if u and gt and gt == pred and gt in ADL_LABELS:
+            weight[(u, gt)] += 1
 
     actions_present = sorted({
         a for (u, a), w in weight.items()
@@ -126,7 +116,8 @@ def plot_personalization(episodes, save_path):
     })
 
     if not actions_present:
-        print("[exp3] No personalization data"); return
+        print("[exp3] No personalization data")
+        return
 
     n = len(actions_present)
     x = np.arange(n)
@@ -153,7 +144,6 @@ def plot_personalization(episodes, save_path):
     ax.axhline(FAT, color=C["threshold"], linestyle="--",
                lw=1.2, alpha=0.6, label=f"FAT = {FAT}")
 
-    # Annotate unique habits
     for i, a in enumerate(actions_present):
         mom_v = weight.get(("User_Mom", a), 0)
         dad_v = weight.get(("User_Dad", a), 0)
@@ -169,11 +159,11 @@ def plot_personalization(episodes, save_path):
     ax.set_xticks(x)
     ax.set_xticklabels(actions_present, rotation=30,
                        ha="right", fontsize=FONT_TICK)
-    ax.set_ylabel("Observation Count", fontsize=FONT_AXIS)
+    ax.set_ylabel("Correctly Recognised Count", fontsize=FONT_AXIS)
     ax.set_ylim(-6, max(mom_vals + dad_vals) + 8)
     ax.set_title(
         "Personalization — Learned Habit Profiles per User\n"
-        "Users develop distinct behaviour patterns through passive observation",
+        "Based on correctly recognised episodes only (spatial_action == ground_truth)",
         fontsize=FONT_TITLE, fontweight="bold", pad=10)
     ax.legend(fontsize=FONT_TICK)
 
@@ -183,28 +173,31 @@ def plot_personalization(episodes, save_path):
     print(f"[exp3] Saved: {save_path}")
 
 
-# ── Summary ───────────────────────────────────────────────────────────────────
-
 def save_summary(episodes, save_path):
     weight = defaultdict(float)
     for ep in episodes:
-        weight[(ep.get("user",""), ep.get("spatial_action",""))] += 1
+        u    = ep.get("user", "")
+        gt   = ep.get("ground_truth", "")
+        pred = ep.get("spatial_action") or ep.get("vlm_output", "")
+        if u and gt and gt == pred and gt in ADL_LABELS:
+            weight[(u, gt)] += 1
 
     lines = [
         "Experiment 3: Habit Learning Convergence & Personalization",
-        f"DB: {DB_BASELINE}  |  FAT = {FAT}  |  Day 1–{MAX_DAY}",
+        f"DB: {DB_BASELINE}  |  FAT = {FAT}  |  Day 1-{MAX_DAY}",
+        "Note: Only correctly recognised episodes (spatial_action == ground_truth) count toward habit weight",
         "",
     ]
     for uid in USERS:
-        habits = {(u,a): w for (u,a),w in weight.items()
+        habits = {(u, a): w for (u, a), w in weight.items()
                   if u == uid and w >= FAT}
         lines += [f"{uid}  ({len(habits)} stable habits):"]
         for (_, a), w in sorted(habits.items(), key=lambda x: -x[1]):
             lines.append(f"    {a:<16} weight={w:.0f}")
         lines.append("")
 
-    mom = {a for (u,a),w in weight.items() if u=="User_Mom" and w>=FAT}
-    dad = {a for (u,a),w in weight.items() if u=="User_Dad" and w>=FAT}
+    mom = {a for (u, a), w in weight.items() if u == "User_Mom" and w >= FAT}
+    dad = {a for (u, a), w in weight.items() if u == "User_Dad" and w >= FAT}
     lines += [
         "Personalization:",
         f"  Shared   : {sorted(mom & dad)}",
@@ -220,7 +213,8 @@ def main():
     os.makedirs(RESULTS_DIR, exist_ok=True)
     episodes = load_episodes(DB_BASELINE)
     if not episodes:
-        print(f"[exp3] No data in {DB_BASELINE}"); return
+        print(f"[exp3] No data in {DB_BASELINE}")
+        return
     print(f"[exp3] {len(episodes)} episodes")
     plot_convergence(episodes,
                      os.path.join(RESULTS_DIR, "exp3_habit_convergence.png"))
