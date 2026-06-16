@@ -23,12 +23,9 @@ COLLECTIONS = [
 
 USERS = ["User_Mom", "User_Dad"]
 
-DRINK_ACTIONS = {"Drinking", "SittingDrink"}
-FOOD_ACTIONS  = {"Eating", "Cooking"}
-
 LABEL_NORMALIZE = {
-    "waterbottle":  "water",   # ← 修正（原本是 bottle）
-    "water bottle": "water",   # ← 修正（原本是 bottle）
+    "waterbottle":  "water",
+    "water bottle": "water",
     "juicebottle":  "juice",
     "juice bottle": "juice",
     "orange juice": "juice",
@@ -53,64 +50,43 @@ def _normalize_label(label: str) -> str:
     return LABEL_NORMALIZE.get(label.lower().strip(), label.lower().strip())
 
 
-def _get_top_drink(db, user_id):
-    """
-    Infer preferred drink from object_events (what the user actually picked up
-    during Drinking/SittingDrink actions). Falls back to dynamic_objects if
-    no pickup events found.
-    """
+def _get_top_item(db, user_id, category):
     item_counts = defaultdict(int)
     for d in db.object_events.find(
         {"user": user_id, "pickup_time": {"$exists": True}},
         {"object": 1}
     ):
-        raw   = d.get("object", "").strip()
-        label = _normalize_label(raw)
-        obj   = db.dynamic_objects.find_one({"label": label, "category": "drink"})
-        if obj:
+        label = _normalize_label(d.get("object", "").strip())
+        if db.dynamic_objects.find_one({"label": label, "category": category}):
             item_counts[label] += 1
-
     if item_counts:
         return max(item_counts, key=item_counts.get)
-
-    # Fallback: find drink object with highest interact_count
     obj = db.dynamic_objects.find_one(
-        {"category": "drink"},
+        {"category": category},
         sort=[("interact_count", -1)]
     )
     return obj["label"] if obj else None
 
 
-def _get_top_food(db, user_id):
-    """
-    Infer preferred food from object_events.
-    Falls back to dynamic_objects if no pickup events found.
-    """
-    item_counts = defaultdict(int)
-    for d in db.object_events.find(
-        {"user": user_id, "pickup_time": {"$exists": True}},
-        {"object": 1}
-    ):
-        raw   = d.get("object", "").strip()
-        label = _normalize_label(raw)
-        obj   = db.dynamic_objects.find_one({"label": label, "category": "food"})
-        if obj:
-            item_counts[label] += 1
+def generate_skill(db, user_id):
+    obs = list(db.observation_logs.find(
+        {"user": user_id},
+        {"action": 1, "zone_name": 1, "weight": 1, "time_slot": 1}
+    ).sort("weight", -1).limit(8))
 
-    if item_counts:
-        return max(item_counts, key=item_counts.get)
+    obs_lines = "\n".join(
+        f"- {d['action']} at {d.get('zone_name','?')} "
+        f"({d.get('weight',0):.0f}x, {d.get('time_slot','?')})"
+        for d in obs
+    ) or "- No habits recorded yet"
 
-    obj = db.dynamic_objects.find_one(
-        {"category": "food"},
-        sort=[("interact_count", -1)]
-    )
-    return obj["label"] if obj else None
+    drink_item = _get_top_item(db, user_id, "drink")
+    food_item  = _get_top_item(db, user_id, "food")
 
-
-def _build_skill_md(user_id, drink_item, food_item, obs_lines):
     drink_bullet = f"- User enjoys {drink_item} during Drinking" if drink_item else ""
     food_bullet  = f"- User enjoys {food_item} during Eating"    if food_item else ""
-    return (
+
+    skill_md = (
         f"# {user_id} Skill Profile\n"
         f"*Version 1 | Updated: {datetime.now().strftime('%Y-%m-%d')}*\n\n"
         f"## Behavior Patterns\n"
@@ -126,38 +102,17 @@ def _build_skill_md(user_id, drink_item, food_item, obs_lines):
         f"- Do not recommend items not in the environment\n"
     )
 
-
-def generate_skill(db, user_id):
-    obs = list(db.observation_logs.find(
-        {"user": user_id},
-        {"action": 1, "zone_name": 1, "weight": 1, "time_slot": 1}
-    ).sort("weight", -1).limit(8))
-
-    obs_lines = "\n".join(
-        f"- {d['action']} at {d.get('zone_name','?')} "
-        f"({d.get('weight',0):.0f}x, {d.get('time_slot','?')})"
-        for d in obs
-    ) or "- No habits recorded yet"
-
-    drink_item = _get_top_drink(db, user_id)
-    food_item  = _get_top_food(db, user_id)
-
-    skill_md = _build_skill_md(user_id, drink_item, food_item, obs_lines)
-
     db.user_skills.update_one(
         {"user_id": user_id},
         {"$set": {"user_id": user_id, "skill_md": skill_md, "version": 1}},
         upsert=True,
     )
     print(f"  SKILL.md generated for {user_id}")
-    if drink_item:
-        print(f"    drink: {drink_item}")
-    if food_item:
-        print(f"    food:  {food_item}")
+    if drink_item: print(f"    drink: {drink_item}")
+    if food_item:  print(f"    food:  {food_item}")
 
 
 def rebuild_skill_chunks(client, user_id, db_name):
-    """Rebuild FAISS skill_chunks after SKILL.md update."""
     try:
         from modules.memory.skill_manager import SkillManager
         db = client[db_name]
@@ -211,7 +166,6 @@ def main():
         print(f"  {col:<30} {len(docs)} docs")
         total += len(docs)
 
-    # Refresh object timestamps so TTL doesn't expire
     now = datetime.utcnow()
     dst.dynamic_objects.update_many({}, {"$set": {"last_seen": now}})
     print(f"  Refreshed last_seen on dynamic_objects")
@@ -233,7 +187,6 @@ def main():
     print("=" * 50)
     print(f"Done. {total} documents copied to {DST_DB}")
 
-    # Verify preferences
     print()
     print("Preferences inferred:")
     import re

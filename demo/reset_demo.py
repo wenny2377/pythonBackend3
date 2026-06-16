@@ -21,55 +21,55 @@ RESET_COLLECTIONS = [
     "conversation_logs",
 ]
 
+LABEL_NORMALIZE = {
+    "waterbottle":  "water",
+    "water bottle": "water",
+    "juicebottle":  "juice",
+    "juice bottle": "juice",
+    "orange juice": "juice",
+    "cola can":     "cola",
+    "coca cola":    "cola",
+    "coke":         "cola",
+    "soda can":     "cola",
+    "cell phone":   "phone",
+    "mobile phone": "phone",
+    "smartphone":   "phone",
+    "iphone":       "phone",
+    "frying pan":   "pan",
+    "cooking pan":  "pan",
+    "skillet":      "pan",
+    "mug":          "cup",
+    "coffee cup":   "cup",
+    "tea cup":      "cup",
+}
 
-def _refresh_last_seen(db):
-    now = datetime.utcnow()
-    r   = db.dynamic_objects.update_many({}, {"$set": {"last_seen": now}})
-    print(f"  Refreshed last_seen: {r.modified_count} objects → now")
+
+def _normalize_label(label: str) -> str:
+    return LABEL_NORMALIZE.get(label.lower().strip(), label.lower().strip())
 
 
-def _get_top_item(db, user_id, actions, category):
-    from pymongo import MongoClient
+def _get_top_item(db, user_id, category):
     item_counts = defaultdict(int)
     for d in db.object_events.find(
         {"user": user_id, "pickup_time": {"$exists": True}},
         {"object": 1}
     ):
-        raw   = d.get("object", "").lower().strip()
-        NORMALIZE = {
-            "waterbottle": "water", "water bottle": "water", "bottle": "water",
-            "cola can": "cola", "coca cola": "cola", "coke": "cola",
-            "cell phone": "phone", "mobile phone": "phone", "smartphone": "phone",
-        }
-        label = NORMALIZE.get(raw, raw)
-        obj   = db.dynamic_objects.find_one({"label": label, "category": category})
-        if obj:
+        label = _normalize_label(d.get("object", "").strip())
+        if db.dynamic_objects.find_one({"label": label, "category": category}):
             item_counts[label] += 1
-
     if item_counts:
         return max(item_counts, key=item_counts.get)
-
-    obs = list(db.observation_logs.find(
-        {"user": user_id, "action": {"$in": list(actions)}},
-        {"zone_name": 1, "weight": 1}
-    ).sort("weight", -1).limit(5))
-
-    zone_counts = defaultdict(float)
-    for d in obs:
-        zone_counts[d.get("zone_name", "")] += d.get("weight", 1)
-
-    top_zone = max(zone_counts, key=zone_counts.get) if zone_counts else ""
-
-    obj = db.dynamic_objects.find_one(
-        {"category": category, "last_seen_on": top_zone},
-        sort=[("interact_count", -1)])
-    if obj:
-        return obj["label"]
-
     obj = db.dynamic_objects.find_one(
         {"category": category},
-        sort=[("interact_count", -1)])
+        sort=[("interact_count", -1)]
+    )
     return obj["label"] if obj else None
+
+
+def _refresh_last_seen(db):
+    now = datetime.utcnow()
+    r   = db.dynamic_objects.update_many({}, {"$set": {"last_seen": now}})
+    print(f"  Refreshed last_seen: {r.modified_count} objects → now")
 
 
 def _generate_skill(db, user_id):
@@ -84,8 +84,8 @@ def _generate_skill(db, user_id):
         for d in obs
     ) or "- No habits recorded yet"
 
-    drink_item = _get_top_item(db, user_id, DRINK_ACTIONS, "drink")
-    food_item  = _get_top_item(db, user_id, FOOD_ACTIONS,  "food")
+    drink_item = _get_top_item(db, user_id, "drink")
+    food_item  = _get_top_item(db, user_id, "food")
 
     drink_bullet = f"- User enjoys {drink_item} during Drinking" if drink_item else ""
     food_bullet  = f"- User enjoys {food_item} during Eating"    if food_item else ""
@@ -111,12 +111,9 @@ def _generate_skill(db, user_id):
         {"$set": {"user_id": user_id, "skill_md": skill_md, "version": 1}},
         upsert=True,
     )
-
     print(f"  SKILL.md regenerated for {user_id}")
-    if drink_item:
-        print(f"    drink: {drink_item}")
-    if food_item:
-        print(f"    food:  {food_item}")
+    if drink_item: print(f"    drink: {drink_item}")
+    if food_item:  print(f"    food:  {food_item}")
 
 
 def main():
@@ -152,8 +149,8 @@ def main():
         print(f"  {col:<25} {db[col].count_documents({})} docs")
     print()
     print("Untouched:")
-    for col in ["observation_logs","transition_counts",
-                "dynamic_objects","scene_snapshots","object_events"]:
+    for col in ["observation_logs", "transition_counts",
+                "dynamic_objects", "scene_snapshots", "object_events"]:
         print(f"  {col:<25} {db[col].count_documents({})} docs")
     print()
     print("Ready. Start Flask: python3 app.py → choose 3 (Demo)")
