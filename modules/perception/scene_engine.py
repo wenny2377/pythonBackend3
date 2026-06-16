@@ -43,10 +43,10 @@ class SceneEngine:
         self._retry_max        = hp.get("scene_retry_max",   60)
 
         self._affordance_descriptions = system_cfg.get("affordance_descriptions", {})
+        self._charades_affinity       = system_cfg.get("charades_affinity", {})
 
         self.zone_graph         = []
         self._affinity_matrix   = {}
-        self._transition_matrix = {}
         self._ready             = False
         self._lock              = threading.Lock()
 
@@ -57,7 +57,6 @@ class SceneEngine:
         self._build_proto_vecs()
 
         self._load_affinity_matrix()
-        self._load_transition_matrix()
         self._discover_zones()
 
         if not self._ready:
@@ -149,181 +148,36 @@ class SceneEngine:
             print("[Affinity] No affinity_matrix found, building from scratch")
             self._distill_affinity_matrix()
 
-    def _load_transition_matrix(self):
-        docs = list(self.db.transition_matrix.find({}))
-        if not docs:
-            print("[Transition] No transition_matrix found in MongoDB, using empty dict")
-            return
-        for doc in docs:
-            src  = doc.get("from", "")
-            dst  = doc.get("to", "")
-            prob = float(doc.get("probability", 0.0))
-            if not src or not dst:
-                continue
-            if src not in self._transition_matrix:
-                self._transition_matrix[src] = {}
-            self._transition_matrix[src][dst] = prob
-        print(f"[Transition] Loaded {len(docs)} transition pairs into memory")
 
     def _builtin_affinity_fallback(self, furniture_list: list) -> dict:
-        BASE = {
-            "tv": {
-                "Watching": 1.00,
-                "Sitting":  0.62,
-            },
-            "television": {
-                "Watching": 1.00,
-                "Sitting":  0.62,
-            },
-            "monitor": {
-                "Typing":  0.90,
-                "Reading": 0.07,
-            },
-            "keyboard": {
-                "Typing":  0.95,
-                "Reading": 0.05,
-            },
-            "desk": {
-                "Typing":  0.90,
-                "Sitting": 1.00,
-                "Reading": 0.20,
-            },
-            "stove": {
-                "Cooking":  1.00,
-                "Cleaning": 0.42,
-            },
-            "refrigerator": {
-                "Opening":  1.00,
-                "Eating":   0.35,
-                "Drinking": 0.29,
-            },
-            "fridge": {
-                "Opening":  1.00,
-                "Eating":   0.35,
-                "Drinking": 0.29,
-            },
-            "cabinet": {
-                "Opening":  0.60,
-                "Cleaning": 0.20,
-            },
-            "cabinet2": {
-                "Opening":  0.60,
-                "Cleaning": 0.20,
-            },
-            "sofa": {
-                "Sitting":      1.00,
-                "Laying":       0.44,
-                "Watching":     0.27,
-                "Reading":      0.65,
-                "SittingDrink": 0.50,
-                "PhoneUse":     0.45,
-            },
-            "couch": {
-                "Sitting":      1.00,
-                "Laying":       0.44,
-                "Watching":     0.27,
-                "Reading":      0.65,
-                "SittingDrink": 0.50,
-                "PhoneUse":     0.45,
-            },
-            "sofa side": {
-                "Sitting":      0.60,
-                "Laying":       0.44,
-                "Watching":     0.27,
-                "Reading":      0.65,
-                "SittingDrink": 0.50,
-                "PhoneUse":     0.45,
-            },
-            "sofa side 2": {
-                "Sitting":      0.60,
-                "Laying":       0.44,
-                "Watching":     0.27,
-                "Reading":      0.65,
-                "SittingDrink": 0.50,
-                "PhoneUse":     0.45,
-            },
-            "bed": {
-                "Laying":  0.84,
-                "Sitting": 1.00,
-                "Reading": 0.30,
-            },
-            "dad's bed": {
-                "Laying":  0.84,
-                "Sitting": 1.00,
-                "Reading": 0.30,
-            },
-            "dining table": {
-                "Eating":       0.70,
-                "Sitting":      1.00,
-                "SittingDrink": 0.30,
-            },
-            "table": {
-                "Eating":       0.70,
-                "Sitting":      1.00,
-                "SittingDrink": 0.30,
-            },
-            "table2": {
-                "Eating":       0.70,
-                "Sitting":      1.00,
-                "SittingDrink": 0.30,
-            },
-            "sink": {
-                "Cleaning": 1.00,
-                "Drinking": 0.45,
-            },
-            "toilet": {
-                "Cleaning": 0.71,
-                "Standing": 0.30,
-            },
-            "chair": {
-                "Sitting":      1.00,
-                "Eating":       0.60,
-                "SittingDrink": 0.50,
-                "Typing":       0.60,
-                "Reading":      0.40,
-            },
-            "chair1": {
-                "Sitting":      1.00,
-                "Eating":       0.60,
-                "SittingDrink": 0.50,
-                "Typing":       0.60,
-                "Reading":      0.40,
-            },
-            "chair2": {
-                "Sitting":      1.00,
-                "Eating":       0.60,
-                "SittingDrink": 0.50,
-                "Typing":       0.60,
-                "Reading":      0.40,
-            },
-            "chair3": {
-                "Sitting":      1.00,
-                "Eating":       0.60,
-                "SittingDrink": 0.50,
-                "Typing":       0.60,
-                "Reading":      0.40,
-            },
-        }
+        aff_vecs   = self._get_affordance_vecs()
+        aff_labels = self._affordance_labels
+        result     = {}
 
-        result = {}
         for furn in furniture_list:
             key = furn.lower().strip()
-            if key in BASE:
-                result[key] = BASE[key]
-            else:
+
+            if key in self._charades_affinity:
                 result[key] = {
-                    "Eating":       0.15,
-                    "Watching":     0.15,
-                    "Laying":       0.15,
-                    "Typing":       0.10,
-                    "Reading":      0.10,
-                    "Cleaning":     0.10,
-                    "Drinking":     0.10,
-                    "Cooking":      0.10,
-                    "SittingDrink": 0.05,
-                    "Sitting":      0.05,
+                    k: v for k, v in self._charades_affinity[key].items()
+                    if k in self.behavior_labels
                 }
-        print(f"[Affinity] Cold-start prior loaded: {len(result)} furniture entries")
+            else:
+                furn_vec = self.sbert.encode(
+                    [furn], normalize_embeddings=True)[0].astype("float32")
+                sims     = aff_vecs @ furn_vec
+                min_s    = float(sims.min())
+                max_s    = float(sims.max())
+                norm     = (sims - min_s) / (max_s - min_s) if max_s > min_s else sims
+                result[key] = {
+                    label: round(float(norm[i]), 3)
+                    for i, label in enumerate(aff_labels)
+                    if label in self.behavior_labels
+                }
+
+        print(f"[Affinity] Cold-start prior: {len(result)} furniture entries "
+              f"(Charades: {sum(1 for k in result if k in self._charades_affinity)} "
+              f"SBERT: {sum(1 for k in result if k not in self._charades_affinity)})")
         return result
 
     def _distill_affinity_matrix(self):
@@ -336,18 +190,7 @@ class SceneEngine:
             print("[Affinity] No furniture in scene_snapshots")
             return
 
-        all_matrix    = {}
-        charades_docs = list(self.db.charades_affinity_normalized.find({}))
-        for doc in charades_docs:
-            furn  = doc.get("furniture", "").lower().strip()
-            beh   = doc.get("behavior", "")
-            score = float(doc.get("score", 0.0))
-            if not furn or not beh:
-                continue
-            if furn not in all_matrix:
-                all_matrix[furn] = {}
-            all_matrix[furn][beh] = round(score, 3)
-        print(f"[Affinity] Loaded {len(charades_docs)} entries from charades_affinity_normalized")
+        all_matrix = {}
 
         fallback = self._builtin_affinity_fallback(furniture_list)
         for key, beh_scores in fallback.items():
@@ -361,6 +204,7 @@ class SceneEngine:
                     else:
                         all_matrix[key_lower][beh] = max(
                             all_matrix[key_lower][beh], score)
+
 
         bulk = []
         for furn_key, action_scores in all_matrix.items():

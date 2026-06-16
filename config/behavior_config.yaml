@@ -43,6 +43,119 @@ affordance_descriptions:
   Standing:     "open area hallway or room where person stands still doing nothing"
   Walking:      "hallway corridor or open floor where person walks or moves around"
 
+charades_affinity:
+  sofa:
+    Sitting: 1.000
+    Laying:  0.440
+    Watching: 0.268
+    Reading: 0.650
+    SittingDrink: 0.500
+    PhoneUse: 0.450
+  couch:
+    Sitting: 1.000
+    Laying:  0.440
+    Watching: 0.268
+    Reading: 0.650
+    SittingDrink: 0.500
+    PhoneUse: 0.450
+  "sofa side":
+    Sitting: 1.000
+    Laying:  0.440
+    Watching: 0.268
+    Reading: 0.650
+    SittingDrink: 0.500
+    PhoneUse: 0.450
+  "sofa side 2":
+    Sitting: 1.000
+    Laying:  0.440
+    Watching: 0.268
+    Reading: 0.650
+    SittingDrink: 0.500
+    PhoneUse: 0.450
+  stove:
+    Cooking:  1.000
+    Cleaning: 0.416
+  bed:
+    Sitting: 1.000
+    Laying:  0.840
+    Reading: 0.300
+  "dad's bed":
+    Sitting: 1.000
+    Laying:  0.840
+    Reading: 0.300
+  tv:
+    Watching: 1.000
+    Sitting:  0.622
+  television:
+    Watching: 1.000
+    Sitting:  0.622
+  refrigerator:
+    Opening:  1.000
+    Eating:   0.355
+    Drinking: 0.287
+  fridge:
+    Opening:  1.000
+    Eating:   0.355
+    Drinking: 0.287
+  "dining table":
+    Sitting: 1.000
+    Eating:  0.700
+    SittingDrink: 0.300
+  table:
+    Sitting: 1.000
+    Eating:  0.700
+    SittingDrink: 0.300
+  table2:
+    Sitting: 1.000
+    Eating:  0.700
+    SittingDrink: 0.300
+  chair:
+    Sitting:      1.000
+    Eating:       0.600
+    SittingDrink: 0.500
+    Typing:       0.600
+    Reading:      0.400
+  chair1:
+    Sitting:      1.000
+    Eating:       0.600
+    SittingDrink: 0.500
+    Typing:       0.600
+    Reading:      0.400
+  chair2:
+    Sitting:      1.000
+    Eating:       0.600
+    SittingDrink: 0.500
+    Typing:       0.600
+    Reading:      0.400
+  chair3:
+    Sitting:      1.000
+    Eating:       0.600
+    SittingDrink: 0.500
+    Typing:       0.600
+    Reading:      0.400
+  sink:
+    Cleaning: 1.000
+    Drinking: 0.451
+  desk:
+    Sitting: 1.000
+    Typing:  0.900
+    Reading: 0.200
+  monitor:
+    Typing:  0.900
+    Reading: 0.070
+  keyboard:
+    Typing:  0.950
+    Reading: 0.050
+  cabinet:
+    Opening:  0.600
+    Cleaning: 0.200
+  cabinet2:
+    Opening:  0.600
+    Cleaning: 0.200
+  toilet:
+    Cleaning: 1.000
+    Standing: 0.300
+
 vision_prototypes:
   Drinking: >
     standing upright vertical full body posture weight on both feet.
