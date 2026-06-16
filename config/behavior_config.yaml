@@ -24,6 +24,25 @@ no_weight_actions:
   - "Standing"
   - "StandUp"
 
+affordance_descriptions:
+  Eating:       "dining table or chair where person eats food with fork spoon or chopsticks"
+  Drinking:     "sink or table where person drinks water juice or beverage from cup or bottle"
+  SittingDrink: "sofa or couch where person sits relaxing and drinks coffee tea or beverage"
+  Sitting:      "sofa chair or couch where person sits idle with empty hands doing nothing"
+  Cooking:      "stove or oven where person cooks food using pan pot or spatula"
+  Opening:      "refrigerator fridge or cabinet door that person opens to get items"
+  Laying:       "bed or sofa where person lies down to sleep or rest horizontally"
+  Watching:     "television sofa or couch where person watches screen or tv"
+  Reading:      "bed desk or sofa where person reads book magazine or document"
+  Cleaning:     "floor sink or surface where person cleans using broom mop or cloth"
+  PhoneUse:     "sofa bed or chair where person uses smartphone or makes phone call"
+  Typing:       "desk keyboard or monitor where person types on computer or laptop"
+  StandUp:      "sofa chair or bed where person rises from seated or lying position to stand up"
+  PickingUp:    "floor or table where person bends down to pick up an object"
+  PuttingDown:  "table shelf or surface where person sets down or places an object"
+  Standing:     "open area hallway or room where person stands still doing nothing"
+  Walking:      "hallway corridor or open floor where person walks or moves around"
+
 vision_prototypes:
   Drinking: >
     standing upright vertical full body posture weight on both feet.
@@ -123,6 +142,7 @@ vision_prototypes:
   Walking: >
     locomotion legs stepping alternating feet forward displacement moving room path hallway.
     arms swinging naturally body coordination walking gait translation motion velocity
+
 behaviours:
   Laying:
     head_pitch:

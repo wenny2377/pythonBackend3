@@ -537,20 +537,29 @@ def demo_action_event():
     prev_action = data.get("prev_action", "Eating")
     time_slot   = data.get("time_slot",   "Evening")
 
-    try:
-        proposal = proactive_service.evaluate(
-            user_id=user_id,
-            current_action="Sitting",
-            prev_action=prev_action,
-            time_slot=time_slot,
-            user_pos=None,
-        )
-        if proposal:
-            proposal_manager.push(user_id, proposal)
-            print(f"[Demo] ProactiveService triggered for {user_id}")
-    except Exception as e:
-        print(f"[Demo] action_event error: {e}")
+    lookahead = habit_learner.get_2step_lookahead(
+        user_id=user_id, current_action=prev_action, time_slot=time_slot)
 
+    cutoff = datetime.datetime.utcnow() - datetime.timedelta(hours=CONFIG.SNAPSHOT_TTL_HOURS)
+    need   = lookahead.get("need", "drink") if lookahead else "drink"
+
+    item = db.dynamic_objects.find_one(
+        {"category": need, "last_seen": {"$gte": cutoff}},
+        sort=[("interact_count", -1)])
+    if not item:
+        item = db.dynamic_objects.find_one(
+            {"category": need}, sort=[("interact_count", -1)])
+    if not item:
+        return jsonify({"status": "no_item"}), 200
+
+    proposal = proactive_service._generate_proposal(
+        user_id=user_id,
+        lookahead=lookahead or {"need":"drink","confidence":0.5,"actionable":True,"step1":None,"step2":None},
+        available_item=item,
+        time_slot=time_slot,
+    )
+    proposal_manager.push(user_id, proposal)
+    print(f"[Demo] ProactiveService pushed for {user_id}: {item['label']}")
     return jsonify({"status": "ok"}), 200
 
 

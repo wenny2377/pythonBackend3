@@ -3,6 +3,7 @@ import shutil
 from datetime import datetime
 from pymongo import MongoClient
 
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 def _ask_db() -> str:
     print("\nWhich DB to reset?")
@@ -43,19 +44,13 @@ COLLECTIONS_TO_CLEAR = [
     "robot_memory", "eval_logs", "exp_checkpoint_logs",
     "observation_logs", "habit_snapshots", "activity_sequences",
     "transition_counts", "manifold_training_data", "manifold_points",
-    "affinity_history", "user_spatial_affinity", "dynamic_objects",
-    "raw_objects", "semantic_memories", "conversation_logs",
-    "service_proposals", "service_results", "intent_stats",
-    "skill_chunks", "episodic_summaries", "saycan_logs",
-    "navigation_logs", "user_positions", "object_events",
-    "device_states",
-]
-
-KEEP_ALWAYS = [
-    "scene_snapshots",
-    "transition_matrix",
-    "charades_affinity",
-    "charades_affinity_normalized",
+    "affinity_history", "user_spatial_affinity", "affinity_matrix",
+    "dynamic_objects", "raw_objects", "semantic_memories",
+    "conversation_logs", "proposals", "service_proposals",
+    "service_results", "intent_stats", "skill_chunks",
+    "episodic_summaries", "saycan_logs", "navigation_logs",
+    "user_positions", "object_events", "device_states",
+    "system_config",
 ]
 
 FAISS_FILES = [
@@ -98,25 +93,27 @@ def main():
         print(f"  {uid} reset")
 
     print("\nRemoving FAISS files...")
-    for path in FAISS_FILES:
-        for base in [".", "data"]:
-            full = os.path.join(base, path)
-            if os.path.exists(full):
-                os.remove(full)
-                print(f"  removed {full}")
+    for fname in FAISS_FILES:
+        full = os.path.join(_ROOT, fname)
+        if os.path.exists(full):
+            os.remove(full)
+            print(f"  removed {full}")
 
-    if os.path.exists("manifold_models"):
-        removed = sum(
-            1 for f in os.listdir("manifold_models")
-            if f.endswith(".pkl") and
-            not os.remove(os.path.join("manifold_models", f))
-        )
+    print("\nRemoving manifold models...")
+    manifold_dir = os.path.join(_ROOT, "modules", "manifold_models")
+    if os.path.exists(manifold_dir):
+        removed = 0
+        for f in os.listdir(manifold_dir):
+            if f.endswith(".pkl"):
+                os.remove(os.path.join(manifold_dir, f))
+                removed += 1
         if removed:
-            print(f"  removed {removed} manifold models")
+            print(f"  removed {removed} manifold .pkl files")
 
-    if os.path.exists("debug_images"):
-        shutil.rmtree("debug_images")
-        print("  removed debug_images/")
+    debug_dir = os.path.join(_ROOT, "debug_images")
+    if os.path.exists(debug_dir):
+        shutil.rmtree(debug_dir)
+        print(f"  removed debug_images/")
 
     print(f"\n  Done. DB={DB_NAME} is clean.")
     print(f"  Next: python3 app.py\n")
