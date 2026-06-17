@@ -1,20 +1,35 @@
-Experiment 4: Habit Learning Speed
+Experiment 4: FAT Sensitivity Analysis & Personalization
 DB: robot_exp_baseline  |  FAT = 5  |  Day 1–21
 
-User_Mom  (stable by Day 12, 8 habits total):
-    Day  2 → learned: PhoneUse
-    Day  3 → learned: Reading
-    Day  5 → learned: SittingDrink
-    Day  7 → learned: Watching
-    Day  8 → learned: Sitting
-    Day 10 → learned: Laying
-    Day 11 → learned: Cooking
-    Day 12 → learned: Eating
+FAT Sensitivity:
+FAT      Mom Habits   Dad Habits
+--------------------------------
+3                 9            8
+5                 9            8 ★
+10                9            7
+15                8            6
 
-User_Dad  (stable by Day 3, 6 habits total):
-    Day  2 → learned: Sitting
-    Day  3 → learned: Watching
-    Day  7 → learned: Laying
-    Day  7 → learned: Typing
-    Day  9 → learned: Reading
-    Day  9 → learned: PhoneUse
+Stable Habits at FAT=5:
+  User_Mom  (9 habits):
+    Reading          count=64
+    Cleaning         count=54
+    Eating           count=45
+    Cooking          count=39
+    SittingDrink     count=32
+    Laying           count=29
+    Watching         count=22
+    Sitting          count=15
+    PhoneUse         count=12
+  User_Dad  (8 habits):
+    PhoneUse         count=76
+    Laying           count=40
+    Typing           count=40
+    SittingDrink     count=32
+    Watching         count=32
+    Eating           count=28
+    Sitting          count=12
+    Drinking         count=7
+
+  Shared   : ['Eating', 'Laying', 'PhoneUse', 'Sitting', 'SittingDrink', 'Watching']
+  Mom-only : ['Cleaning', 'Cooking', 'Reading']
+  Dad-only : ['Drinking', 'Typing']

@@ -1,27 +1,24 @@
-Experiment 3: Habit Learning Convergence & Personalization
-DB: robot_exp_baseline  |  FAT = 5  |  Day 1-21
-Note: Only correctly recognised episodes (spatial_action == ground_truth) count toward habit weight
+Experiment 3: Days to Reach FAT per Activity
+DB: robot_exp_baseline  |  FAT = 5  |  Day 1–21
 
-User_Mom  (8 stable habits):
-    PhoneUse         weight=38
-    SittingDrink     weight=23
-    Reading          weight=20
-    Watching         weight=17
-    Sitting          weight=11
-    Laying           weight=9
-    Eating           weight=7
-    Cooking          weight=6
+User_Mom  (9 habits reached FAT=5):
+    Day  2  Reading
+    Day  3  Cooking
+    Day  3  Eating
+    Day  4  Cleaning
+    Day  4  SittingDrink
+    Day  6  Laying
+    Day  6  Watching
+    Day  8  Sitting
+    Day 10  PhoneUse
+    Day --  Drinking  (not reached within 21 days)
 
-User_Dad  (7 stable habits):
-    PhoneUse         weight=31
-    Sitting          weight=28
-    Typing           weight=25
-    Laying           weight=15
-    Drinking         weight=10
-    Watching         weight=10
-    SittingDrink     weight=9
-
-Personalization:
-  Shared   : ['Laying', 'PhoneUse', 'Sitting', 'SittingDrink', 'Watching']
-  Mom-only : ['Cooking', 'Eating', 'Reading']
-  Dad-only : ['Drinking', 'Typing']
+User_Dad  (8 habits reached FAT=5):
+    Day  2  PhoneUse
+    Day  2  Typing
+    Day  2  SittingDrink
+    Day  3  Laying
+    Day  4  Eating
+    Day  5  Watching
+    Day 12  Sitting
+    Day 16  Drinking

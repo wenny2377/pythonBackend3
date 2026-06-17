@@ -330,6 +330,134 @@ def save_summary(docs, acc, correct, total, ablation_results, save_path):
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
+def plot_per_class_bar(docs, save_path):
+    by_class = per_class_accuracy(docs)
+    present  = [(l, by_class[l]) for l in ADL_LABELS
+                if by_class[l]["total"] > 0]
+    present.sort(key=lambda x: x[1]["tp"] / x[1]["total"])
+
+    labels = [p[0] for p in present]
+    accs   = [p[1]["tp"] / p[1]["total"] * 100 for p in present]
+    totals = [p[1]["total"] for p in present]
+    n      = len(labels)
+
+    colors = []
+    for a in accs:
+        if a >= 80:
+            colors.append(C["baseline"])
+        elif a >= 60:
+            colors.append("#F5A623")
+        else:
+            colors.append(C["corruption"])
+
+    fig, ax = plt.subplots(figsize=(10, max(5, n * 0.65)))
+    bars = ax.barh(range(n), accs, color=colors,
+                   alpha=0.88, height=0.55, edgecolor="white")
+
+    for i, (bar, acc, tot) in enumerate(zip(bars, accs, totals)):
+        ax.text(min(bar.get_width() + 0.8, 101),
+                bar.get_y() + bar.get_height() / 2,
+                f"{acc:.1f}%  ({int(acc/100*tot)}/{tot})",
+                va="center", fontsize=FONT_ANNOT,
+                color="#333", fontweight="bold" if acc < 80 else "normal")
+
+    ax.axvline(80, color="#999", linestyle="--", lw=1.2, alpha=0.6)
+    ax.set_yticks(range(n))
+    ax.set_yticklabels(labels, fontsize=FONT_TICK)
+    ax.set_xlabel("Accuracy (%)", fontsize=FONT_AXIS)
+    ax.set_xlim(0, 120)
+    ax.set_title("Per-class Recognition Accuracy — Baseline",
+                 fontsize=FONT_TITLE, fontweight="bold", pad=10)
+
+    from matplotlib.patches import Patch
+    ax.legend(handles=[
+        Patch(color=C["baseline"],    label="≥ 80%"),
+        Patch(color="#F5A623",        label="60–79%"),
+        Patch(color=C["corruption"],  label="< 60%"),
+    ], fontsize=FONT_TICK, loc="lower right")
+
+    plt.tight_layout()
+    plt.savefig(save_path, dpi=FIG_DPI, bbox_inches="tight")
+    plt.close()
+    print(f"[exp1] Saved: {save_path}")
+
+
+def plot_ablation_table(ablation_results, full_acc, save_path):
+    order  = ["Full System", "w/o Skeleton", "w/o Spatial Context", "w/o Object Events"]
+    accs   = {k: ablation_results.get(k, full_acc) for k in order}
+    deltas = {k: (full_acc - accs[k]) * 100 for k in order}
+
+    col_headers = ["Method", "Skeleton", "Object\nEvents", "Spatial\nContext", "Acc (%)", "Δ"]
+    modality_map = {
+        "Full System":          (True,  True,  True),
+        "w/o Skeleton":         (False, True,  True),
+        "w/o Spatial Context":  (True,  True,  False),
+        "w/o Object Events":    (True,  False, True),
+    }
+
+    rows = []
+    for name in order:
+        skel, obj, spa = modality_map[name]
+        acc_val = accs[name] * 100
+        delta_val = deltas[name]
+        delta_str = "—" if name == "Full System" else f"−{delta_val:.1f}%"
+        rows.append([
+            name,
+            "✓" if skel else "✗",
+            "✓" if obj  else "✗",
+            "✓" if spa  else "✗",
+            f"{acc_val:.1f}%",
+            delta_str,
+        ])
+
+    fig, ax = plt.subplots(figsize=(10, 3))
+    ax.axis("off")
+
+    col_widths = [0.32, 0.1, 0.12, 0.13, 0.12, 0.11]
+    table = ax.table(
+        cellText=rows,
+        colLabels=col_headers,
+        cellLoc="center",
+        loc="center",
+        colWidths=col_widths,
+    )
+    table.auto_set_font_size(False)
+    table.set_fontsize(11)
+    table.scale(1, 2.2)
+
+    header_color = "#2C3E50"
+    for j in range(len(col_headers)):
+        cell = table[0, j]
+        cell.set_facecolor(header_color)
+        cell.set_text_props(color="white", fontweight="bold")
+
+    row_colors = ["#EBF5FB", "#FDFEFE", "#EBF5FB", "#FDFEFE"]
+    highlight  = "#FDEDEC"
+    for i, name in enumerate(order):
+        for j in range(len(col_headers)):
+            cell = table[i + 1, j]
+            if name == "w/o Object Events":
+                cell.set_facecolor(highlight)
+            else:
+                cell.set_facecolor(row_colors[i])
+            if j in (1, 2, 3):
+                txt = rows[i][j]
+                cell.set_text_props(
+                    color="#27AE60" if txt == "✓" else "#E74C3C",
+                    fontweight="bold", fontsize=13)
+            if j == 5 and name != "Full System":
+                cell.set_text_props(
+                    color="#E74C3C", fontweight="bold")
+
+    ax.set_title("Modality Ablation Study — LLM Re-inference",
+                 fontsize=FONT_TITLE, fontweight="bold", pad=16)
+
+    plt.tight_layout()
+    plt.savefig(save_path, dpi=FIG_DPI, bbox_inches="tight")
+    plt.close()
+    print(f"[exp1] Saved: {save_path}")
+
+
 def main():
     os.makedirs(RESULTS_DIR, exist_ok=True)
     db   = MongoClient(MONGO_URI)[DB_BASELINE]
@@ -344,18 +472,21 @@ def main():
 
     print(f"[exp1] {len(docs)} episodes loaded")
 
-    # Plot 1: Confusion matrix
     acc, correct, total = plot_confusion_matrix(
         docs, os.path.join(RESULTS_DIR, "exp1_confusion_matrix.png"))
 
-    # Plot 2: Ablation (true LLM re-inference)
+    plot_per_class_bar(
+        docs, os.path.join(RESULTS_DIR, "exp1_per_class_bar.png"))
+
     print(f"[exp1] Running ablation (this may take a few minutes)...")
     ablation = run_ablation(docs)
-    ablation["Full System"] = acc   # use stored full-system accuracy
+    ablation["Full System"] = acc
     plot_ablation(ablation, acc,
                   os.path.join(RESULTS_DIR, "exp1_ablation.png"))
 
-    # Summary
+    plot_ablation_table(ablation, acc,
+                        os.path.join(RESULTS_DIR, "exp1_ablation_table.png"))
+
     save_summary(docs, acc, correct, total, ablation,
                  os.path.join(RESULTS_DIR, "exp1_summary.txt"))
 

@@ -133,7 +133,7 @@ def plot_per_class_drop(m_base, m_corr, save_path):
     ax.set_yticks(y)
     ax.set_yticklabels(labels, fontsize=FONT_TICK)
     ax.set_xlabel("Accuracy (%)", fontsize=FONT_AXIS)
-    ax.set_xlim(0, 130)
+    ax.set_xlim(0, 145)
     ax.set_title("Per-class Accuracy: Baseline vs Sensor Noise",
                  fontsize=FONT_TITLE, fontweight="bold", pad=10)
     ax.legend(fontsize=FONT_TICK, loc="lower right")
