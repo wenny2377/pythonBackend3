@@ -1,0 +1,29 @@
+Experiment 5: Intent Classification
+Total: 21  Correct: 20  Overall: 95.2%  Status: PASSED
+
+need: 9/9 = 100.0%
+query: 7/7 = 100.0%
+chat: 4/5 = 80.0%
+
+Details:
+  [OK] need     → need     | I am thirsty
+  [OK] need     → need     | Could I have something to drink
+  [OK] need     → need     | I could use a drink
+  [OK] need     → need     | Feeling parched
+  [OK] need     → need     | I am hungry
+  [OK] need     → need     | I want something to eat
+  [OK] need     → need     | Get me a snack
+  [OK] need     → need     | Feeling peckish
+  [OK] need     → need     | Get me something
+  [OK] query    → query    | Do we have any cola
+  [OK] query    → query    | Is there any cheese
+  [OK] query    → query    | What food do we have
+  [OK] query    → query    | Is the TV on
+  [OK] query    → query    | Where is my phone
+  [OK] query    → query    | What is in the kitchen
+  [OK] query    → query    | Where can I find something to eat
+  [OK] chat     → chat     | Hello
+  [XX] chat     → need     | I am tired
+  [OK] chat     → chat     | Good morning
+  [OK] chat     → chat     | I feel sad
+  [OK] chat     → chat     | Thank you

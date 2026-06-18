@@ -1,0 +1,18 @@
+Experiment 6: Snapshot Injection — Hallucination Prevention
+Absent-object queries: 5
+
+With Snapshot:    0/5 hallucinations = 0%
+Without Snapshot: 0/5 hallucinations = 0%
+
+Details (absent objects only):
+Query                                      With  Without
+----------------------------------------------------------
+  Is there any cheese                       OK       OK 
+  Where is the cheese                       OK       OK 
+  Do we have any pizza                      OK       OK 
+  Is there wine                             OK       OK 
+  Where is the newspaper                    OK       OK 
+
+Example (cheese query):
+  With:    I don't see any cheese mentioned in the current home state.
+  Without: I don't have that information.
