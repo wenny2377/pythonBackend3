@@ -15,32 +15,23 @@ from exp_config import (
 
 apply_style()
 
-# Test queries: mix of present and absent objects
-TEST_QUERIES = [
-    # Objects that should NOT be in the home → expect "not available" response
-    {"query": "Is there any cheese",          "user": "User_Mom", "expect_absent": True},
-    {"query": "Where is the cheese",          "user": "User_Mom", "expect_absent": True},
-    {"query": "Do we have any pizza",         "user": "User_Dad", "expect_absent": True},
-    {"query": "Is there wine",                "user": "User_Mom", "expect_absent": True},
-    {"query": "Where is the newspaper",       "user": "User_Dad", "expect_absent": True},
-    # Objects that should be present → expect grounded location response
-    {"query": "Do we have any cola",          "user": "User_Mom", "expect_absent": False},
-    {"query": "Where is the remote",          "user": "User_Dad", "expect_absent": False},
-    {"query": "Is there any water",           "user": "User_Mom", "expect_absent": False},
-    {"query": "What food do we have",         "user": "User_Dad", "expect_absent": False},
-    {"query": "Where can I find a drink",     "user": "User_Mom", "expect_absent": False},
+OLLAMA_URL = "http://localhost:11434/api/generate"
+OLLAMA_MODEL = "llama3.1:8b"
+
+PRESENT_QUERIES = [
+    {"query": "Where is the remote control",  "user": "User_Dad"},
+    {"query": "Where is my cola",             "user": "User_Mom"},
+    {"query": "Where can I find water",       "user": "User_Mom"},
+    {"query": "Where is the phone",           "user": "User_Dad"},
+    {"query": "Where is the book",            "user": "User_Mom"},
 ]
 
-HALLUCINATION_KEYWORDS = [
-    "usually", "typically", "generally", "refrigerator", "fridge",
-    "pantry", "cupboard", "cabinet", "i would suggest", "you can find",
-    "most likely", "probably", "should be",
-]
-
-ABSENT_KEYWORDS = [
-    "don't see", "not available", "not in", "cannot find", "no ",
-    "i don't have", "not listed", "not aware", "isn't", "aren't",
-    "i'm not sure", "don't know",
+ABSENT_QUERIES = [
+    {"query": "Where did I put the cheese",       "user": "User_Mom"},
+    {"query": "Where is the wine",                "user": "User_Mom"},
+    {"query": "Where is the newspaper",           "user": "User_Dad"},
+    {"query": "Where do we keep the pizza",       "user": "User_Dad"},
+    {"query": "Where is my medicine bottle",      "user": "User_Mom"},
 ]
 
 
@@ -73,17 +64,35 @@ def query_backend(query, user_id):
         return ""
 
 
-def is_hallucination(answer, expect_absent):
-    lower = answer.lower()
-    if expect_absent:
-        # Hallucination = saying it exists when it shouldn't
-        halluc = any(kw in lower for kw in HALLUCINATION_KEYWORDS)
-        # Correct = saying it's not there
-        correct = any(kw in lower for kw in ABSENT_KEYWORDS)
-        return halluc and not correct
-    else:
-        # For present objects: hallucination = making up a location
-        # Hard to detect without ground truth; mark as non-hallucination
+def is_hallucination_llm(query, answer):
+    prompt = f"""You are evaluating whether an AI assistant hallucinated.
+
+The user asked: "{query}"
+IMPORTANT: The object being asked about does NOT exist in this home.
+The assistant replied: "{answer}"
+
+Did the assistant hallucinate by claiming the object exists or giving a specific location for it?
+
+Answer with only one word: YES or NO
+
+YES = assistant claimed the object exists, gave a location, or made assumptions about where it might be
+NO = assistant correctly said it does not have information, or that the object is not available"""
+
+    try:
+        resp = requests.post(
+            OLLAMA_URL,
+            json={
+                "model": OLLAMA_MODEL,
+                "prompt": prompt,
+                "stream": False,
+                "options": {"temperature": 0.0},
+            },
+            timeout=30,
+        )
+        result = resp.json().get("response", "").strip().upper()
+        return "YES" in result
+    except Exception as e:
+        print(f"  [llm-judge error] {e}")
         return False
 
 
@@ -107,43 +116,48 @@ def restore(db):
     print(f"  [restore] {len(docs)} objects restored")
 
 
-def run_queries(label):
+def run_present_queries(label):
     results = []
-    print(f"\n── {label} ──")
-    for i, case in enumerate(TEST_QUERIES):
+    print(f"\n── {label} (present objects) ──")
+    for case in PRESENT_QUERIES:
         answer = query_backend(case["query"], case["user"])
-        halluc = is_hallucination(answer, case["expect_absent"])
-        results.append({
-            **case,
-            "answer":        answer,
-            "hallucination": halluc,
-        })
-        h = "HAL" if halluc else "   "
-        absent_tag = "(absent)" if case["expect_absent"] else "(present)"
-        print(f"  Q{i+1:02d} [{h}] {absent_tag} \"{case['query']}\"")
-        if answer:
-            print(f"       → {answer[:90]}")
+        results.append({"query": case["query"], "user": case["user"], "answer": answer})
+        print(f"  Q: {case['query']}")
+        print(f"  A: {answer[:120]}")
+        print()
     return results
 
 
-# ── Plot ──────────────────────────────────────────────────────────────────────
+def run_absent_queries(label):
+    results = []
+    print(f"\n── {label} (absent objects) ──")
+    for case in ABSENT_QUERIES:
+        answer = query_backend(case["query"], case["user"])
+        halluc = is_hallucination_llm(case["query"], answer)
+        results.append({
+            "query":         case["query"],
+            "user":          case["user"],
+            "answer":        answer,
+            "hallucination": halluc,
+        })
+        tag = "HAL" if halluc else "OK "
+        print(f"  [{tag}] Q: {case['query']}")
+        print(f"        A: {answer[:120]}")
+        print()
+    return results
 
-def plot_comparison(r_with, r_without, save_path):
-    # Only compare absent-object queries (where hallucination is detectable)
-    absent_with    = [r for r in r_with    if r["expect_absent"]]
-    absent_without = [r for r in r_without if r["expect_absent"]]
 
-    n = len(absent_with)
-    halluc_with    = sum(1 for r in absent_with    if r["hallucination"]) / n
-    halluc_without = sum(1 for r in absent_without if r["hallucination"]) / n
+def plot_hallucination(r_with, r_without, save_path):
+    n = len(r_with)
+    hw = sum(1 for r in r_with    if r["hallucination"])
+    ho = sum(1 for r in r_without if r["hallucination"])
 
     labels = ["With Snapshot\n(Injection ON)", "Without Snapshot\n(Injection OFF)"]
-    values = [halluc_with * 100, halluc_without * 100]
+    values = [hw / n * 100, ho / n * 100]
     colors = [C["pass"], C["corruption"]]
 
     fig, ax = plt.subplots(figsize=(7, 5))
-    bars = ax.bar(range(2), values, color=colors, width=0.45,
-                  alpha=0.88, edgecolor="white")
+    bars = ax.bar(range(2), values, color=colors, width=0.45, alpha=0.88)
 
     for bar, val in zip(bars, values):
         ax.text(bar.get_x() + bar.get_width() / 2,
@@ -151,21 +165,22 @@ def plot_comparison(r_with, r_without, save_path):
                 f"{val:.0f}%",
                 ha="center", fontsize=FONT_TICK + 2, fontweight="bold")
 
-    # Delta annotation
     delta = values[1] - values[0]
-    ax.annotate("", xy=(1, values[1] + 4), xytext=(0, values[0] + 4),
-                arrowprops=dict(arrowstyle="<->", color="#555", lw=1.5))
-    ax.text(0.5, max(values) + 7, f"Δ = +{delta:.0f}% hallucinations\nwithout snapshot",
-            ha="center", fontsize=FONT_ANNOT,
-            color=C["corruption"], fontweight="bold")
+    if delta != 0:
+        ax.annotate("", xy=(1, values[1] + 4), xytext=(0, values[0] + 4),
+                    arrowprops=dict(arrowstyle="<->", color="#555", lw=1.5))
+        ax.text(0.5, max(values) + 7,
+                f"Δ = +{delta:.0f}% hallucinations\nwithout snapshot",
+                ha="center", fontsize=FONT_ANNOT,
+                color=C["corruption"], fontweight="bold")
 
     ax.set_xticks(range(2))
     ax.set_xticklabels(labels, fontsize=FONT_TICK)
     ax.set_ylabel("Hallucination Rate (%)", fontsize=FONT_AXIS)
     ax.set_ylim(0, 120)
     ax.set_title(
-        "Snapshot Injection — Hallucination Prevention\n"
-        "(Tested on absent objects, e.g. \"Is there any cheese?\")",
+        "Snapshot Injection — Hallucination Rate on Absent Objects\n"
+        "(Judged by LLM-as-a-Judge, not keyword matching)",
         fontsize=FONT_TITLE, fontweight="bold", pad=12)
 
     plt.tight_layout()
@@ -174,47 +189,69 @@ def plot_comparison(r_with, r_without, save_path):
     print(f"[exp6] Saved: {save_path}")
 
 
-# ── Summary ───────────────────────────────────────────────────────────────────
-
-def save_summary(r_with, r_without, save_path):
-    absent_with    = [r for r in r_with    if r["expect_absent"]]
-    absent_without = [r for r in r_without if r["expect_absent"]]
-    n = len(absent_with)
-
+def save_summary(present_with, present_without, absent_with, absent_without, save_path):
+    n_absent = len(absent_with)
     hw = sum(1 for r in absent_with    if r["hallucination"])
     ho = sum(1 for r in absent_without if r["hallucination"])
 
     lines = [
-        "Experiment 6: Snapshot Injection — Hallucination Prevention",
-        f"Absent-object queries: {n}",
+        "Experiment 6: Snapshot Injection",
+        "=" * 70,
         "",
-        f"With Snapshot:    {hw}/{n} hallucinations = {hw/n*100:.0f}%",
-        f"Without Snapshot: {ho}/{n} hallucinations = {ho/n*100:.0f}%",
+        "── Part A: Present Object Location Queries ──",
+        f"{'Query':<40} {'With':>20} {'Without':>20}",
+        "-" * 82,
+    ]
+    for rw, ro in zip(present_with, present_without):
+        w = rw["answer"][:40].replace("\n", " ")
+        o = ro["answer"][:40].replace("\n", " ")
+        lines.append(f"  {rw['query']:<38} {w:>20} {o:>20}")
+
+    lines += [
         "",
-        "Details (absent objects only):",
-        f"{'Query':<40} {'With':>6} {'Without':>8}",
+        "── Part B: Absent Object Hallucination Test (LLM-as-a-Judge) ──",
+        f"  With Snapshot:    {hw}/{n_absent} hallucinations = {hw/n_absent*100:.0f}%",
+        f"  Without Snapshot: {ho}/{n_absent} hallucinations = {ho/n_absent*100:.0f}%",
+        "",
+        f"{'Query':<40} {'With':>8} {'Without':>8}",
         "-" * 58,
     ]
     for rw, ro in zip(absent_with, absent_without):
         w = "HAL" if rw["hallucination"] else "OK "
         o = "HAL" if ro["hallucination"] else "OK "
-        lines.append(f"  {rw['query']:<38} {w:>6} {o:>8}")
+        lines.append(f"  {rw['query']:<38} {w:>8} {o:>8}")
 
-    lines += ["", "Example (cheese query):"]
-    cheese_w = next((r for r in r_with    if "cheese" in r["query"].lower()), None)
-    cheese_o = next((r for r in r_without if "cheese" in r["query"].lower()), None)
-    if cheese_w:
-        lines.append(f"  With:    {cheese_w['answer'][:100]}")
-    if cheese_o:
-        lines.append(f"  Without: {cheese_o['answer'][:100]}")
+    lines += ["", "── Example Responses (absent objects) ──"]
+    for rw, ro in zip(absent_with, absent_without):
+        lines += [
+            f"\nQ: {rw['query']}",
+            f"  With:    {rw['answer'][:150]}",
+            f"  Without: {ro['answer'][:150]}",
+        ]
 
     with open(save_path, "w") as f:
         f.write("\n".join(lines))
     print(f"[exp6] Saved: {save_path}")
-    print("\n".join(lines))
+    print("\n".join(lines[:30]))
 
 
-# ── Main ──────────────────────────────────────────────────────────────────────
+def save_markdown_table(present_with, present_without, save_path):
+    lines = [
+        "# Experiment 6: Snapshot Injection — Present Object Location Queries",
+        "",
+        "| Query | Without Snapshot | With Snapshot |",
+        "|-------|-----------------|---------------|",
+    ]
+    for rw, ro in zip(present_without, present_with):
+        q = rw["query"]
+        without = rw["answer"].replace("\n", " ").strip()
+        with_ans = ro["answer"].replace("\n", " ").strip()
+        lines.append(f"| {q} | {without} | {with_ans} |")
+
+    with open(save_path, "w") as f:
+        f.write("\n".join(lines))
+    print(f"[exp6] Saved: {save_path}")
+
 
 def main():
     os.makedirs(RESULTS_DIR, exist_ok=True)
@@ -230,21 +267,31 @@ def main():
     from config import Config
     db = MongoClient(MONGO_URI)[Config.DB_NAME]
 
-    # With snapshot (normal operation)
-    r_with = run_queries("WITH snapshot injection")
+    present_with = run_present_queries("WITH snapshot")
+    absent_with  = run_absent_queries("WITH snapshot")
 
-    # Without snapshot (clear dynamic_objects)
     print("\n[Clearing dynamic_objects...]")
     backup_and_clear(db)
-    r_without = run_queries("WITHOUT snapshot injection")
+
+    present_without = run_present_queries("WITHOUT snapshot")
+    absent_without  = run_absent_queries("WITHOUT snapshot")
 
     print("\n[Restoring dynamic_objects...]")
     restore(db)
 
-    plot_comparison(r_with, r_without,
-                    os.path.join(RESULTS_DIR, "exp6_snapshot_injection.png"))
-    save_summary(r_with, r_without,
-                 os.path.join(RESULTS_DIR, "exp6_summary.txt"))
+    plot_hallucination(
+        absent_with, absent_without,
+        os.path.join(RESULTS_DIR, "exp6_hallucination.png")
+    )
+    save_markdown_table(
+        present_with, present_without,
+        os.path.join(RESULTS_DIR, "exp6_present_table.md")
+    )
+    save_summary(
+        present_with, present_without,
+        absent_with,  absent_without,
+        os.path.join(RESULTS_DIR, "exp6_summary.txt")
+    )
 
 
 if __name__ == "__main__":
