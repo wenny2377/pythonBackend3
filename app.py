@@ -182,6 +182,8 @@ _demo_state = {
     "scene_user":    "",
 }
 
+_speaking_state = {"who": "none"}
+
 
 def preview_images(image_list, source_nodes, hint_user_id, activity):
     save_dir = "debug_images"
@@ -527,6 +529,26 @@ def demo_wait_scene_done():
     return jsonify({
         "done":  _demo_state["scene_done"],
         "scene": _demo_state["current_scene"],
+    }), 200
+
+
+@app.route('/demo/speaking', methods=['POST'])
+def demo_speaking():
+    data = request.get_json()
+    _speaking_state["who"] = data.get("who", "none")
+    return jsonify({"ok": True}), 200
+
+
+@app.route('/demo/speaking_state', methods=['GET'])
+def demo_speaking_state():
+    return jsonify(_speaking_state), 200
+
+
+@app.route('/demo/mami_status', methods=['GET'])
+def demo_mami_status():
+    return jsonify({
+        "is_listening": _speaking_state["who"] != "none",
+        "current_user": _demo_state.get("scene_user", ""),
     }), 200
 
 
