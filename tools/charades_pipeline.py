@@ -8,191 +8,189 @@ from config import Config
 from collections import defaultdict
 from pymongo import MongoClient
 
-
-
 CHARADES_TRAIN_CSV   = os.path.join(_ROOT, "data", "charades", "Charades_v1_train.csv")
 CHARADES_CLASSES_TXT = os.path.join(_ROOT, "data", "charades", "Charades_v1_classes.txt")
 MONGO_URI = "mongodb://127.0.0.1:27017/"
 DB_NAME   = Config.DB_NAME
 
 YOUR_LABELS = [
-    "Drinking", "SittingDrink", "Eating", "Cooking", "Opening",
-    "Laying", "Watching", "Reading", "Cleaning", "PhoneUse",
-    "Typing", "PickingUp", "PuttingDown", "Standing", "Walking",
+    "Drinking", "eatedDrinking", "Sitting", "Eating", "Cooking", "Opening",
+    "Laying", "Watching", "Reading", "Cleaning", "UsingPhone",
+    "Typing", "StandUp", "PickingUp", "PuttingDown", "Standing", "Walking",
 ]
 
 CHARADES_TO_YOUR = {
-    "holding some clothes":                          "Cleaning",
-    "putting clothes somewhere":                     "PuttingDown",
-    "taking some clothes from somewhere":            "PickingUp",
-    "throwing clothes somewhere":                    "PuttingDown",
-    "tidying some clothes":                          "Cleaning",
-    "washing some clothes":                          "Cleaning",
-    "closing a door":                                "Opening",
-    "fixing a door":                                 "Opening",
-    "opening a door":                                "Opening",
-    "putting something on a table":                  "PuttingDown",
-    "sitting on a table":                            "Sitting",
-    "sitting at a table":                            "Sitting",
-    "sitting in a chair":                            "Sitting",
-    "sitting on sofa/couch":                         "Sitting",
-    "sitting on the floor":                          "Sitting",
-    "sitting in a bed":                              "Sitting",
-    "someone is going from standing to sitting":     "Sitting",
-    "tidying up a table":                            "Cleaning",
-    "washing a table":                               "Cleaning",
-    "working at a table":                            "Typing",
-    "holding a phone/camera":                        "PhoneUse",
-    "playing with a phone/camera":                   "PhoneUse",
-    "putting a phone/camera somewhere":              "PuttingDown",
-    "taking a phone/camera from somewhere":          "PickingUp",
-    "talking on a phone/camera":                     "PhoneUse",
-    "holding a bag":                                 "PickingUp",
-    "opening a bag":                                 "Opening",
-    "putting a bag somewhere":                       "PuttingDown",
-    "taking a bag from somewhere":                   "PickingUp",
-    "throwing a bag somewhere":                      "PuttingDown",
-    "closing a book":                                "Reading",
-    "holding a book":                                "Reading",
-    "opening a book":                                "Opening",
-    "putting a book somewhere":                      "PuttingDown",
-    "smiling at a book":                             "Reading",
-    "taking a book from somewhere":                  "PickingUp",
-    "throwing a book somewhere":                     "PuttingDown",
-    "watching/reading/looking at a book":            "Reading",
-    "holding a towel/s":                             "Cleaning",
-    "putting a towel/s somewhere":                   "PuttingDown",
-    "taking a towel/s from somewhere":               "PickingUp",
-    "throwing a towel/s somewhere":                  "PuttingDown",
-    "tidying up a towel/s":                          "Cleaning",
-    "washing something with a towel":                "Cleaning",
-    "closing a box":                                 "Opening",
-    "holding a box":                                 "PickingUp",
-    "opening a box":                                 "Opening",
-    "putting a box somewhere":                       "PuttingDown",
-    "taking a box from somewhere":                   "PickingUp",
-    "taking something from a box":                   "PickingUp",
-    "throwing a box somewhere":                      "PuttingDown",
-    "closing a laptop":                              "Typing",
-    "holding a laptop":                              "Typing",
-    "opening a laptop":                              "Opening",
-    "putting a laptop somewhere":                    "PuttingDown",
-    "taking a laptop from somewhere":                "PickingUp",
-    "watching a laptop or something on a laptop":    "Watching",
-    "working/playing on a laptop":                   "Typing",
-    "holding a shoe/shoes":                          "PickingUp",
-    "putting shoes somewhere":                       "PuttingDown",
-    "putting on shoe/shoes":                         "Standing",
-    "taking shoes from somewhere":                   "PickingUp",
-    "taking off some shoes":                         "Standing",
-    "throwing shoes somewhere":                      "PuttingDown",
-    "standing on a chair":                           "Standing",
-    "holding some food":                             "Eating",
-    "putting some food somewhere":                   "PuttingDown",
-    "taking food from somewhere":                    "PickingUp",
-    "throwing food somewhere":                       "PuttingDown",
-    "eating a sandwich":                             "Eating",
-    "making a sandwich":                             "Cooking",
-    "holding a sandwich":                            "Eating",
-    "putting a sandwich somewhere":                  "PuttingDown",
-    "taking a sandwich from somewhere":              "PickingUp",
-    "holding a blanket":                             "Laying",
-    "putting a blanket somewhere":                   "PuttingDown",
-    "snuggling with a blanket":                      "Laying",
-    "taking a blanket from somewhere":               "PickingUp",
-    "throwing a blanket somewhere":                  "PuttingDown",
-    "tidying up a blanket/s":                        "Cleaning",
-    "holding a pillow":                              "Laying",
-    "putting a pillow somewhere":                    "PuttingDown",
-    "snuggling with a pillow":                       "Laying",
-    "taking a pillow from somewhere":                "PickingUp",
-    "throwing a pillow somewhere":                   "PuttingDown",
-    "putting something on a shelf":                  "PuttingDown",
-    "tidying a shelf or something on a shelf":       "Cleaning",
-    "reaching for and grabbing a picture":           "PickingUp",
-    "holding a picture":                             "Watching",
-    "laughing at a picture":                         "Watching",
-    "putting a picture somewhere":                   "PuttingDown",
-    "taking a picture of something":                 "PhoneUse",
-    "watching/looking at a picture":                 "Watching",
-    "closing a window":                              "Opening",
-    "opening a window":                              "Opening",
-    "washing a window":                              "Cleaning",
-    "watching/Looking outside of a window":          "Watching",
-    "holding a mirror":                              "Watching",
-    "smiling in a mirror":                           "Watching",
-    "washing a mirror":                              "Cleaning",
+    "holding some clothes":                              "Cleaning",
+    "putting clothes somewhere":                         "PuttingDown",
+    "taking some clothes from somewhere":                "PickingUp",
+    "throwing clothes somewhere":                        "PuttingDown",
+    "tidying some clothes":                              "Cleaning",
+    "washing some clothes":                              "Cleaning",
+    "closing a door":                                    "Opening",
+    "fixing a door":                                     "Opening",
+    "opening a door":                                    "Opening",
+    "putting something on a table":                      "PuttingDown",
+    "sitting on a table":                                "Sitting",
+    "sitting at a table":                                "Sitting",
+    "sitting in a chair":                                "Sitting",
+    "sitting on sofa/couch":                             "Sitting",
+    "sitting on the floor":                              "Sitting",
+    "sitting in a bed":                                  "Sitting",
+    "someone is going from standing to sitting":         "Sitting",
+    "tidying up a table":                                "Cleaning",
+    "washing a table":                                   "Cleaning",
+    "working at a table":                                "Typing",
+    "holding a phone/camera":                            "UsingPhone",
+    "playing with a phone/camera":                       "UsingPhone",
+    "putting a phone/camera somewhere":                  "PuttingDown",
+    "taking a phone/camera from somewhere":              "PickingUp",
+    "talking on a phone/camera":                         "UsingPhone",
+    "holding a bag":                                     "PickingUp",
+    "opening a bag":                                     "Opening",
+    "putting a bag somewhere":                           "PuttingDown",
+    "taking a bag from somewhere":                       "PickingUp",
+    "throwing a bag somewhere":                          "PuttingDown",
+    "closing a book":                                    "Reading",
+    "holding a book":                                    "Reading",
+    "opening a book":                                    "Opening",
+    "putting a book somewhere":                          "PuttingDown",
+    "smiling at a book":                                 "Reading",
+    "taking a book from somewhere":                      "PickingUp",
+    "throwing a book somewhere":                         "PuttingDown",
+    "watching/reading/looking at a book":                "Reading",
+    "holding a towel/s":                                 "Cleaning",
+    "putting a towel/s somewhere":                       "PuttingDown",
+    "taking a towel/s from somewhere":                   "PickingUp",
+    "throwing a towel/s somewhere":                      "PuttingDown",
+    "tidying up a towel/s":                              "Cleaning",
+    "washing something with a towel":                    "Cleaning",
+    "closing a box":                                     "Opening",
+    "holding a box":                                     "PickingUp",
+    "opening a box":                                     "Opening",
+    "putting a box somewhere":                           "PuttingDown",
+    "taking a box from somewhere":                       "PickingUp",
+    "taking something from a box":                       "PickingUp",
+    "throwing a box somewhere":                          "PuttingDown",
+    "closing a laptop":                                  "Typing",
+    "holding a laptop":                                  "Typing",
+    "opening a laptop":                                  "Opening",
+    "putting a laptop somewhere":                        "PuttingDown",
+    "taking a laptop from somewhere":                    "PickingUp",
+    "watching a laptop or something on a laptop":        "Watching",
+    "working/playing on a laptop":                       "Typing",
+    "holding a shoe/shoes":                              "PickingUp",
+    "putting shoes somewhere":                           "PuttingDown",
+    "putting on shoe/shoes":                             "Standing",
+    "taking shoes from somewhere":                       "PickingUp",
+    "taking off some shoes":                             "Standing",
+    "throwing shoes somewhere":                          "PuttingDown",
+    "standing on a chair":                               "Standing",
+    "holding some food":                                 "Eating",
+    "putting some food somewhere":                       "PuttingDown",
+    "taking food from somewhere":                        "PickingUp",
+    "throwing food somewhere":                           "PuttingDown",
+    "eating a sandwich":                                 "Eating",
+    "making a sandwich":                                 "Cooking",
+    "holding a sandwich":                                "Eating",
+    "putting a sandwich somewhere":                      "PuttingDown",
+    "taking a sandwich from somewhere":                  "PickingUp",
+    "holding a blanket":                                 "Laying",
+    "putting a blanket somewhere":                       "PuttingDown",
+    "snuggling with a blanket":                          "Laying",
+    "taking a blanket from somewhere":                   "PickingUp",
+    "throwing a blanket somewhere":                      "PuttingDown",
+    "tidying up a blanket/s":                            "Cleaning",
+    "holding a pillow":                                  "Laying",
+    "putting a pillow somewhere":                        "PuttingDown",
+    "snuggling with a pillow":                           "Laying",
+    "taking a pillow from somewhere":                    "PickingUp",
+    "throwing a pillow somewhere":                       "PuttingDown",
+    "putting something on a shelf":                      "PuttingDown",
+    "tidying a shelf or something on a shelf":           "Cleaning",
+    "reaching for and grabbing a picture":               "PickingUp",
+    "holding a picture":                                 "Watching",
+    "laughing at a picture":                             "Watching",
+    "putting a picture somewhere":                       "PuttingDown",
+    "taking a picture of something":                     "UsingPhone",
+    "watching/looking at a picture":                     "Watching",
+    "closing a window":                                  "Opening",
+    "opening a window":                                  "Opening",
+    "washing a window":                                  "Cleaning",
+    "watching/Looking outside of a window":              "Watching",
+    "holding a mirror":                                  "Watching",
+    "smiling in a mirror":                               "Watching",
+    "washing a mirror":                                  "Cleaning",
     "watching something/someone/themselves in a mirror": "Watching",
-    "walking through a doorway":                     "Walking",
-    "holding a broom":                               "Cleaning",
-    "putting a broom somewhere":                     "PuttingDown",
-    "taking a broom from somewhere":                 "PickingUp",
-    "throwing a broom somewhere":                    "PuttingDown",
-    "tidying up with a broom":                       "Cleaning",
-    "fixing a light":                                "Standing",
-    "turning on a light":                            "Standing",
-    "turning off a light":                           "Standing",
-    "drinking from a cup/glass/bottle":              "Drinking",
-    "holding a cup/glass/bottle of something":       "Drinking",
-    "pouring something into a cup/glass/bottle":     "Drinking",
-    "putting a cup/glass/bottle somewhere":          "PuttingDown",
-    "taking a cup/glass/bottle from somewhere":      "PickingUp",
-    "washing a cup/glass/bottle":                    "Cleaning",
-    "closing a closet/cabinet":                      "Opening",
-    "opening a closet/cabinet":                      "Opening",
-    "tidying up a closet/cabinet":                   "Cleaning",
-    "someone is holding a paper/notebook":           "Reading",
-    "putting their paper/notebook somewhere":        "PuttingDown",
-    "taking paper/notebook from somewhere":          "PickingUp",
-    "holding a dish":                                "Cleaning",
-    "putting a dish/es somewhere":                   "PuttingDown",
-    "taking a dish/es from somewhere":               "PickingUp",
-    "wash a dish/dishes":                            "Cleaning",
-    "lying on a sofa/couch":                         "Laying",
-    "lying on the floor":                            "Laying",
-    "throwing something on the floor":               "PuttingDown",
-    "tidying something on the floor":                "Cleaning",
-    "holding some medicine":                         "Drinking",
-    "taking/consuming some medicine":                "Drinking",
-    "putting groceries somewhere":                   "PuttingDown",
-    "laughing at television":                        "Watching",
-    "watching television":                           "Watching",
-    "lying on a bed":                                "Laying",
-    "fixing a vacuum":                               "Cleaning",
-    "holding a vacuum":                              "Cleaning",
-    "taking a vacuum from somewhere":                "PickingUp",
-    "washing their hands":                           "Cleaning",
-    "fixing a doorknob":                             "Opening",
-    "grasping onto a doorknob":                      "Opening",
-    "closing a refrigerator":                        "Opening",
-    "opening a refrigerator":                        "Opening",
-    "fixing their hair":                             "Standing",
-    "working on paper/notebook":                     "Typing",
-    "someone is cooking something":                  "Cooking",
-    "someone is dressing":                           "Standing",
-    "someone is laughing":                           "Watching",
-    "someone is running somewhere":                  "Walking",
-    "someone is smiling":                            "Watching",
-    "someone is sneezing":                           "Standing",
-    "someone is undressing":                         "Standing",
-    "someone is eating something":                   "Eating",
-    "someone is standing up from somewhere":         "StandUp",
-    "someone is awakening somewhere":                "StandUp",
-    "someone is awakening in bed":                   "StandUp",
+    "walking through a doorway":                         "Walking",
+    "holding a broom":                                   "Cleaning",
+    "putting a broom somewhere":                         "PuttingDown",
+    "taking a broom from somewhere":                     "PickingUp",
+    "throwing a broom somewhere":                        "PuttingDown",
+    "tidying up with a broom":                           "Cleaning",
+    "fixing a light":                                    "Standing",
+    "turning on a light":                                "Standing",
+    "turning off a light":                               "Standing",
+    "drinking from a cup/glass/bottle":                  "Drinking",
+    "holding a cup/glass/bottle of something":           "Drinking",
+    "pouring something into a cup/glass/bottle":         "Drinking",
+    "putting a cup/glass/bottle somewhere":              "PuttingDown",
+    "taking a cup/glass/bottle from somewhere":          "PickingUp",
+    "washing a cup/glass/bottle":                        "Cleaning",
+    "closing a closet/cabinet":                          "Opening",
+    "opening a closet/cabinet":                          "Opening",
+    "tidying up a closet/cabinet":                       "Cleaning",
+    "someone is holding a paper/notebook":               "Reading",
+    "putting their paper/notebook somewhere":            "PuttingDown",
+    "taking paper/notebook from somewhere":              "PickingUp",
+    "holding a dish":                                    "Cleaning",
+    "putting a dish/es somewhere":                       "PuttingDown",
+    "taking a dish/es from somewhere":                   "PickingUp",
+    "wash a dish/dishes":                                "Cleaning",
+    "lying on a sofa/couch":                             "Laying",
+    "lying on the floor":                                "Laying",
+    "throwing something on the floor":                   "PuttingDown",
+    "tidying something on the floor":                    "Cleaning",
+    "holding some medicine":                             "Drinking",
+    "taking/consuming some medicine":                    "Drinking",
+    "putting groceries somewhere":                       "PuttingDown",
+    "laughing at television":                            "Watching",
+    "watching television":                               "Watching",
+    "lying on a bed":                                    "Laying",
+    "fixing a vacuum":                                   "Cleaning",
+    "holding a vacuum":                                  "Cleaning",
+    "taking a vacuum from somewhere":                    "PickingUp",
+    "washing their hands":                               "Cleaning",
+    "fixing a doorknob":                                 "Opening",
+    "grasping onto a doorknob":                          "Opening",
+    "closing a refrigerator":                            "Opening",
+    "opening a refrigerator":                            "Opening",
+    "fixing their hair":                                 "Standing",
+    "working on paper/notebook":                         "Typing",
+    "someone is cooking something":                      "Cooking",
+    "someone is dressing":                               "Standing",
+    "someone is laughing":                               "Watching",
+    "someone is running somewhere":                      "Walking",
+    "someone is smiling":                                "Watching",
+    "someone is sneezing":                               "Standing",
+    "someone is undressing":                             "Standing",
+    "someone is eating something":                       "Eating",
+    "someone is standing up from somewhere":             "StandUp",
+    "someone is awakening somewhere":                    "StandUp",
+    "someone is awakening in bed":                       "StandUp",
 }
 
 FURNITURE_PATTERNS = {
-    "sofa":         re.compile(r"\b(sofa|couch|settee)\b",            re.IGNORECASE),
-    "bed":          re.compile(r"\b(bed)\b",                          re.IGNORECASE),
-    "refrigerator": re.compile(r"\b(refrigerator|fridge)\b",          re.IGNORECASE),
-    "stove":        re.compile(r"\b(stove|oven|cooker)\b",            re.IGNORECASE),
-    "dining table": re.compile(r"\b(dining\s+table|dinner\s+table)\b",re.IGNORECASE),
-    "chair":        re.compile(r"\b(chair)\b",                        re.IGNORECASE),
-    "tv":           re.compile(r"\b(television|tv)\b",                re.IGNORECASE),
-    "desk":         re.compile(r"\b(desk)\b",                         re.IGNORECASE),
-    "sink":         re.compile(r"\b(sink|washbasin)\b",               re.IGNORECASE),
-    "toilet":       re.compile(r"\b(toilet)\b",                       re.IGNORECASE),
-    "cabinet":      re.compile(r"\b(cabinet|cupboard)\b",             re.IGNORECASE),
+    "sofa":         re.compile(r"\b(sofa|couch|settee)\b",             re.IGNORECASE),
+    "bed":          re.compile(r"\b(bed)\b",                           re.IGNORECASE),
+    "refrigerator": re.compile(r"\b(refrigerator|fridge)\b",           re.IGNORECASE),
+    "stove":        re.compile(r"\b(stove|oven|cooker)\b",             re.IGNORECASE),
+    "dining table": re.compile(r"\b(dining\s+table|dinner\s+table)\b", re.IGNORECASE),
+    "chair":        re.compile(r"\b(chair)\b",                         re.IGNORECASE),
+    "tv":           re.compile(r"\b(television|tv)\b",                 re.IGNORECASE),
+    "desk":         re.compile(r"\b(desk)\b",                          re.IGNORECASE),
+    "sink":         re.compile(r"\b(sink|washbasin)\b",                re.IGNORECASE),
+    "toilet":       re.compile(r"\b(toilet)\b",                        re.IGNORECASE),
+    "cabinet":      re.compile(r"\b(cabinet|cupboard)\b",              re.IGNORECASE),
 }
 
 OVERLAP_THRESHOLD   = 0.5
@@ -264,12 +262,11 @@ def process_csv(csv_path: str, classes: dict) -> tuple:
                 desc = classes.get(act["class_id"], "")
                 your = map_to_your_label(desc)
                 if your:
-                    # Context rule: drinking near sofa/chair → SittingDrink
                     if your == "Drinking" and any(
                         f in present_furniture
                         for f in ["sofa", "chair", "dining table"]
                     ):
-                        your = "SittingDrink"
+                        your = "eatedDrinking"
                     mapped.append({
                         "label": your,
                         "start": act["start"],
@@ -279,7 +276,6 @@ def process_csv(csv_path: str, classes: dict) -> tuple:
 
             mapped.sort(key=lambda x: x["start"])
 
-            # Sequential transition counting
             for i in range(len(mapped)):
                 a = mapped[i]
                 for j in range(i + 1, len(mapped)):
@@ -297,7 +293,6 @@ def process_csv(csv_path: str, classes: dict) -> tuple:
                         if (overlap_len / max(a_len, 1e-6)) < 0.1:
                             pair_counts[a["label"]][b["label"]] += 1
 
-            # Affordance co-occurrence (deduplicated per video)
             seen = set()
             for act in mapped:
                 act_furniture = detect_furniture(act["desc"])
@@ -361,7 +356,7 @@ def normalize_affinity(raw_affinity: dict) -> dict:
 
 
 def validate_transition_matrix(matrix: dict) -> bool:
-    print("\n=== Transition Matrix Validation (each row should sum to 1.0) ===")
+    print("\n=== Transition Matrix Validation ===")
     all_ok = True
     for src, dsts in sorted(matrix.items()):
         total = sum(dsts.values())
@@ -371,7 +366,7 @@ def validate_transition_matrix(matrix: dict) -> bool:
         if not ok:
             all_ok = False
     if all_ok:
-        print("  All rows sum to 1.0 (re-normalization applied).")
+        print("  All rows sum to 1.0")
     return all_ok
 
 
@@ -381,7 +376,6 @@ def save_to_mongo(transition_matrix: dict,
     client = MongoClient(MONGO_URI)
     db     = client[DB_NAME]
 
-    # transition_matrix — general prior for SceneEngine._temporal_smooth()
     db.transition_matrix.delete_many({})
     trans_docs = [
         {"from": src, "to": dst, "probability": prob}
@@ -392,7 +386,6 @@ def save_to_mongo(transition_matrix: dict,
         db.transition_matrix.insert_many(trans_docs)
     print(f"\n[Charades] transition_matrix: {len(trans_docs)} records written")
 
-    # charades_affinity — raw co-occurrence scores
     db.charades_affinity.delete_many({})
     aff_docs = [
         {"furniture": furn, "behavior": action,
@@ -404,7 +397,6 @@ def save_to_mongo(transition_matrix: dict,
         db.charades_affinity.insert_many(aff_docs)
     print(f"[Charades] charades_affinity: {len(aff_docs)} records written")
 
-    # charades_affinity_normalized — used by SceneEngine._distill_affinity_matrix()
     db.charades_affinity_normalized.delete_many({})
     norm_docs = [
         {"furniture": furn, "behavior": action,
@@ -421,18 +413,19 @@ def save_to_mongo(transition_matrix: dict,
 
 def print_summary(transition_matrix: dict, normalized_affinity: dict):
     print("\n=== Transition Matrix Sample ===")
-    for src in YOUR_LABELS[:8]:
+    for src in ["Drinking", "eatedDrinking", "Eating", "Cooking",
+                "Watching", "Reading", "Typing", "UsingPhone"]:
         row = transition_matrix.get(src, {})
         top = sorted(row.items(), key=lambda x: -x[1])[:3]
         if top:
-            print(f"  {src:16s} → {top}")
+            print(f"  {src:18s} → {top}")
 
     print("\n=== Affordance Affinity (normalized, top-5 per furniture) ===")
     for furn in ["sofa", "stove", "bed", "tv", "refrigerator",
                  "dining table", "chair", "sink", "desk"]:
         row = normalized_affinity.get(furn, {})
         if not row:
-            print(f'  "{furn}": {{}}  # no Charades data')
+            print(f'  "{furn}": {{}}')
             continue
         top = sorted(row.items(), key=lambda x: -x[1])[:5]
         items_str = ", ".join(f'"{a}": {s}' for a, s in top)
@@ -446,7 +439,6 @@ if __name__ == "__main__":
 
     if not os.path.exists(CHARADES_TRAIN_CSV):
         print(f"[error] {CHARADES_TRAIN_CSV} not found")
-        print("Download from: https://prior.allenai.org/projects/charades")
         raise SystemExit(1)
 
     if not os.path.exists(CHARADES_CLASSES_TXT):

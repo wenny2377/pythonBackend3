@@ -10,12 +10,13 @@ import os
 
 import cv2
 import numpy as np
-import faiss
 
 from dataclasses import dataclass, field
 from collections import defaultdict, Counter
-from pymongo import MongoClient, UpdateOne, ReturnDocument
+from pymongo import UpdateOne, ReturnDocument
 from sentence_transformers import SentenceTransformer
+
+from config import Config
 
 try:
     import yaml as _yaml
@@ -31,23 +32,17 @@ def _load_config(path: str) -> dict:
     return {}
 
 
-_ontology = _load_config("config/robot_ontology.yaml")
-_beh_cfg  = _load_config("config/behavior_config.yaml")
-_sys_cfg  = _load_config("config/system_config.yaml")
-_coco_cfg = _load_config("config/coco_objects.yaml")
-_beh_reg  = _load_config("config/behavior_registry.yaml")
+_defs    = _load_config(Config.DEFINITIONS_YAML)
+_objects = _load_config(Config.OBJECTS_YAML)
 
-_hp = _sys_cfg.get("hyperparameters", {})
-
-STRUCTURAL_BLACKLIST = set(_ontology.get("structural_blacklist", [
+STRUCTURAL_BLACKLIST = set(_objects.get("structural_blacklist", [
     "wall", "floor", "ceiling", "wooden floor", "white wall", "window",
     "door", "ground", "concrete floor", "tile floor", "carpet", "baseboard",
 ]))
 
 YOUR_OBJECTS = (
-    set(_coco_cfg.get("coco_objects", [])) |
-    set(_ontology.get("scene_objects", [])) |
-    set(str(k).lower() for k in _ontology.get("item_to_action", {}).keys()) |
+    set(_objects.get("coco_objects", [])) |
+    set(_objects.get("item_to_action", {}).keys()) |
     {"remote", "remote control", "tv remote", "juice", "cola", "pan",
      "broom", "mop", "spatula", "bowl", "saladbowl", "cup", "bottle", "phone",
      "book", "laptop", "keyboard", "fork", "spoon", "plate", "food"}
@@ -55,100 +50,103 @@ YOUR_OBJECTS = (
 
 LABEL_NORMALIZE_MAP = {
     str(k).lower(): str(v).strip('"').strip()
-    for k, v in _ontology.get("label_normalize_map", {}).items()
+    for k, v in _objects.get("label_normalize_map", {}).items()
 }
 
 ITEM_TO_ACTION = {
     str(k).lower(): str(v).strip('"').strip()
-    for k, v in _ontology.get("item_to_action", {}).items()
+    for k, v in _objects.get("item_to_action", {}).items()
 }
 
 OBJECT_VOCAB = list(dict.fromkeys(
     list(ITEM_TO_ACTION.keys()) +
-    list(_ontology.get("object_vocab", [])) +
+    list(_objects.get("object_vocab", [])) +
     ["none", "remote", "book", "phone", "laptop", "broom", "mop",
      "cup", "glass", "bottle", "bowl", "fork", "spoon", "pan",
      "spatula", "keyboard", "magazine", "chopsticks", "smartphone"]
 ))
 
-_BODY_CONSTRAINTS_RAW = _beh_reg.get("body_impossible", {}) or \
-    _ontology.get("body_constraints", {}).get("impossible", {})
-BODY_IMPOSSIBLE = {
-    (pos.lower(), beh)
-    for pos, behs in _BODY_CONSTRAINTS_RAW.items()
-    for beh in (behs or [])
-}
-
 STRONG_HELD_ITEMS = {
     str(k).lower(): str(v).strip()
-    for k, v in _beh_reg.get("strong_held_items", {
+    for k, v in _defs.get("strong_held_items", {
         "broom": "Cleaning", "mop": "Cleaning",
-        "book": "Reading", "magazine": "Reading",
         "pan": "Cooking", "spatula": "Cooking",
     }).items()
 }
 
 ROOM_IMPOSSIBLE = {
     str(room): list(behaviors)
-    for room, behaviors in _beh_reg.get("room_impossible", {}).items()
+    for room, behaviors in _defs.get("room_impossible", {}).items()
 }
 
-BEHAVIOR_LABELS = _beh_cfg.get("behavior_labels", [
-    "Drinking", "SittingDrink", "Sitting", "Eating", "Cooking", "Opening",
-    "Laying", "Watching", "Reading", "Cleaning", "PhoneUse",
+BEHAVIOR_LABELS = _defs.get("behavior_labels", [
+    "Drinking", "SeatedDrinking", "Sitting", "Eating", "Cooking", "Opening",
+    "Laying", "Watching", "Reading", "Cleaning", "UsingPhone",
     "Typing", "StandUp", "PickingUp", "PuttingDown", "Standing", "Walking",
 ])
 
-NO_WEIGHT_ACTIONS = set(_beh_cfg.get("no_weight_actions",
+NO_WEIGHT_ACTIONS = set(_defs.get("no_weight_actions",
     ["PickingUp", "PuttingDown", "Walking", "Standing", "StandUp"]))
 
 VISION_PROTOTYPES = {
     k: v.strip()
-    for k, v in _beh_cfg.get("vision_prototypes", {}).items()
+    for k, v in _defs.get("vision_prototypes", {}).items()
 }
 
-_BEHAVIOUR_CFG = _beh_cfg.get("behaviours", {})
-
-NEARBY_OBJECT_RADIUS       = float(_hp.get("nearby_object_radius", 2.0))
-HEADING_THRESHOLD          = float(_hp.get("heading_threshold", 0.55))
-NORMALIZE_THRESHOLD        = float(_hp.get("normalize_threshold", 0.38))
-SEMANTIC_THRESHOLD         = float(_hp.get("semantic_threshold", 0.35))
-COORD_MATCH_DIST           = float(_hp.get("coord_match_dist", 1.5))
-COORD_VERIFY_DIST          = float(_hp.get("coord_verify_dist", 2.0))
-BULK_WRITE_THRESHOLD       = int(_hp.get("bulk_write_threshold", 20))
-BULK_WRITE_INTERVAL        = float(_hp.get("bulk_write_interval", 30.0))
-L3_STANDARD_THRESHOLD      = float(_hp.get("l3_standard_threshold", 0.40))
-HIGH_AFFORDANCE_L3_THRESHOLD = float(_hp.get("high_affordance_l3_threshold", 0.30))
-VLM_CONFIDENCE_THRESHOLD   = float(_hp.get("vlm_confidence_threshold", 0.50))
-VLM_HINT_CONFIDENCE_GATE   = float(_hp.get("vlm_hint_confidence_gate", 0.60))
-
-HIGH_AFFORDANCE_FURNITURE = set(_ontology.get("high_affordance_furniture", [
+HIGH_AFFORDANCE_FURNITURE = set(_objects.get("high_affordance_furniture", [
     "tv", "television", "stove", "oven", "refrigerator", "fridge",
     "keyboard", "monitor", "cabinet"
 ]))
 
-HELD_WEIGHT        = 0.7
-NEARBY_WEIGHT      = 0.3
-SAYCAN_MIN_SCORE   = 0.15
-MIN_WRITE_CONFIDENCE = 0.20
+NEARBY_OBJECT_RADIUS     = Config.NEARBY_OBJECT_RADIUS
+HEADING_THRESHOLD        = Config.HEADING_THRESHOLD
+NORMALIZE_THRESHOLD      = Config.NORMALIZE_THRESHOLD
+SEMANTIC_THRESHOLD       = Config.SEMANTIC_THRESHOLD
+COORD_MATCH_DIST         = Config.COORD_MATCH_DIST
+COORD_VERIFY_DIST        = Config.COORD_VERIFY_DIST
+BULK_WRITE_THRESHOLD     = Config.BULK_WRITE_THRESHOLD
+BULK_WRITE_INTERVAL      = Config.BULK_WRITE_INTERVAL
+VLM_CONFIDENCE_THRESHOLD = Config.VLM_CONFIDENCE_THRESHOLD
+MIN_WRITE_CONFIDENCE     = Config.MIN_WRITE_CONFIDENCE
+VLM_MAX_RETRIES          = Config.VLM_MAX_RETRIES
+VLM_RETRY_DELAY          = Config.VLM_RETRY_DELAY
+
+ENTROPY_HIGH = Config.ENTROPY_HIGH_THRESHOLD
+ENTROPY_LOW  = Config.ENTROPY_LOW_THRESHOLD
+VLM_W_HIGH   = Config.ENTROPY_VLM_WEIGHT_HIGH
+VLM_W_LOW    = Config.ENTROPY_VLM_WEIGHT_LOW
 
 ACTION_TO_RELATION = {
-    "Drinking":    "holding",
-    "SittingDrink":"sitting_on",
-    "Sitting":     "sitting_on",
-    "Eating":      "eating_at",
-    "Cooking":     "using",
-    "Opening":     "interacting_with",
-    "Laying":      "lying_on",
-    "Watching":    "watching",
-    "Reading":     "holding",
-    "Cleaning":    "using",
-    "PhoneUse":    "holding",
-    "Typing":      "using",
-    "StandUp":     "near",
-    "Standing":    "near",
-    "Walking":     "near",
+    "Drinking":       "holding",
+    "SeatedDrinking": "holding",
+    "Sitting":        "sitting_on",
+    "Eating":         "eating_at",
+    "Cooking":        "using",
+    "Opening":        "interacting_with",
+    "Laying":         "lying_on",
+    "Watching":       "watching",
+    "Reading":        "holding",
+    "Cleaning":       "using",
+    "UsingPhone":     "holding",
+    "Typing":         "using",
+    "StandUp":        "near",
+    "Standing":       "near",
+    "Walking":        "near",
 }
+
+GT_NORMALIZE_MAP = {
+    "seateddrinking": "Drinking",
+    "dadreading":     "Reading",
+    "dadcleaning":    "Cleaning",
+    "dadphone":       "UsingPhone",
+}
+
+
+def normalize_ground_truth(label: str) -> str:
+    if not label:
+        return label
+    key = label.lower().strip().replace(" ", "").replace("_", "")
+    return GT_NORMALIZE_MAP.get(key, label)
 
 
 def _get_time_slot(virtual_hour) -> str:
@@ -175,12 +173,6 @@ def _virtual_day_to_date(virtual_day) -> str:
             return (base + datetime.timedelta(days=day_int - 1)).strftime("%Y-%m-%d")
     except (ValueError, TypeError):
         pass
-    if isinstance(virtual_day, str) and len(virtual_day) == 10:
-        try:
-            datetime.datetime.strptime(virtual_day, "%Y-%m-%d")
-            return virtual_day
-        except ValueError:
-            pass
     return datetime.datetime.utcnow().strftime("%Y-%m-%d")
 
 
@@ -194,25 +186,6 @@ def normalize_label(label, sbert_model=None):
     if clean in LABEL_NORMALIZE_MAP:
         return LABEL_NORMALIZE_MAP[clean]
     return clean
-
-
-@dataclass
-class PerceptionResult:
-    vlm_output:        str   = ""
-    spatial_action:    str   = ""
-    zone_name:         str   = ""
-    sbert_sim:         float = 0.0
-    upgrade_reason:    str   = ""
-    interacting_items: list  = field(default_factory=list)
-    user_pos:          dict  = field(default_factory=dict)
-    room:              str   = ""
-    instance:          str   = ""
-    spatial_relations: dict  = field(default_factory=dict)
-    raw_desc:          str   = ""
-    ground_truth:      str   = ""
-    experiment_mode:   str   = "habit"
-    virtual_hour:      float = 12.0
-    user_id:           str   = ""
 
 
 class RoomEmbeddingCache:
@@ -249,8 +222,8 @@ class RoomEmbeddingCache:
     def bind_topk(self, label, k=3, threshold=0.35):
         if self._embeddings is None or not self._labels:
             return []
-        q_emb = self.model.encode([label], normalize_embeddings=True)[0].astype("float32")
-        sims  = self._embeddings @ q_emb
+        q_emb   = self.model.encode([label], normalize_embeddings=True)[0].astype("float32")
+        sims    = self._embeddings @ q_emb
         top_idx = np.argsort(sims)[::-1][:k]
         return [(self._docs[i], float(sims[i])) for i in top_idx if float(sims[i]) >= threshold]
 
@@ -261,67 +234,6 @@ class RoomEmbeddingCache:
     @property
     def current_room(self):
         return self._room
-
-
-class ChangeStreamSync:
-    def __init__(self, scene_col, room_cache):
-        self.scene_col  = scene_col
-        self.room_cache = room_cache
-        self._map       = {}
-        self._lock      = threading.Lock()
-        self._running   = False
-        self._load_all()
-
-    def _load_all(self):
-        docs = list(self.scene_col.find({}))
-        with self._lock:
-            self._map = {d.get("label", ""): d for d in docs}
-
-    def start(self):
-        self._running = True
-        threading.Thread(target=self._watch_loop, daemon=True).start()
-
-    def stop(self):
-        self._running = False
-
-    def _watch_loop(self):
-        try:
-            with self.scene_col.watch(full_document="updateLookup") as stream:
-                for change in stream:
-                    if not self._running:
-                        break
-                    op  = change.get("operationType")
-                    doc = change.get("fullDocument")
-                    if doc and op in ("insert", "update", "replace"):
-                        with self._lock:
-                            self._map[doc.get("label", "")] = doc
-                    elif op == "delete":
-                        with self._lock:
-                            self._map.pop(
-                                change.get("documentKey", {}).get("label", ""), None)
-        except Exception:
-            while self._running:
-                try:
-                    docs = list(self.scene_col.find({}))
-                    with self._lock:
-                        self._map = {d.get("label", ""): d for d in docs}
-                except Exception:
-                    pass
-                time.sleep(10)
-
-    def get(self, label):
-        with self._lock:
-            return self._map.get(label)
-
-    def find_by_room(self, room_name):
-        with self._lock:
-            return [d for d in self._map.values()
-                    if room_name.lower() in
-                    (d.get("room", "") + d.get("room_name", "")).lower()]
-
-    def all_docs(self):
-        with self._lock:
-            return list(self._map.values())
 
 
 class BulkWriteBuffer:
@@ -370,69 +282,31 @@ class BulkWriteBuffer:
             return len(self._pending)
 
 
-class FAISSMemoryStore:
-    def __init__(self, sbert_model, dim=384):
-        self.model    = sbert_model
-        self.index    = faiss.IndexFlatIP(dim)
-        self.metadata = []
-
-    def build_memory_text(self, user, action, instance,
-                          interacting_items, all_items, spatial_relations):
-        parts = [f"{user} {action} near {instance}"]
-        if interacting_items:
-            parts[0] += f" with {', '.join(interacting_items)}"
-        parts[0] += "."
-        for rel in spatial_relations:
-            s = rel.get("subject", "")
-            r = rel.get("relation", "")
-            o = rel.get("object", "")
-            if s and r and o:
-                parts.append(f"{s} {r} {o}.")
-        bg = [i for i in all_items if i not in interacting_items]
-        if bg:
-            parts.append(f"Visible: {', '.join(bg)}.")
-        return " ".join(parts)
-
-    def add(self, text, metadata):
-        emb = self.model.encode(
-            [text], normalize_embeddings=True)[0].astype("float32")
-        self.index.add(np.array([emb]))
-        self.metadata.append({**metadata, "memory_text": text})
-
-    def search(self, query, k=5):
-        if self.index.ntotal == 0:
-            return []
-        q = self.model.encode(
-            [query], normalize_embeddings=True)[0].astype("float32")
-        scores, indices = self.index.search(np.array([q]), k)
-        return [{"score": float(s), **self.metadata[i]}
-                for s, i in zip(scores[0], indices[0]) if i >= 0]
-
-
 class PerceptionEngine:
 
     def __init__(self, db, ollama_url: str, vlm_model: str,
                  sbert_model, scene_engine,
                  face_analyzer=None, face_bank=None):
-        self.db          = db
-        self.url         = ollama_url
-        self.model       = vlm_model
-        self.sbert       = sbert_model
+        self.db           = db
+        self.url          = ollama_url
+        self.model        = vlm_model
+        self.sbert        = sbert_model
         self.scene_engine = scene_engine
-        self.face_app    = face_analyzer
-        self.face_bank   = face_bank
+        self.face_app     = face_analyzer
+        self.face_bank    = face_bank
 
-        self.col_scene      = db.scene_snapshots
-        self.col_dynamic    = db.dynamic_objects
-        self.col_raw        = db.raw_objects
-        self.col_eval       = db.eval_logs
-        self.col_sem        = db.semantic_memories
-        self.col_obs        = db.observation_logs
-        self.col_habit_snap = db.habit_snapshots
-        self.col_activity   = db.activity_sequences
-        self.col_user_aff   = db.user_spatial_affinity
-        self.col_aff_history= db.affinity_history
-        self.col_memory     = db.robot_memory
+        self._vlm_timeout = Config.VLM_TIMEOUT
+        self._llm_timeout = Config.LLM_TIMEOUT
+        self._llm_url     = ollama_url
+        self._llm_model   = Config.LLM_MODEL
+
+        self.col_scene    = db.scene_snapshots
+        self.col_dynamic  = db.dynamic_objects
+        self.col_raw      = db.raw_objects
+        self.col_obs      = db.observation_logs
+        self.col_activity = db.activity_sequences
+        self.col_user_aff = db.user_spatial_affinity
+        self.col_aff_hist = db.affinity_history
 
         self._proto_labels = self.scene_engine._proto_labels
         self._proto_vecs   = self.scene_engine._proto_vecs
@@ -441,69 +315,87 @@ class PerceptionEngine:
         self._build_prototype_vecs()
 
         self._room_cache = RoomEmbeddingCache(self.sbert)
+        self.room_cache  = RoomEmbeddingCache(self.sbert)
         self._bulk_buf   = BulkWriteBuffer(self.col_dynamic)
-
-        dim = self.sbert.get_sentence_embedding_dimension()
-        self._faiss_dyn  = FAISSMemoryStore(sbert_model=self.sbert, dim=dim)
-        self.faiss_store = FAISSMemoryStore(sbert_model=self.sbert, dim=dim)
-
-        self._lock         = threading.Lock()
-        self.room_cache    = RoomEmbeddingCache(self.sbert)
-        self.scene_sync    = None
-        self.manifold_engine = None
-        self._llm_url      = ollama_url
-        self._llm_model    = "llama3.1:8b"
+        self._lock       = threading.Lock()
 
     def _build_prototype_vecs(self):
         labels = list(VISION_PROTOTYPES.keys())
         texts  = [VISION_PROTOTYPES[l] for l in labels]
         if texts:
-            self._proto_vecs_sbert = self.sbert.encode(
+            self._proto_vecs_sbert      = self.sbert.encode(
                 texts, normalize_embeddings=True).astype("float32")
             self._proto_behavior_labels = labels
 
-    def _build_prompt(self, room_name, room_furniture, coord_label, coord_dist):
+    def _build_prompt(self, room_name: str, room_furniture: list,
+                      coord_label: str, coord_dist: float,
+                      som_text: str = "") -> str:
         nearby_str = coord_label if coord_label else "unknown"
+        som_block  = f"\nLabeled objects:\n{som_text}" if som_text else ""
         return (
-            f"Scene: {room_name} room. Person is near {nearby_str}.\n\n"
+            f"Scene: {room_name} room. Person is near {nearby_str}.{som_block}\n\n"
             "Output ONLY valid JSON with these exact fields:\n"
-            '{"body_position":"...","body_orientation":"...","confidence":0.0}\n\n'
+            '{"visual_state":"...","key_object":"...","confidence":0.0}\n\n'
             "Rules:\n"
-            "- body_position: standing/sitting/lying\n"
-            "- body_orientation: facing_toward/facing_away/side\n"
+            "- visual_state: brief description of what the person is doing (max 10 words)\n"
+            "- key_object: the most relevant object the person is interacting with, "
+            "or 'none' if nothing\n"
             "- confidence: 0.0=unsure, 1.0=certain\n"
-            "Focus ONLY on the person body posture and orientation.\n"
+            "Focus ONLY on the person's activity and the object they are using.\n"
             "Output ONLY the JSON. No markdown."
         )
 
     def _parse_vlm_output(self, raw: str) -> dict:
         try:
             cleaned = re.sub(r'```(?:json)?\s*', '', raw).strip().rstrip('`')
-            m = re.search(r'\{.*\}', cleaned, re.DOTALL)
+            m       = re.search(r'\{.*\}', cleaned, re.DOTALL)
             if not m:
                 return {}
             data = json.loads(m.group(0))
         except Exception:
             return {}
 
-        body_position    = data.get("body_position",    "standing").strip().lower()
-        body_orientation = data.get("body_orientation", "facing_toward").strip().lower()
-        confidence       = float(data.get("confidence", 0.5))
-
-        if "away" in body_orientation:
-            body_orientation = "facing_away"
-        elif "side" in body_orientation or "lateral" in body_orientation:
-            body_orientation = "side"
-        else:
-            body_orientation = "facing_toward"
-
+        visual_state = data.get("visual_state", "").strip()
+        key_object   = data.get("key_object",   "none").strip().lower()
+        confidence   = float(data.get("confidence", 0.5))
+        if key_object in ("", "unknown"):
+            key_object = "none"
         return {
-            "activity":         "",
-            "body_position":    body_position,
-            "body_orientation": body_orientation,
-            "held_object":      "unknown",
-            "confidence":       min(max(confidence, 0.0), 1.0),
+            "visual_state": visual_state,
+            "key_object":   key_object,
+            "confidence":   min(max(confidence, 0.0), 1.0),
         }
+
+    def _call_vlm_with_retry(self, prompt: str, img_clean: str) -> dict:
+        for attempt in range(VLM_MAX_RETRIES + 1):
+            try:
+                resp = requests.post(
+                    f"{self.url}/api/chat",
+                    json={
+                        "model":    self.model,
+                        "messages": [{"role": "user", "content": prompt,
+                                      "images": [img_clean]}],
+                        "stream":   False,
+                        "options":  {"temperature": 0.05, "num_predict": 200},
+                    },
+                    timeout=self._vlm_timeout)
+                raw    = resp.json().get("message", {}).get("content", "").strip()
+                parsed = self._parse_vlm_output(raw)
+                if parsed:
+                    return parsed
+                if attempt < VLM_MAX_RETRIES:
+                    print(f"[VLM] empty parse attempt {attempt+1}, retrying...")
+                    time.sleep(VLM_RETRY_DELAY)
+            except requests.exceptions.Timeout:
+                print(f"[VLM] timeout attempt {attempt+1}/{VLM_MAX_RETRIES+1}")
+                if attempt < VLM_MAX_RETRIES:
+                    time.sleep(VLM_RETRY_DELAY)
+            except Exception as e:
+                print(f"[VLM] error attempt {attempt+1}: {e}")
+                if attempt < VLM_MAX_RETRIES:
+                    time.sleep(VLM_RETRY_DELAY)
+        print("[VLM] all retries exhausted")
+        return {}
 
     def _normalize_object(self, raw_obj: str) -> str:
         if not raw_obj or raw_obj.lower() in ("none", "empty", "", "unknown"):
@@ -526,8 +418,8 @@ class PerceptionEngine:
     def _get_nearby_objects(self, user_pos: dict, room_name: str) -> list:
         if not user_pos:
             return []
-        ux = float(user_pos.get("x", 0))
-        uz = float(user_pos.get("z", 0))
+        ux     = float(user_pos.get("x", 0))
+        uz     = float(user_pos.get("z", 0))
         nearby = []
         try:
             docs = list(self.col_dynamic.find(
@@ -538,7 +430,7 @@ class PerceptionEngine:
                 pos = doc.get("sensor_pos") or doc.get("furniture_pos")
                 if not isinstance(pos, list) or len(pos) < 2:
                     continue
-                dist = math.sqrt((ux - pos[0]) ** 2 + (uz - pos[1]) ** 2)
+                dist  = math.sqrt((ux - pos[0]) ** 2 + (uz - pos[1]) ** 2)
                 if dist <= NEARBY_OBJECT_RADIUS:
                     label = doc.get("label", "").lower().strip()
                     if label and label not in STRUCTURAL_BLACKLIST:
@@ -547,15 +439,27 @@ class PerceptionEngine:
             pass
         return nearby
 
-    def _get_held_object_from_scene(self, user_id: str, user_pos: dict = None,
-                                     t_capture: str = None) -> tuple:
+    def _get_som_objects(self, user_pos: dict, room_name: str,
+                         user_id: str, held_event: str,
+                         radius: float = 3.0) -> list:
+        try:
+            from modules.perception.som_marker import get_som_objects_from_db
+            return get_som_objects_from_db(
+                db=self.db, user_pos=user_pos, room_name=room_name,
+                user_id=user_id, held_event=held_event, radius=radius)
+        except Exception as e:
+            print(f"[SoM] {e}")
+            return []
+
+    def _get_held_object_from_scene(self, user_id: str,
+                                    user_pos: dict = None,
+                                    t_capture: str = None) -> tuple:
         if not t_capture:
             return "none", 0
         try:
             if isinstance(t_capture, str):
                 capture_time = datetime.datetime.fromisoformat(
-                    t_capture.replace('Z', '+00:00'))
-                capture_time = capture_time.replace(tzinfo=None)
+                    t_capture.replace('Z', '+00:00')).replace(tzinfo=None)
             else:
                 capture_time = t_capture
             doc = self.db.object_events.find_one({
@@ -586,121 +490,47 @@ class PerceptionEngine:
             print(f"[HeldObj] error: {e}")
             return "none", 0
 
-    def _compute_p_l(self, obj_label: str, behavior: str) -> float:
-        if not obj_label or obj_label == "none":
-            return 0.0
-        try:
-            prototype = VISION_PROTOTYPES.get(behavior, behavior)
-            obj_vec   = self.sbert.encode([obj_label],  normalize_embeddings=True)[0]
-            beh_vec   = self.sbert.encode([prototype],  normalize_embeddings=True)[0]
-            return float(max(0.0, obj_vec @ beh_vec))
-        except Exception:
-            return 0.0
+    def _skeleton_args_from_payload(self, payload: dict) -> dict:
+        if not payload:
+            return {k: -1.0 for k in (
+                "body_axis_angle", "head_pitch", "hand_to_head",
+                "left_hand_to_head", "knee_hip_ratio",
+                "arm_elevation", "left_arm_elevation")}
+        return {
+            "body_axis_angle":    float(payload.get("body_axis_angle",    -1)),
+            "head_pitch":         float(payload.get("head_pitch",         -1)),
+            "hand_to_head":       float(payload.get("hand_to_head",       -1)),
+            "left_hand_to_head":  float(payload.get("left_hand_to_head",  -1)),
+            "knee_hip_ratio":     float(payload.get("knee_hip_ratio",     -1)),
+            "arm_elevation":      float(payload.get("arm_elevation",      -1)),
+            "left_arm_elevation": float(payload.get("left_arm_elevation", -1)),
+        }
 
-    def _compute_p_v(self, body_position: str, behavior: str,
-                     zone_affinity: float = 0.0) -> float:
-        pos = body_position.lower().strip() if body_position else "standing"
-        if (pos, behavior) in BODY_IMPOSSIBLE:
-            return 0.0
-        ergonomic = 0.50
-        return 0.6 * ergonomic + 0.4 * float(zone_affinity)
+    def _apply_ablation(self, payload: dict, ablation_mode: str) -> dict:
+        p = dict(payload)
+        if ablation_mode == "no_skeleton":
+            for k in ("body_axis_angle", "head_pitch", "hand_to_head",
+                      "left_hand_to_head", "knee_hip_ratio",
+                      "arm_elevation", "left_arm_elevation"):
+                p[k] = -1.0
+        elif ablation_mode == "no_object":
+            p["_ablation_held_event"]  = "none"
+            p["_ablation_som_objects"] = []
+        elif ablation_mode == "no_vlm":
+            p["_ablation_vlm_desc"]    = ""
+            p["_ablation_vlm_key_obj"] = "none"
+        return p
 
-    def _saycan_score(self, held_obj: str, nearby_objs: list,
-                      body_position: str, behavior: str,
-                      zone_affinity: float = 0.0) -> float:
-        if (body_position.lower(), behavior) in BODY_IMPOSSIBLE:
-            return 0.0
-        p_l_held   = self._compute_p_l(held_obj, behavior)
-        p_l_nearby = 0.0
-        if nearby_objs:
-            p_l_nearby = max(self._compute_p_l(obj, behavior) for obj in nearby_objs)
-        p_l = (HELD_WEIGHT * p_l_held + NEARBY_WEIGHT * p_l_nearby
-               if held_obj and held_obj != "none" else p_l_nearby)
-        p_v = self._compute_p_v(body_position, behavior, zone_affinity)
-        return p_l * p_v
-
-    def _skeleton_body_position(self, payload: dict) -> tuple:
-        pitch    = float(payload.get("head_pitch",   -999))
-        h2h      = float(payload.get("hand_to_head",   -1))
-        arm      = float(payload.get("arm_elevation",  -1))
-        hip      = float(payload.get("hip_height",     -1))
-        wrist_z  = float(payload.get("wrist_z",      -999))
-        l_wrist_z= float(payload.get("left_wrist_z", -999))
-        wrist_h  = float(payload.get("wrist_height", -999))
-        l_wrist_h= float(payload.get("left_wrist_height", -999))
-
-        if not _BEHAVIOUR_CFG:
-            return None, None
-
-        pitch_valid = pitch > -999
-        h2h_valid   = h2h >= 0
-        arm_valid   = arm >= 0
-        hip_valid   = hip > 0
-        body_position = None
-
-        laying_cfg   = _BEHAVIOUR_CFG.get("Laying", {})
-        laying_ideal = float(laying_cfg.get("head_pitch", {}).get("ideal",     -83))
-        laying_tol   = float(laying_cfg.get("head_pitch", {}).get("tolerance",  10))
-
-        if pitch_valid and abs(pitch - laying_ideal) <= laying_tol:
-            body_position = "lying"
-        elif hip_valid and hip > 0.50:
-            body_position = "standing"
-        elif hip_valid and hip < 0.45:
-            body_position = "sitting"
-        elif pitch_valid and -40 < pitch < 40:
-            body_position = "sitting"
-        elif arm_valid and arm > 165:
-            body_position = "standing"
-        elif pitch_valid and pitch > 65:
-            body_position = "sitting"
-        elif pitch_valid and 10 < pitch < 25 and h2h_valid and h2h < 0.40:
-            body_position = "sitting"
-
-        r_fwd = wrist_z  > -999 and wrist_z  > 0.03
-        l_fwd = l_wrist_z> -999 and l_wrist_z> 0.03
-        r_lvl = wrist_h  > -999 and abs(wrist_h)  < 0.30
-        l_lvl = l_wrist_h> -999 and abs(l_wrist_h)< 0.30
-        if body_position is None and r_fwd and l_fwd and r_lvl and l_lvl:
-            body_position = "sitting"
-
-        if body_position is None:
-            return None, None
-        return body_position, None
-
-    def _temporal_smooth(self, new_action: str, evidence_score: float,
-                          user_id: str, hip_height: float = -1) -> str:
-        prev_doc = self.col_activity.find_one({"user": user_id}, sort=[("date", -1)])
-        if not prev_doc or not prev_doc.get("sequence"):
-            return new_action
-        seq = prev_doc["sequence"]
-        if not seq:
-            return new_action
-        prev_action = seq[-1].get("action", "Standing")
-        if prev_action == new_action:
-            return new_action
-        n_consecutive = 0
-        for entry in reversed(seq):
-            if entry.get("action") == prev_action:
-                n_consecutive += 1
-            else:
-                break
-        conf_threshold = (0.55 if n_consecutive < 3 else
-                          0.65 if n_consecutive < 5 else 0.75)
-        trans_matrix = getattr(self.scene_engine, "_transition_matrix", {})
-        prob = trans_matrix.get(prev_action, {}).get(new_action, 0.0)
-        if prob >= 0.05:
-            return new_action if evidence_score >= conf_threshold else prev_action
-        return new_action if evidence_score >= max(conf_threshold + 0.10, 0.80) else prev_action
-
-    def _spatial_reasoning(self, activity_hint: str, body_position: str,
-                            held_event: str, user_pos: dict, user_forward: dict,
+    def _spatial_reasoning(self, activity_hint: str, vlm_scene_desc: str,
+                            vlm_key_object: str, held_event: str,
+                            user_pos: dict, user_forward: dict,
                             room_name: str, user_id: str,
                             vlm_confidence: float = 0.0,
                             payload: dict = None,
                             vlm_weight_override: float = None,
                             coord_label: str = "",
-                            held_age: float = 0.0) -> tuple:
+                            held_age: float = 0.0,
+                            som_objects: list = None) -> tuple:
 
         if not self.scene_engine.is_ready():
             return activity_hint or "Unknown", "zone_not_ready", ""
@@ -708,17 +538,7 @@ class PerceptionEngine:
         nearest_zone = self.scene_engine.find_nearest_zone(user_pos, room_name)
         zone_label   = nearest_zone["zone_name"] if nearest_zone else ""
 
-        skel_body  = None
-        head_pitch = float(payload.get("head_pitch", -999)) if payload else -999
-        if payload:
-            skel_body, _ = self._skeleton_body_position(payload)
-            if skel_body in ("sitting", "standing", "lying"):
-                body_position = skel_body
-
         candidates = set(b for b in BEHAVIOR_LABELS if b not in NO_WEIGHT_ACTIONS)
-        for b in list(candidates):
-            if (body_position.lower(), b) in BODY_IMPOSSIBLE:
-                candidates.discard(b)
         if room_name:
             for room_key, forbidden in ROOM_IMPOSSIBLE.items():
                 if room_key.lower() in room_name.lower():
@@ -727,151 +547,97 @@ class PerceptionEngine:
         if not candidates:
             return "Standing", "no_candidates", zone_label
 
-        _llm_url   = getattr(self, '_llm_url',   self.url)
-        _llm_model = getattr(self, '_llm_model', "llama3.1:8b")
-
         try:
             from modules.perception.scene_graph import build_scene_text
-
-            _prev_wrist_h = -999.0
-            _prev_h2h     = -1.0
-            try:
-                _prev_seq = self.col_activity.find_one(
-                    {"user": user_id}, sort=[("date", -1)])
-                if _prev_seq and _prev_seq.get("sequence"):
-                    _last         = _prev_seq["sequence"][-1]
-                    _prev_wrist_h = float(_last.get("wrist_height",  -999))
-                    _prev_h2h     = float(_last.get("hand_to_head",    -1))
-            except Exception:
-                pass
-
-            _tv_on = bool(payload.get("tv_on", False)) if payload else None
+            skel_args   = self._skeleton_args_from_payload(payload)
+            _tv_on      = bool(payload.get("tv_on", False)) if payload else None
             _scene_text = build_scene_text(
                 user_pos=user_pos, user_forward=user_forward,
-                room_name=room_name, skel_body=skel_body,
-                head_pitch=head_pitch, held_event=held_event, held_age=held_age,
-                db=self.db, user_id=user_id, tv_on=_tv_on,
+                room_name=room_name, held_event=held_event,
+                held_age=held_age, db=self.db, user_id=user_id,
+                tv_on=_tv_on,
                 virtual_hour=float(payload.get("virtual_hour", -1)) if payload else -1,
-                spine_angle=float(payload.get("spine_angle",   -1)) if payload else -1,
-                arm_elevation=float(payload.get("arm_elevation",-1)) if payload else -1,
-                hand_to_head=float(payload.get("hand_to_head", -1)) if payload else -1,
-                wrist_height=float(payload.get("wrist_height",-999)) if payload else -999,
-                left_hand_to_head=float(payload.get("left_hand_to_head",-1)) if payload else -1,
-                left_wrist_height=float(payload.get("left_wrist_height",-999)) if payload else -999,
-                wrist_x=float(payload.get("wrist_x",     -999)) if payload else -999,
-                wrist_z=float(payload.get("wrist_z",     -999)) if payload else -999,
-                left_wrist_x=float(payload.get("left_wrist_x",-999)) if payload else -999,
-                left_wrist_z=float(payload.get("left_wrist_z",-999)) if payload else -999,
-                prev_wrist_height=_prev_wrist_h,
-                prev_hand_to_head=_prev_h2h,
+                **skel_args,
             )
-
             nearby_objs = self._get_nearby_objects(user_pos, room_name)
             pmi = {
-                "P":      body_position or "unknown",
-                "M":      "unknown",
-                "I":      "none",
-                "held":   "none",
-                "near":   coord_label or "",
-                "nearby": nearby_objs,
+                "near":        coord_label or "",
+                "nearby":      nearby_objs,
+                "vlm_desc":    vlm_scene_desc,
+                "key_object":  vlm_key_object,
+                "som_objects": som_objects or [],
             }
             llm_action, llm_reason, llm_conf = self._llm_reason(
-                _scene_text, pmi, candidates, _llm_url, _llm_model)
+                _scene_text, pmi, candidates, self._llm_url, self._llm_model)
             if llm_action:
                 return llm_action, llm_reason, zone_label
-        except Exception as _llm_e:
-            print(f"[LLM Reason] skipped: {_llm_e}")
+        except Exception as e:
+            print(f"[LLM Reason] skipped: {e}")
 
-        if candidates:
-            try:
-                zone_ranked = sorted(
-                    candidates,
-                    key=lambda a: self.scene_engine.get_zone_affinity(
-                        zone_label, a) if zone_label else 0,
-                    reverse=True)
-                fallback_action = zone_ranked[0]
-            except Exception:
-                fallback_action = sorted(candidates)[0]
-            print(f"[ZoneFallback] {fallback_action}")
-            return fallback_action, "zone_affinity_fallback", zone_label
-
-        return "Standing", "llm_failed", zone_label
+        try:
+            zone_ranked    = sorted(
+                candidates,
+                key=lambda a: self.scene_engine.get_zone_affinity(zone_label, a)
+                if zone_label else 0,
+                reverse=True)
+            fallback_action = zone_ranked[0]
+        except Exception:
+            fallback_action = sorted(candidates)[0]
+        print(f"[ZoneFallback] {fallback_action}")
+        return fallback_action, "zone_affinity_fallback", zone_label
 
     def _llm_reason(self, scene_text: str, pmi: dict,
                     candidates: set, llm_url: str, llm_model: str) -> tuple:
         if not candidates:
             return None, "", 0.0
 
-        p_label     = pmi.get("P",      "unknown")
-        near        = pmi.get("near",   "")
-        nearby_objs = pmi.get("nearby", [])
+        near        = pmi.get("near",       "")
+        nearby_objs = pmi.get("nearby",     [])
+        vlm_desc    = pmi.get("vlm_desc",   "")
+        key_object  = pmi.get("key_object", "none")
+        som_objects = pmi.get("som_objects", [])
 
-        body_impossible_map = {
-            "lying":    {"Drinking","SittingDrink","Sitting","Eating","Cooking",
-                         "Opening","Watching","Reading","Cleaning","PhoneUse",
-                         "Typing","Walking","Standing"},
-            "sitting":  {"Drinking","Cooking","Opening","Cleaning",
-                         "PhoneUse","Walking","Standing"},
-            "standing": {"SittingDrink","Sitting","Eating","Laying",
-                         "Watching","Typing"},
-        }
-
-        feasible = set(candidates)
-        if p_label in body_impossible_map:
-            feasible -= body_impossible_map[p_label]
-        if not feasible:
-            feasible = set(candidates)
-
-        _time_str   = ""
-        _event_line = ""
-        _posture_str= ""
-        _room_str   = ""
-        _facing_str = ""
-        _near_str   = near or "unknown area"
+        _room_str    = ""
+        _time_str    = ""
+        _posture_str = ""
+        _event_line  = ""
+        _facing_str  = ""
 
         for _line in scene_text.split("\n"):
             _l = _line.strip()
-            if _l.startswith("Time:"):         _time_str   = _l
-            if _l.startswith("Object event:"): _event_line = _l
-            if _l.startswith("Posture"):       _posture_str= _l.replace("Posture cues:", "").strip()
-            if _l.startswith("Room:"):         _room_str   = _l.replace("Room: ", "").strip()
-            if _l.startswith("Facing:"):       _facing_str = _l
+            if _l.startswith("Room:"):         _room_str    = _l.replace("Room: ", "").strip()
+            if _l.startswith("Time:"):         _time_str    = _l
+            if _l.startswith("Posture"):       _posture_str = _l.replace("Posture cues:", "").strip()
+            if _l.startswith("Object event:"): _event_line  = _l
+            if _l.startswith("Facing:"):       _facing_str  = _l
 
-        tv_on = False
-        for _line in scene_text.split("\n"):
-            _l = _line.strip()
-            if _l.startswith("TV:") and "ON" in _l:
-                tv_on = True
-                break
-        print(f"[LLM TV] tv_on={tv_on} (from scene_text)")
+        tv_on = any(
+            _l.strip().startswith("TV:") and "ON" in _l
+            for _l in scene_text.split("\n"))
 
-        _room_display = _room_str or "home"
-        nl_parts = [f"A person is in the {_room_display}."]
-        if _time_str:    nl_parts.append(_time_str + ".")
-        nl_parts.append(f"Body: {p_label}.")
-        if _posture_str: nl_parts.append(f"Posture: {_posture_str}.")
-        if _event_line:  nl_parts.append(f"{_event_line}.")
-        if _facing_str:  nl_parts.append(f"{_facing_str}.")
-        nl_parts.append(f"Nearest area: {_near_str}.")
-        if tv_on:
-            nl_parts.append("TV: ON")
-        else:
-            nl_parts.append("TV: off")
-
-        scene_description  = " ".join(nl_parts)
-        candidate_list_str = ", ".join(sorted(feasible))
+        nl_parts = [f"A person is in the {_room_str or 'home'}."]
+        if _time_str:                           nl_parts.append(_time_str + ".")
+        if _posture_str:                        nl_parts.append(f"Posture: {_posture_str}.")
+        if _event_line:                         nl_parts.append(f"{_event_line}.")
+        if _facing_str:                         nl_parts.append(f"{_facing_str}.")
+        if vlm_desc:                            nl_parts.append(f"VLM observation: {vlm_desc}.")
+        if key_object and key_object != "none": nl_parts.append(f"Key object: {key_object}.")
+        if som_objects:
+            labels_str = ", ".join(
+                f"{o['label']} ({o.get('status','')})" for o in som_objects)
+            nl_parts.append(f"Scene objects: {labels_str}.")
+        nl_parts.append(f"Nearest area: {near or 'unknown'}.")
+        nl_parts.append("TV: ON" if tv_on else "TV: off")
 
         prompt = (
             f"{scene_text}\n\n"
-            f"Summary: {scene_description}\n\n"
+            f"Summary: {' '.join(nl_parts)}\n\n"
             f"What is this person most likely doing?\n"
-            f"Choose exactly one from: {candidate_list_str}\n\n"
+            f"Choose exactly one from: {', '.join(sorted(candidates))}\n\n"
             "Reply with JSON only, no markdown:\n"
-            "{\"action\": \"<one from the list>\", "
-            "\"confidence\": 0.0, "
-            "\"reason\": \"<max 40 chars>\"}"
+            '{"action": "<one from the list>", "confidence": 0.0, "reason": "<max 40 chars>"}'
         )
-        print(f"[LLM PROMPT] {prompt[:500]}...")
+        print(f"[LLM PROMPT] {prompt[:400]}...")
 
         try:
             resp = requests.post(
@@ -882,74 +648,62 @@ class PerceptionEngine:
                     "stream":   False,
                     "options":  {"temperature": 0.0, "num_predict": 256},
                 },
-                timeout=30,
+                timeout=self._llm_timeout,
             )
             raw   = resp.json().get("message", {}).get("content", "").strip()
-            print(f"[LLM RAW] {raw[:300]}")
+            print(f"[LLM RAW] {raw[:200]}")
             clean = re.sub(r'```(?:json)?\s*', '', raw).strip().rstrip('`')
             m     = re.search(r'\{.*\}', clean, re.DOTALL)
             if not m:
-                print("[LLM] no JSON found in response")
                 return None, "", 0.0
-
             data   = json.loads(m.group(0))
             action = data.get("action", "").strip()
             reason = data.get("reason", "llm").strip()[:60]
             conf   = float(data.get("confidence", 0.7))
 
-            if action in feasible:
-                print(f"[LLM-PMI] {action} ({conf:.2f}) | {reason}")
-                return action, f"pmi_llm:{reason}", conf
             if action in candidates:
-                print(f"[LLM-PMI] {action} ({conf:.2f}) posture-override | {reason}")
-                return action, f"pmi_llm_override:{reason}", conf
-            for f_action in feasible:
-                if f_action.lower() == action.lower():
-                    print(f"[LLM-PMI] fuzzy match: '{action}' -> '{f_action}'")
-                    return f_action, f"pmi_llm:{reason}", conf
-            print(f"[LLM-PMI] invalid: '{action}' not in candidates")
-            if feasible:
-                fallback = sorted(feasible)[0]
-                return fallback, f"pmi_llm_fallback:{reason}", 0.3
+                print(f"[LLM] {action} ({conf:.2f}) | {reason}")
+                return action, f"pmi_llm:{reason}", conf
+            for c_action in candidates:
+                if c_action.lower() == action.lower():
+                    return c_action, f"pmi_llm:{reason}", conf
+            if candidates:
+                return sorted(candidates)[0], f"pmi_llm_fallback:{reason}", 0.3
+        except requests.exceptions.Timeout:
+            print(f"[LLM] timeout after {self._llm_timeout}s")
         except Exception as e:
-            print(f"[LLM-PMI] error: {e}")
+            print(f"[LLM] error: {e}")
 
-        if feasible:
-            return sorted(feasible)[0], "pmi_llm_error_fallback", 0.1
+        if candidates:
+            return sorted(candidates)[0], "pmi_llm_error_fallback", 0.1
         return None, "", 0.0
 
     def _emit_edge(self, user_id: str, action: str, bound_label: str,
                    confidence: float, user_pos: dict):
         if confidence < 0.55:
             return
-        relation = ACTION_TO_RELATION.get(action, "near")
-        now      = int(datetime.datetime.utcnow().timestamp())
-        agent_node = {
-            "id": user_id, "type": "agent", "label": user_id,
-            "pos": [user_pos.get("x", 0), user_pos.get("z", 0)],
-            "current_action": action, "status": "active", "timestamp": now,
-        }
-        furniture_doc  = self.col_scene.find_one({"label": bound_label}, {"pos": 1, "room": 1})
-        furniture_node = {
-            "id":     bound_label, "type": "furniture", "label": bound_label,
-            "pos":    furniture_doc.get("pos",  [0, 0]) if furniture_doc else [0, 0],
-            "room":   furniture_doc.get("room", "")     if furniture_doc else "",
-            "status": "active",
-        }
-        edge = {
-            "from":       user_id,    "relation":   relation, "to": bound_label,
-            "confidence": round(confidence, 3), "source": "spatial_reasoning",
-            "timestamp":  now,
-        }
+        relation   = ACTION_TO_RELATION.get(action, "near")
+        now        = int(datetime.datetime.utcnow().timestamp())
+        furn_doc   = self.col_scene.find_one({"label": bound_label}, {"pos": 1, "room": 1})
         try:
             self.db.scene_graph.update_one(
                 {"agent_id": user_id},
                 {"$set": {
-                    "agent_id":       user_id,
-                    "agent_node":     agent_node,
-                    "furniture_node": furniture_node,
-                    "edges":          [edge],
-                    "updated_at":     datetime.datetime.utcnow(),
+                    "agent_id": user_id,
+                    "agent_node": {
+                        "id": user_id, "type": "agent",
+                        "pos": [user_pos.get("x", 0), user_pos.get("z", 0)],
+                        "current_action": action, "timestamp": now,
+                    },
+                    "furniture_node": {
+                        "id":   bound_label,
+                        "pos":  furn_doc.get("pos",  [0, 0]) if furn_doc else [0, 0],
+                        "room": furn_doc.get("room", "")     if furn_doc else "",
+                    },
+                    "edges": [{"from": user_id, "relation": relation,
+                               "to": bound_label, "confidence": round(confidence, 3),
+                               "timestamp": now}],
+                    "updated_at": datetime.datetime.utcnow(),
                 }},
                 upsert=True)
         except Exception as e:
@@ -1068,6 +822,60 @@ class PerceptionEngine:
         total  = len(votes)
         return round(-sum((c/total) * math.log2(c/total) for c in counts.values()), 4)
 
+    def _write_experiment_log(self, payload: dict, final_user: str,
+                               spatial_action: str, activity_hint: str,
+                               upgrade_reason: str, zone_label: str,
+                               vlm_confidence: float, held_event: str,
+                               user_pos: dict, interacting_items: list,
+                               ground_truth_raw: str,
+                               ablation_mode: str, experiment_mode: str,
+                               collection_suffix: str,
+                               vlm_timed_out: bool = False):
+        ground_truth = normalize_ground_truth(ground_truth_raw)
+        predicted    = normalize_ground_truth(spatial_action)
+        correct      = (ground_truth == predicted) if ground_truth else None
+        col_name     = f"experiment_logs{collection_suffix}" if collection_suffix else "experiment_logs"
+        try:
+            self.db[col_name].insert_one({
+                "episode_id":         payload.get("episode_id", ""),
+                "t_capture":          payload.get("t_capture", ""),
+                "user":               final_user,
+                "user_id":            final_user,
+                "ground_truth":       ground_truth,
+                "ground_truth_raw":   ground_truth_raw,
+                "vlm_output":         activity_hint,
+                "vlm_scene_desc":     activity_hint,
+                "vlm_key_object":     payload.get("_vlm_key_object", "none"),
+                "spatial_action":     spatial_action,
+                "predicted":          predicted,
+                "correct":            correct,
+                "upgrade_reason":     upgrade_reason,
+                "zone_label":         zone_label,
+                "vlm_confidence":     round(vlm_confidence, 3),
+                "held_event":         held_event,
+                "vlm_timed_out":      vlm_timed_out,
+                "room_name":          payload.get("room_name", ""),
+                "user_pos":           user_pos,
+                "interacting_items":  interacting_items,
+                "ablation_mode":      ablation_mode,
+                "experiment_mode":    experiment_mode,
+                "collection_suffix":  collection_suffix,
+                "body_axis_angle":    float(payload.get("body_axis_angle",    -1)),
+                "head_pitch":         float(payload.get("head_pitch",         -1)),
+                "hand_to_head":       float(payload.get("hand_to_head",       -1)),
+                "left_hand_to_head":  float(payload.get("left_hand_to_head",  -1)),
+                "knee_hip_ratio":     float(payload.get("knee_hip_ratio",     -1)),
+                "arm_elevation":      float(payload.get("arm_elevation",      -1)),
+                "left_arm_elevation": float(payload.get("left_arm_elevation", -1)),
+                "virtual_day":        payload.get("virtual_day"),
+                "virtual_hour":       payload.get("virtual_hour"),
+                "time_slot":          _get_time_slot(payload.get("virtual_hour")),
+                "virtual_date":       _virtual_day_to_date(payload.get("virtual_day")),
+                "timestamp":          datetime.datetime.utcnow(),
+            })
+        except Exception as e:
+            print(f"[ExpLog] write error: {e}")
+
     def analyze_action_burst(self, payload: dict) -> dict:
         image_list   = payload.get("image_list", [])
         hint_user_id = payload.get("userID", "Unknown_User")
@@ -1076,6 +884,12 @@ class PerceptionEngine:
         user_pos     = payload.get("user_pos", None)
         user_forward = payload.get("user_forward", None)
 
+        experiment_mode   = payload.get("experiment_mode",   "baseline")
+        ablation_mode     = payload.get("ablation_mode",     "full")
+        collection_suffix = payload.get("collection_suffix", "")
+
+        ablated_payload = self._apply_ablation(payload, ablation_mode)
+
         if not user_forward or (
             float(user_forward.get("x", 0)) == 0 and
             float(user_forward.get("z", 0)) == 0
@@ -1083,7 +897,6 @@ class PerceptionEngine:
             _udoc = self.db.user_positions.find_one({"$or": [
                 {"user_id": hint_user_id},
                 {"user_id": hint_user_id.lower()},
-                {"user_id": hint_user_id.lower().replace("_", "")},
             ]}, {"forward": 1, "x": 1, "z": 1})
             if _udoc and _udoc.get("forward"):
                 fwd = _udoc["forward"]
@@ -1094,9 +907,10 @@ class PerceptionEngine:
             if not user_pos and _udoc:
                 user_pos = {"x": float(_udoc.get("x", 0)), "z": float(_udoc.get("z", 0))}
 
-        room_name    = payload.get("room_name", "")
-        virtual_hour = payload.get("virtual_hour", None)
-        virtual_day  = payload.get("virtual_day", None)
+        room_name             = payload.get("room_name", "")
+        virtual_hour          = payload.get("virtual_hour", None)
+        virtual_day           = payload.get("virtual_day",  None)
+        ground_truth_activity = payload.get("activity", None)
 
         if not image_list:
             return self._empty_result(hint_user_id)
@@ -1107,55 +921,70 @@ class PerceptionEngine:
             self.room_cache.switch_room("", self.col_scene)
 
         coord_doc, coord_dist = self._nearest_by_coord(user_pos, room_name)
-        coord_label   = coord_doc.get("label", "") if coord_doc else ""
-        room_furniture= [d.get("label", "") for d in self.room_cache.all_docs if d.get("label")]
-        prompt        = self._build_prompt(room_name, room_furniture, coord_label, coord_dist)
-        sample_indices= self._select_sample_indices(image_list, node_scores)
+        coord_label           = coord_doc.get("label", "") if coord_doc else ""
+        room_furniture        = [d.get("label", "") for d in self.room_cache.all_docs if d.get("label")]
 
-        user_votes      = []
-        parsed_list     = []
-        activity_votes  = []
-        body_votes      = []
-        held_votes      = []
-        orientation_votes=[]
-        confidence_list = []
-        used_scores_list= []
+        t_capture                  = payload.get("t_capture", None)
+        held_event_raw, held_age   = self._get_held_object_from_scene(
+            hint_user_id, user_pos, t_capture)
+        held_event = ablated_payload.get("_ablation_held_event", held_event_raw)
+
+        som_objects = self._get_som_objects(
+            user_pos=user_pos, room_name=room_name,
+            user_id=hint_user_id, held_event=held_event)
+        if ablated_payload.get("_ablation_som_objects") is not None:
+            som_objects = ablated_payload["_ablation_som_objects"]
+
+        try:
+            from modules.perception.som_marker import build_som_text, mark_objects_on_image
+            som_text = build_som_text(som_objects)
+        except Exception:
+            som_text = ""
+
+        prompt         = self._build_prompt(room_name, room_furniture, coord_label, coord_dist, som_text)
+        sample_indices = self._select_sample_indices(image_list, node_scores)
+
+        user_votes         = []
+        visual_state_votes = []
+        key_object_votes   = []
+        confidence_list    = []
+        used_scores_list   = []
+        vlm_timed_out      = False
 
         for idx in sample_indices:
             try:
                 img_b64   = image_list[idx]
                 uid       = self._get_user_id(img_b64, hint_user_id)
                 user_votes.append(uid)
-                img_clean = img_b64.split(',')[1] if ',' in img_b64 else img_b64
-                resp = requests.post(
-                    f"{self.url}/api/chat",
-                    json={
-                        "model":    self.model,
-                        "messages": [{"role": "user", "content": prompt,
-                                      "images": [img_clean]}],
-                        "stream":   False,
-                        "options":  {"temperature": 0.05, "num_predict": 200},
-                    },
-                    timeout=120)
-                raw    = resp.json().get("message", {}).get("content", "").strip()
-                parsed = self._parse_vlm_output(raw)
+
+                if ablation_mode == "no_vlm":
+                    visual_state_votes.append("")
+                    key_object_votes.append("none")
+                    confidence_list.append(0.0)
+                    used_scores_list.append(node_scores[idx] if idx < len(node_scores) else 0.5)
+                    continue
+
+                try:
+                    from modules.perception.som_marker import mark_objects_on_image as _mark
+                    marked_b64 = _mark(img_b64, som_objects)
+                except Exception:
+                    marked_b64 = img_b64
+
+                img_clean = marked_b64.split(',')[1] if ',' in marked_b64 else marked_b64
+                parsed    = self._call_vlm_with_retry(prompt, img_clean)
+
                 if parsed:
-                    parsed_list.append(parsed)
-                    used_scores_list.append(
-                        node_scores[idx] if idx < len(node_scores) else 0.5)
-                    if parsed.get("activity"):
-                        activity_votes.append(parsed["activity"])
-                    if parsed.get("body_position"):
-                        body_votes.append(parsed["body_position"])
-                    if parsed.get("body_orientation"):
-                        orientation_votes.append(parsed["body_orientation"])
+                    used_scores_list.append(node_scores[idx] if idx < len(node_scores) else 0.5)
+                    visual_state_votes.append(parsed.get("visual_state", ""))
+                    key_object_votes.append(parsed.get("key_object", "none"))
                     confidence_list.append(parsed.get("confidence", 0.5))
+                else:
+                    vlm_timed_out = True
+                    print(f"[VLM] frame {idx} failed all retries")
+
             except Exception as e:
                 print(f"[Frame {idx}] error: {e}")
-
-        if not parsed_list:
-            return self._empty_result(
-                max(set(user_votes), key=user_votes.count) if user_votes else hint_user_id)
+                vlm_timed_out = True
 
         def _weighted_vote(votes: list, scores: list, default: str = "") -> str:
             if not votes:
@@ -1165,177 +994,124 @@ class PerceptionEngine:
                 weights[v] += max(float(s), 0.1)
             return max(weights, key=weights.get)
 
-        final_user       = max(set(user_votes), key=user_votes.count) if user_votes else hint_user_id
-        activity_hint    = _weighted_vote(activity_votes,    used_scores_list, default="")
-        body_position    = _weighted_vote(body_votes,        used_scores_list, default="standing")
-        body_orientation = _weighted_vote(orientation_votes, used_scores_list, default="facing_toward")
-        vlm_confidence   = float(sum(confidence_list) / max(len(confidence_list), 1))
+        final_user     = max(set(user_votes), key=user_votes.count) if user_votes else hint_user_id
+        vlm_scene_desc = _weighted_vote(visual_state_votes, used_scores_list, default="")
+        vlm_key_object = _weighted_vote(key_object_votes,   used_scores_list, default="none")
+        vlm_confidence = (sum(confidence_list) / len(confidence_list)
+                          if confidence_list else 0.0)
 
-        t_capture              = payload.get("t_capture", None)
-        held_event, held_age   = self._get_held_object_from_scene(final_user, user_pos, t_capture)
-        _infer_source          = "none"
-
-        if body_orientation == "facing_away":
+        if ablation_mode == "no_vlm":
+            vlm_scene_desc = ablated_payload.get("_ablation_vlm_desc",    "")
+            vlm_key_object = ablated_payload.get("_ablation_vlm_key_obj", "none")
             vlm_confidence = 0.0
 
-        print(f"[VLM] activity={activity_hint} body={body_position} "
-              f"orient={body_orientation} held_event={held_event} conf={vlm_confidence:.2f}")
+        activity_hint = vlm_scene_desc
 
-        _act_entropy    = self._compute_vote_entropy(activity_votes)
-        _body_entropy   = self._compute_vote_entropy(body_votes)
-        _held_entropy   = self._compute_vote_entropy(held_votes)
-        _overall_entropy= _act_entropy * 0.6 + _body_entropy * 0.2 + _held_entropy * 0.2
+        _vs_entropy      = self._compute_vote_entropy(visual_state_votes)
+        _ko_entropy      = self._compute_vote_entropy(key_object_votes)
+        _overall_entropy = _vs_entropy * 0.6 + _ko_entropy * 0.4
 
-        _entropy_cfg = _sys_cfg.get("entropy", {})
-        _e_high      = float(_entropy_cfg.get("high_threshold", 1.2))
-        _e_low       = float(_entropy_cfg.get("low_threshold",  0.4))
-        _w_high      = float(_entropy_cfg.get("vlm_weight_high",0.10))
-        _w_low       = float(_entropy_cfg.get("vlm_weight_low", 0.30))
-
-        if _overall_entropy >= _e_high:
-            _dynamic_vlm_w = _w_high
-        elif _overall_entropy <= _e_low:
-            _dynamic_vlm_w = _w_low
+        if _overall_entropy >= ENTROPY_HIGH:
+            _dynamic_vlm_w = VLM_W_HIGH
+        elif _overall_entropy <= ENTROPY_LOW:
+            _dynamic_vlm_w = VLM_W_LOW
         else:
-            _ratio = (_overall_entropy - _e_low) / (_e_high - _e_low)
-            _dynamic_vlm_w = round(_w_low + _ratio * (_w_high - _w_low), 3)
+            _ratio         = (_overall_entropy - ENTROPY_LOW) / (ENTROPY_HIGH - ENTROPY_LOW)
+            _dynamic_vlm_w = round(VLM_W_LOW + _ratio * (VLM_W_HIGH - VLM_W_LOW), 3)
+
+        print(f"[VLM] desc='{vlm_scene_desc[:30]}' key={vlm_key_object} "
+              f"held={held_event} conf={vlm_confidence:.2f} "
+              f"entropy={_overall_entropy:.2f} W_VLM={_dynamic_vlm_w:.2f}")
 
         spatial_action, upgrade_reason, zone_label = self._spatial_reasoning(
-            activity_hint=activity_hint, body_position=body_position,
-            held_event=held_event, user_pos=user_pos, user_forward=user_forward,
+            activity_hint=activity_hint, vlm_scene_desc=vlm_scene_desc,
+            vlm_key_object=vlm_key_object, held_event=held_event,
+            user_pos=user_pos, user_forward=user_forward,
             room_name=room_name, user_id=final_user,
-            vlm_confidence=vlm_confidence, payload=payload,
+            vlm_confidence=vlm_confidence, payload=ablated_payload,
             vlm_weight_override=_dynamic_vlm_w,
             coord_label=coord_label, held_age=held_age,
+            som_objects=som_objects,
         )
 
         bound_doc, confidence = self._bind_furniture(coord_label, user_pos, room_name)
         bound_label = bound_doc.get("label", "Unknown_Area") if bound_doc else "Unknown_Area"
         bound_room  = bound_doc.get("room",  room_name)      if bound_doc else room_name
-
-        interacting_items = []
-        nearby_objs       = self._get_nearby_objects(user_pos, room_name)
+        nearby_objs = self._get_nearby_objects(user_pos, room_name)
 
         result = {
-            "location":          bound_label,
-            "room":              bound_room,
-            "interacting_items": interacting_items,
-            "scene_items":       nearby_objs,
-            "all_items":         list(set(interacting_items + nearby_objs)),
-            "spatial_relations": [],
-            "context":           f"{final_user} {spatial_action} near {bound_label}",
-            "_body_position":    body_position,
-            "_held_event":       held_event,
-            "_activity_hint":    activity_hint,
-            "_coord_label":      coord_label,
-            "_coord_dist":       round(coord_dist, 2) if coord_dist != float('inf') else None,
-            "_confidence":       confidence,
-            "_vlm_confidence":   round(vlm_confidence, 3),
-            "_body_orientation": body_orientation,
-            "_infer_source":     _infer_source,
+            "location":         bound_label,
+            "room":             bound_room,
+            "interacting_items":[],
+            "scene_items":      nearby_objs,
+            "all_items":        nearby_objs,
+            "spatial_relations":[],
+            "context":          f"{final_user} {spatial_action} near {bound_label}",
+            "_vlm_scene_desc":  vlm_scene_desc,
+            "_vlm_key_object":  vlm_key_object,
+            "_held_event":      held_event,
+            "_activity_hint":   activity_hint,
+            "_coord_label":     coord_label,
+            "_coord_dist":      round(coord_dist, 2) if coord_dist != float('inf') else None,
+            "_confidence":      confidence,
+            "_vlm_confidence":  round(vlm_confidence, 3),
+            "_som_objects":     som_objects,
+            "_vlm_timed_out":   vlm_timed_out,
+            "_entropy":         round(_overall_entropy, 4),
         }
 
-        self._update_scene_snapshot(bound_doc, interacting_items, nearby_objs, [])
+        self._update_scene_snapshot(bound_doc, [], nearby_objs, [])
         self._update_dynamic_objects(
-            user_id=final_user, interacting_items=interacting_items,
-            scene_items=nearby_objs, spatial_relations=[],
-            bound_doc=bound_doc, room_name=bound_room, user_pos=user_pos)
-        self._write_semantic_memory(final_user, spatial_action, bound_doc, confidence, result, source_nodes)
-        self._update_activity_sequence(final_user, spatial_action, bound_label)
-
-        ground_truth_activity = payload.get("activity", None)
-        log_action = (spatial_action if spatial_action not in ("Unknown", "none", "")
-                      else activity_hint or "Unknown")
-
-        if vlm_confidence >= MIN_WRITE_CONFIDENCE:
-            self._update_observation_log(
-                final_user, log_action, bound_doc, interacting_items, [],
-                result["context"], virtual_hour, virtual_day,
-                ground_truth_activity=ground_truth_activity,
-                user_pos=user_pos, room_name=room_name)
-        else:
-            print(f"[Gate] conf={vlm_confidence:.2f} < {MIN_WRITE_CONFIDENCE} skip obs_log")
-
-        mem_doc  = self.col_memory.find_one(
-            {"user": final_user, "action": log_action}, sort=[("timestamp", -1)])
-        mongo_id = str(mem_doc["_id"]) if mem_doc else ""
-        self._index_to_faiss(final_user, log_action, bound_doc, result, mongo_id)
+            user_id=final_user, interacting_items=[],
+            scene_items=nearby_objs, bound_doc=bound_doc,
+            room_name=bound_room, user_pos=user_pos)
 
         if ground_truth_activity:
-            skel_body_log, _ = (self._skeleton_body_position(payload)
-                                 if payload else (None, None))
-            _episode_id = payload.get("episode_id", "") or __import__("uuid").uuid4().hex
-            self.db["eval_logs"].insert_one({
-                "episode_id":       _episode_id,
-                "t_capture":        payload.get("t_capture", ""),
-                "user":             final_user,
-                "user_id":          final_user,
-                "ground_truth":     ground_truth_activity,
-                "vlm_output":       activity_hint,
-                "spatial_action":   spatial_action,
-                "upgrade_reason":   upgrade_reason,
-                "zone_label":       zone_label,
-                "body_position":    body_position,
-                "body_orientation": body_orientation,
-                "held_event":       held_event,
-                "vlm_confidence":   round(vlm_confidence, 3),
-                "infer_source":     _infer_source,
-                "room_name":        room_name,
-                "user_pos":         user_pos,
-                "interacting_items":interacting_items,
-                "hip_height":       float(payload.get("hip_height",   -1))   if payload else -1,
-                "head_pitch":       float(payload.get("head_pitch",  -999))   if payload else -999,
-                "knee_height":      float(payload.get("knee_height",  -1))   if payload else -1,
-                "spine_angle":      float(payload.get("spine_angle",  -1))   if payload else -1,
-                "arm_elevation":    float(payload.get("arm_elevation",-1))   if payload else -1,
-                "hand_to_head":     float(payload.get("hand_to_head", -1))   if payload else -1,
-                "left_hand_to_head":float(payload.get("left_hand_to_head",-1)) if payload else -1,
-                "wrist_height":     float(payload.get("wrist_height", -999)) if payload else -999,
-                "left_wrist_height":float(payload.get("left_wrist_height",-999)) if payload else -999,
-                "wrist_x":          float(payload.get("wrist_x",      -999)) if payload else -999,
-                "wrist_z":          float(payload.get("wrist_z",      -999)) if payload else -999,
-                "left_wrist_x":     float(payload.get("left_wrist_x", -999)) if payload else -999,
-                "left_wrist_z":     float(payload.get("left_wrist_z", -999)) if payload else -999,
-                "skel_body":        skel_body_log,
-                "virtual_day":      payload.get("virtual_day")  if payload else None,
-                "virtual_hour":     payload.get("virtual_hour") if payload else None,
-                "time_slot":        _get_time_slot(payload.get("virtual_hour") if payload else None),
-                "virtual_date":     _virtual_day_to_date(payload.get("virtual_day") if payload else None),
-                "timestamp":        datetime.datetime.utcnow(),
-            })
+            payload["_vlm_key_object"] = vlm_key_object
+            self._write_experiment_log(
+                payload=payload, final_user=final_user,
+                spatial_action=spatial_action, activity_hint=activity_hint,
+                upgrade_reason=upgrade_reason, zone_label=zone_label,
+                vlm_confidence=vlm_confidence, held_event=held_event,
+                user_pos=user_pos, interacting_items=[],
+                ground_truth_raw=ground_truth_activity,
+                ablation_mode=ablation_mode, experiment_mode=experiment_mode,
+                collection_suffix=collection_suffix, vlm_timed_out=vlm_timed_out,
+            )
 
         if (spatial_action not in ("Unknown", "none", "") and
                 bound_label != "Unknown_Area" and user_pos):
             self._emit_edge(
                 user_id=final_user, action=spatial_action,
                 bound_label=bound_label,
-                confidence=float(result.get("_vlm_confidence", 0.5)),
+                confidence=float(result["_vlm_confidence"]),
                 user_pos=user_pos)
 
-        print(f"[Done] {final_user} | hint={activity_hint} | "
-              f"spatial={spatial_action} | reason={upgrade_reason} | "
-              f"zone={zone_label} | bound={bound_label}")
+        print(f"[Done] {final_user} | spatial={spatial_action} | "
+              f"reason={upgrade_reason} | zone={zone_label} | "
+              f"ablation={ablation_mode} | vlm_ok={not vlm_timed_out}")
 
         return {
-            "user":           final_user,
-            "action":         activity_hint,
-            "spatial_action": spatial_action,
-            "upgrade_reason": upgrade_reason,
-            "zone_label":     zone_label,
-            "result":         result,
-            "items":          interacting_items,
-            "all_items":      result["all_items"],
+            "user":              final_user,
+            "action":            activity_hint,
+            "spatial_action":    spatial_action,
+            "upgrade_reason":    upgrade_reason,
+            "zone_label":        zone_label,
+            "result":            result,
+            "items":             [],
+            "all_items":         nearby_objs,
             "spatial_relations": [],
-            "bound_instance": bound_label,
-            "bound_room":     bound_room,
-            "confidence":     confidence,
-            "sbert_sim":      0.0,
-            "user_pos":       user_pos or {},
-            "virtual_hour":   virtual_hour or 12.0,
-            "room":           room_name or "",
-            "experiment_mode":payload.get("experiment_mode", "habit"),
-            "time_slot":      _get_time_slot(virtual_hour),
-            "virtual_day":    virtual_day,
+            "bound_instance":    bound_label,
+            "bound_room":        bound_room,
+            "confidence":        confidence,
+            "sbert_sim":         0.0,
+            "user_pos":          user_pos or {},
+            "virtual_hour":      virtual_hour or 12.0,
+            "room":              room_name or "",
+            "experiment_mode":   experiment_mode,
+            "ablation_mode":     ablation_mode,
+            "time_slot":         _get_time_slot(virtual_hour),
+            "virtual_day":       virtual_day,
         }
 
     def _update_scene_snapshot(self, bound_doc, interacting_items,
@@ -1353,7 +1129,7 @@ class PerceptionEngine:
              }})
 
     def _update_dynamic_objects(self, user_id, interacting_items, scene_items,
-                                 spatial_relations, bound_doc, room_name, user_pos=None):
+                                 bound_doc, room_name, user_pos=None):
         now         = datetime.datetime.utcnow()
         bound_label = bound_doc.get("label", "Unknown_Area") if bound_doc else "Unknown_Area"
         bound_pos   = bound_doc.get("pos")                   if bound_doc else None
@@ -1363,7 +1139,7 @@ class PerceptionEngine:
                 return
             if self.col_scene.find_one({"label": label}):
                 return
-            base_set = {
+            base_set  = {
                 "last_seen_on": bound_label, "spatial_rel": "near",
                 "room":         room_name,   "last_seen":   now,
                 "source":       "vlm",       "status":      "active",
@@ -1371,7 +1147,7 @@ class PerceptionEngine:
             }
             if bound_pos:
                 base_set["furniture_pos"] = bound_pos
-            inc_ops  = {"seen_count": 1}
+            inc_ops   = {"seen_count": 1}
             if is_interacting:
                 inc_ops["interact_count"] = 1
             update_op = {
@@ -1388,53 +1164,6 @@ class PerceptionEngine:
         for item in scene_items:
             _upsert(item, False)
 
-    def _write_semantic_memory(self, user, action, bound_doc,
-                                confidence, result, source_nodes):
-        instance = bound_doc.get("label", "Unknown_Area") if bound_doc else "Unknown_Area"
-        room     = bound_doc.get("room",  "")             if bound_doc else ""
-        self.col_memory.insert_one({
-            "user":         user,
-            "action":       action,
-            "bound_to":     instance,
-            "bound_room":   room,
-            "confidence":   confidence,
-            "details":      result,
-            "source_nodes": source_nodes,
-            "timestamp":    datetime.datetime.utcnow(),
-        })
-
-    def _index_to_faiss(self, user, action, bound_doc, result, mongo_id):
-        instance = bound_doc.get("label", "Unknown") if bound_doc else "Unknown"
-        pos_raw  = bound_doc.get("pos")              if bound_doc else None
-        pos_xy   = (pos_raw if isinstance(pos_raw, list)
-                    else ([bound_doc.get("x", 0), bound_doc.get("z", 0)]
-                          if bound_doc else [0, 0]))
-        text = self.faiss_store.build_memory_text(
-            user=user, action=action, instance=instance,
-            interacting_items=result.get("interacting_items", []),
-            all_items=result.get("all_items", []),
-            spatial_relations=result.get("spatial_relations", []))
-        self.faiss_store.add(text, {
-            "user":              user,
-            "action":            action,
-            "instance":          instance,
-            "interacting_items": result.get("interacting_items", []),
-            "all_items":         result.get("all_items", []),
-            "spatial_relations": result.get("spatial_relations", []),
-            "furniture_pos":     pos_xy,
-            "mongo_id":          mongo_id,
-            "timestamp":         datetime.datetime.utcnow().isoformat(),
-        })
-
-    def _find_nearest_zone(self, user_pos, room_name=""):
-        return self.scene_engine.find_nearest_zone(user_pos, room_name)
-
-    def _compute_zone_affinity(self, zone, behavior):
-        return self.scene_engine.get_zone_affinity(zone, behavior)
-
-    def _is_ambiguous_zone(self, zone):
-        return self.scene_engine.is_ambiguous(zone)
-
     def _update_activity_sequence(self, user, action, instance):
         today = datetime.datetime.utcnow().strftime("%Y-%m-%d")
         self.col_activity.update_one(
@@ -1446,91 +1175,6 @@ class PerceptionEngine:
             }},
              "$setOnInsert": {"user": user, "date": today}},
             upsert=True)
-
-    def _update_observation_log(self, user, action, bound_doc,
-                                 interacting_items, spatial_relations,
-                                 raw_desc, virtual_hour=None, virtual_day=None,
-                                 ground_truth_activity=None,
-                                 user_pos=None, room_name=""):
-        if not bound_doc or action in NO_WEIGHT_ACTIONS:
-            return
-        instance  = bound_doc.get("label", "Unknown")
-        pos_raw   = bound_doc.get("pos")
-        pos_xy    = (pos_raw if isinstance(pos_raw, list)
-                     else [bound_doc.get("x", 0), bound_doc.get("z", 0)])
-        time_slot = _get_time_slot(virtual_hour)
-        today     = _virtual_day_to_date(virtual_day)
-        try:
-            nz = self._find_nearest_zone(user_pos, room_name)
-            zone_name_for_log = nz["zone_name"] if nz else ""
-        except Exception:
-            zone_name_for_log = ""
-        canonical_key = zone_name_for_log if zone_name_for_log else instance
-        self.col_obs.find_one_and_update(
-            {"user": user, "zone_name": canonical_key,
-             "action": action, "time_slot": time_slot},
-            {"$inc":         {"weight": 1},
-             "$addToSet":    {"interacting_items": {"$each": interacting_items}},
-             "$set":         {
-                 "observed_relations": spatial_relations,
-                 "pos":               pos_xy,
-                 "room":              bound_doc.get("room", "").strip() if bound_doc else "",
-                 "instance":          instance,
-                 "last_seen":         datetime.datetime.utcnow(),
-                 "last_date":         today,
-                 "raw_vlm_desc":      raw_desc,
-             },
-             "$setOnInsert": {
-                 "user":      user,
-                 "zone_name": canonical_key,
-                 "action":    action,
-                 "time_slot": time_slot,
-             }},
-            upsert=True, return_document=ReturnDocument.AFTER)
-        self._write_habit_snapshot(user, action, canonical_key, zone_name_for_log, today)
-        self._update_user_affinity(user, action, canonical_key, instance)
-
-    def _update_user_affinity(self, user: str, action: str,
-                               zone_name: str, instance: str):
-        if not action or not user:
-            return
-        try:
-            pipeline = [
-                {"$match": {"user": user, "action": action}},
-                {"$group": {"_id": "$zone_name", "total_weight": {"$sum": "$weight"}}},
-            ]
-            results = list(self.col_obs.aggregate(pipeline))
-            total   = sum(r["total_weight"] for r in results)
-            if total == 0:
-                return
-            today = datetime.datetime.utcnow().strftime("%Y-%m-%d")
-            for r in results:
-                zone_key = r["_id"] or "Unknown_Zone"
-                personal = r["total_weight"] / total
-                self.col_user_aff.update_one(
-                    {"user_id": user, "action": action, "zone": zone_key},
-                    {"$set": {"affinity":   round(personal, 4),
-                              "updated_at": datetime.datetime.utcnow()}},
-                    upsert=True)
-                self.col_aff_history.update_one(
-                    {"user_id": user, "action": action, "zone": zone_key, "date": today},
-                    {"$set": {"affinity":  round(personal, 4),
-                              "timestamp": datetime.datetime.utcnow()}},
-                    upsert=True)
-        except Exception as e:
-            print(f"[UserAffinity] {e}")
-
-    def _write_habit_snapshot(self, user: str, action: str,
-                               canonical_key: str, zone_name: str, today: str):
-        try:
-            self.col_habit_snap.update_one(
-                {"user": user, "action": action,
-                 "canonical_key": canonical_key, "date": today},
-                {"$inc": {"daily_count": 1},
-                 "$set": {"zone": zone_name or canonical_key}},
-                upsert=True)
-        except Exception as e:
-            print(f"[HabitSnap] {e}")
 
     def shutdown(self):
         try:

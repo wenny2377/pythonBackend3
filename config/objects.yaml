@@ -1,0 +1,289 @@
+structural_blacklist:
+  - "wall"
+  - "floor"
+  - "ceiling"
+  - "wooden floor"
+  - "white wall"
+  - "white ceiling"
+  - "window"
+  - "door"
+  - "ground"
+  - "white box"
+  - "concrete floor"
+  - "tile floor"
+  - "carpet"
+  - "baseboard"
+  - "room"
+  - "background"
+  - "surface"
+  - "area"
+
+static_fixtures:
+  - "sofa"
+  - "couch"
+  - "sectional"
+  - "bed"
+  - "bathtub"
+  - "wardrobe"
+  - "closet"
+  - "refrigerator"
+  - "fridge"
+  - "toilet"
+  - "shower"
+  - "cabinet"
+  - "tv"
+  - "television"
+  - "monitor"
+
+high_affordance_furniture:
+  - "tv"
+  - "television"
+  - "monitor"
+  - "stove"
+  - "oven"
+  - "refrigerator"
+  - "fridge"
+  - "keyboard"
+  - "cabinet"
+
+item_to_action:
+  broom:    "Cleaning"
+  mop:      "Cleaning"
+  pan:      "Cooking"
+  spatula:  "Cooking"
+  book:     "Reading"
+  magazine: "Reading"
+  phone:    "UsingPhone"
+  remote:   "Watching"
+  laptop:   "Typing"
+  keyboard: "Typing"
+  cup:      "SeatedDrinking"
+  bottle:   "Drinking"
+  cola:     "Drinking"
+  juice:    "Drinking"
+  water:    "Drinking"
+  bowl:     "Eating"
+  plate:    "Eating"
+  fork:     "Eating"
+  spoon:    "Eating"
+
+label_normalize_map:
+  waterbottle:    "water"
+  "water bottle": "water"
+  "cola can":     "cola"
+  "coca cola":    "cola"
+  coke:           "cola"
+  "soda can":     "cola"
+  "cell phone":   "phone"
+  smartphone:     "phone"
+  iphone:         "phone"
+  "mobile phone": "phone"
+  juicebottle:    "juice"
+  "juice bottle": "juice"
+  "orange juice": "juice"
+  saladbowl:      "bowl"
+  "tv remote":    "remote"
+  "remote control": "remote"
+  notebook:       "laptop"
+  computer:       "laptop"
+  sweep:          "broom"
+  "frying pan":   "pan"
+  "cooking pan":  "pan"
+  skillet:        "pan"
+  mug:            "cup"
+  "coffee cup":   "cup"
+  "tea cup":      "cup"
+  "drinking glass": "cup"
+
+object_vocab:
+  - "none"
+  - "remote"
+  - "book"
+  - "magazine"
+  - "phone"
+  - "laptop"
+  - "broom"
+  - "mop"
+  - "cup"
+  - "glass"
+  - "bottle"
+  - "bowl"
+  - "fork"
+  - "spoon"
+  - "pan"
+  - "spatula"
+  - "keyboard"
+  - "chopsticks"
+  - "smartphone"
+  - "cola"
+  - "juice"
+  - "water"
+  - "food"
+  - "plate"
+  - "apple"
+  - "banana"
+
+coco_objects:
+  - "person"
+  - "cat"
+  - "dog"
+  - "chair"
+  - "couch"
+  - "bed"
+  - "dining table"
+  - "toilet"
+  - "tv"
+  - "laptop"
+  - "mouse"
+  - "remote"
+  - "keyboard"
+  - "cell phone"
+  - "microwave"
+  - "oven"
+  - "toaster"
+  - "sink"
+  - "refrigerator"
+  - "book"
+  - "clock"
+  - "vase"
+  - "scissors"
+  - "toothbrush"
+  - "hair drier"
+  - "bottle"
+  - "wine glass"
+  - "cup"
+  - "fork"
+  - "knife"
+  - "spoon"
+  - "bowl"
+  - "saladbowl"
+  - "banana"
+  - "apple"
+  - "sandwich"
+  - "orange"
+  - "broccoli"
+  - "carrot"
+  - "hot dog"
+  - "pizza"
+  - "donut"
+  - "cake"
+  - "backpack"
+  - "umbrella"
+  - "handbag"
+  - "tie"
+  - "suitcase"
+
+objects:
+  cola:
+    category:       drink
+    actions:        [Drinking, SeatedDrinking]
+    synonyms:       [soda, coke, fizzy, cold drink, carbonated]
+    normalize_from: [cola can, coca cola, coke, soda can]
+
+  water:
+    category:       drink
+    actions:        [Drinking]
+    synonyms:       [water bottle, waterbottle, hydration, H2O]
+    normalize_from: [water bottle, waterbottle, bottle]
+
+  bottle:
+    category:       drink
+    actions:        [Drinking]
+    synonyms:       [water, waterbottle, something to drink]
+    normalize_from: [water bottle, waterbottle]
+
+  juice:
+    category:       drink
+    actions:        [Drinking, SeatedDrinking]
+    synonyms:       [orange juice, fruit juice, juice box]
+    normalize_from: [juicebottle, juice bottle, orange juice]
+
+  cup:
+    category:       drink
+    actions:        [Drinking, SeatedDrinking]
+    synonyms:       [mug, glass, tea cup, coffee cup]
+    normalize_from: [mug, coffee cup, tea cup, drinking glass]
+
+  apple:
+    category:       food
+    actions:        [Eating]
+    synonyms:       [fruit, snack, fresh fruit]
+    normalize_from: []
+
+  banana:
+    category:       food
+    actions:        [Eating]
+    synonyms:       [fruit, snack, yellow fruit]
+    normalize_from: []
+
+  bowl:
+    category:       food
+    actions:        [Eating]
+    synonyms:       [dish, soup bowl, cereal bowl, salad bowl]
+    normalize_from: [saladbowl]
+
+  plate:
+    category:       food
+    actions:        [Eating]
+    synonyms:       [dish, dinner plate]
+    normalize_from: []
+
+  food:
+    category:       food
+    actions:        [Eating]
+    synonyms:       [meal, snack, leftovers, dinner, lunch]
+    normalize_from: []
+
+  remote:
+    category:       device
+    actions:        [Watching]
+    synonyms:       [clicker, TV remote, controller, channel changer]
+    normalize_from: [remote control, tv remote]
+
+  phone:
+    category:       personal
+    actions:        [UsingPhone]
+    synonyms:       [smartphone, mobile, cell phone, mobile phone]
+    normalize_from: [cell phone, mobile phone, smartphone, iphone]
+
+  book:
+    category:       personal
+    actions:        [Reading]
+    synonyms:       [novel, something to read, literature]
+    normalize_from: [magazine]
+
+  laptop:
+    category:       device
+    actions:        [Typing]
+    synonyms:       [computer, notebook, typing]
+    normalize_from: [notebook, computer, tablet]
+
+  broom:
+    category:       cleaning
+    actions:        [Cleaning]
+    synonyms:       [sweep, cleaning tool]
+    normalize_from: [sweep]
+
+  mop:
+    category:       cleaning
+    actions:        [Cleaning]
+    synonyms:       [cleaning, wet mop]
+    normalize_from: []
+
+  pan:
+    category:       kitchen
+    actions:        [Cooking]
+    synonyms:       [frying pan, skillet, wok, cookware]
+    normalize_from: [frying pan, cooking pan, skillet]
+
+  spatula:
+    category:       kitchen
+    actions:        [Cooking]
+    synonyms:       [cooking utensil, flipper, kitchen tool]
+    normalize_from: []
+
+  keyboard:
+    category:       device
+    actions:        [Typing]
+    synonyms:       [computer keyboard, keys]
+    normalize_from: []

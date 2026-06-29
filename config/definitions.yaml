@@ -1,6 +1,6 @@
 behavior_labels:
   - "Drinking"
-  - "SittingDrink"
+  - "SeatedDrinking"
   - "Sitting"
   - "Eating"
   - "Cooking"
@@ -9,7 +9,7 @@ behavior_labels:
   - "Watching"
   - "Reading"
   - "Cleaning"
-  - "PhoneUse"
+  - "UsingPhone"
   - "Typing"
   - "StandUp"
   - "PickingUp"
@@ -24,137 +24,160 @@ no_weight_actions:
   - "Standing"
   - "StandUp"
 
+exclusive_behaviours:
+  - "Laying"
+  - "Cooking"
+  - "Opening"
+  - "Typing"
+  - "Cleaning"
+  - "Watching"
+
+room_impossible:
+  "BedRoom(dad)":
+    - "Cooking"
+    - "Cleaning"
+  Kitchen:
+    - "Laying"
+    - "Watching"
+    - "Typing"
+
+strong_held_items:
+  broom:   "Cleaning"
+  mop:     "Cleaning"
+  pan:     "Cooking"
+  spatula: "Cooking"
+
 affordance_descriptions:
-  Eating:       "dining table or chair where person eats food with fork spoon or chopsticks"
-  Drinking:     "sink or table where person drinks water juice or beverage from cup or bottle"
-  SittingDrink: "sofa or couch where person sits relaxing and drinks coffee tea or beverage"
-  Sitting:      "sofa chair or couch where person sits idle with empty hands doing nothing"
-  Cooking:      "stove or oven where person cooks food using pan pot or spatula"
-  Opening:      "refrigerator fridge or cabinet door that person opens to get items"
-  Laying:       "bed or sofa where person lies down to sleep or rest horizontally"
-  Watching:     "television sofa or couch where person watches screen or tv"
-  Reading:      "bed desk or sofa where person reads book magazine or document"
-  Cleaning:     "floor sink or surface where person cleans using broom mop or cloth"
-  PhoneUse:     "sofa bed or chair where person uses smartphone or makes phone call"
-  Typing:       "desk keyboard or monitor where person types on computer or laptop"
-  StandUp:      "sofa chair or bed where person rises from seated or lying position to stand up"
-  PickingUp:    "floor or table where person bends down to pick up an object"
-  PuttingDown:  "table shelf or surface where person sets down or places an object"
-  Standing:     "open area hallway or room where person stands still doing nothing"
-  Walking:      "hallway corridor or open floor where person walks or moves around"
+  Eating:         "dining table or chair where person eats food with fork spoon or chopsticks"
+  Drinking:       "sink or table where person stands and drinks water juice or beverage from cup or bottle"
+  SeatedDrinking: "sofa or couch where person sits relaxing and drinks coffee tea or beverage"
+  Sitting:        "sofa chair or couch where person sits idle with empty hands doing nothing"
+  Cooking:        "stove or oven where person cooks food using pan pot or spatula"
+  Opening:        "refrigerator fridge or cabinet door that person opens to get items"
+  Laying:         "bed or sofa where person lies down to sleep or rest horizontally"
+  Watching:       "television sofa or couch where person watches screen or tv"
+  Reading:        "bed desk or sofa where person reads book magazine or document"
+  Cleaning:       "floor sink or surface where person cleans using broom mop or cloth"
+  UsingPhone:     "sofa bed or chair where person uses smartphone or makes phone call"
+  Typing:         "desk keyboard or monitor where person types on computer or laptop"
+  StandUp:        "sofa chair or bed where person rises from seated or lying position to stand up"
+  PickingUp:      "floor or table where person bends down to pick up an object"
+  PuttingDown:    "table shelf or surface where person sets down or places an object"
+  Standing:       "open area hallway or room where person stands still doing nothing"
+  Walking:        "hallway corridor or open floor where person walks or moves around"
 
 charades_affinity:
   sofa:
-    Sitting: 1.000
-    Laying:  0.440
-    Watching: 0.268
-    Reading: 0.650
-    SittingDrink: 0.500
-    PhoneUse: 0.450
+    Sitting:        1.000
+    Laying:         0.440
+    Watching:       0.268
+    Reading:        0.650
+    SeatedDrinking: 0.500
+    UsingPhone:     0.450
   couch:
-    Sitting: 1.000
-    Laying:  0.440
-    Watching: 0.268
-    Reading: 0.650
-    SittingDrink: 0.500
-    PhoneUse: 0.450
+    Sitting:        1.000
+    Laying:         0.440
+    Watching:       0.268
+    Reading:        0.650
+    SeatedDrinking: 0.500
+    UsingPhone:     0.450
   "sofa side":
-    Sitting: 1.000
-    Laying:  0.440
-    Watching: 0.268
-    Reading: 0.650
-    SittingDrink: 0.500
-    PhoneUse: 0.450
+    Sitting:        1.000
+    Laying:         0.440
+    Watching:       0.268
+    Reading:        0.650
+    SeatedDrinking: 0.500
+    UsingPhone:     0.450
   "sofa side 2":
-    Sitting: 1.000
-    Laying:  0.440
-    Watching: 0.268
-    Reading: 0.650
-    SittingDrink: 0.500
-    PhoneUse: 0.450
+    Sitting:        1.000
+    Laying:         0.440
+    Watching:       0.268
+    Reading:        0.650
+    SeatedDrinking: 0.500
+    UsingPhone:     0.450
   stove:
-    Cooking:  1.000
-    Cleaning: 0.416
+    Cooking:        1.000
+    Cleaning:       0.416
   bed:
-    Sitting: 1.000
-    Laying:  0.840
-    Reading: 0.300
+    Sitting:        1.000
+    Laying:         0.840
+    Reading:        0.300
   "dad's bed":
-    Sitting: 1.000
-    Laying:  0.840
-    Reading: 0.300
+    Sitting:        1.000
+    Laying:         0.840
+    Reading:        0.300
   tv:
-    Watching: 1.000
-    Sitting:  0.622
+    Watching:       1.000
+    Sitting:        0.622
   television:
-    Watching: 1.000
-    Sitting:  0.622
+    Watching:       1.000
+    Sitting:        0.622
   refrigerator:
-    Opening:  1.000
-    Eating:   0.355
-    Drinking: 0.287
+    Opening:        1.000
+    Eating:         0.355
+    Drinking:       0.287
   fridge:
-    Opening:  1.000
-    Eating:   0.355
-    Drinking: 0.287
+    Opening:        1.000
+    Eating:         0.355
+    Drinking:       0.287
   "dining table":
-    Sitting: 1.000
-    Eating:  0.700
-    SittingDrink: 0.300
+    Sitting:        1.000
+    Eating:         0.700
+    SeatedDrinking: 0.300
   table:
-    Sitting: 1.000
-    Eating:  0.700
-    SittingDrink: 0.300
+    Sitting:        1.000
+    Eating:         0.700
+    SeatedDrinking: 0.300
   table2:
-    Sitting: 1.000
-    Eating:  0.700
-    SittingDrink: 0.300
+    Sitting:        1.000
+    Eating:         0.700
+    SeatedDrinking: 0.300
   chair:
-    Sitting:      1.000
-    Eating:       0.600
-    SittingDrink: 0.500
-    Typing:       0.600
-    Reading:      0.400
+    Sitting:        1.000
+    Eating:         0.600
+    SeatedDrinking: 0.500
+    Typing:         0.600
+    Reading:        0.400
   chair1:
-    Sitting:      1.000
-    Eating:       0.600
-    SittingDrink: 0.500
-    Typing:       0.600
-    Reading:      0.400
+    Sitting:        1.000
+    Eating:         0.600
+    SeatedDrinking: 0.500
+    Typing:         0.600
+    Reading:        0.400
   chair2:
-    Sitting:      1.000
-    Eating:       0.600
-    SittingDrink: 0.500
-    Typing:       0.600
-    Reading:      0.400
+    Sitting:        1.000
+    Eating:         0.600
+    SeatedDrinking: 0.500
+    Typing:         0.600
+    Reading:        0.400
   chair3:
-    Sitting:      1.000
-    Eating:       0.600
-    SittingDrink: 0.500
-    Typing:       0.600
-    Reading:      0.400
+    Sitting:        1.000
+    Eating:         0.600
+    SeatedDrinking: 0.500
+    Typing:         0.600
+    Reading:        0.400
   sink:
-    Cleaning: 1.000
-    Drinking: 0.451
+    Cleaning:       1.000
+    Drinking:       0.451
   desk:
-    Sitting: 1.000
-    Typing:  0.900
-    Reading: 0.200
+    Sitting:        1.000
+    Typing:         0.900
+    Reading:        0.200
   monitor:
-    Typing:  0.900
-    Reading: 0.070
+    Typing:         0.900
+    Reading:        0.070
   keyboard:
-    Typing:  0.950
-    Reading: 0.050
+    Typing:         0.950
+    Reading:        0.050
   cabinet:
-    Opening:  0.600
-    Cleaning: 0.200
+    Opening:        0.600
+    Cleaning:       0.200
   cabinet2:
-    Opening:  0.600
-    Cleaning: 0.200
+    Opening:        0.600
+    Cleaning:       0.200
   toilet:
-    Cleaning: 1.000
-    Standing: 0.300
+    Cleaning:       1.000
+    Standing:       0.300
 
 vision_prototypes:
   Drinking: >
@@ -165,7 +188,7 @@ vision_prototypes:
     swallowing throat movement fluid intake liquid ingestion.
     NOT seated NOT holding paper NOT glowing screen
 
-  SittingDrink: >
+  SeatedDrinking: >
     seated stationary resting posture single hand or both hands holding cup vessel mug glass can box.
     lifting container toward lips swallowing hot cold beverage tea coffee juice soda cola refreshment.
     sipping drinking liquid intake without chewing jaw stationary relaxed sitting position.
@@ -221,7 +244,7 @@ vision_prototypes:
     tool tip contact floor ground surface low trajectory.
     repetitive cyclical whole body coordination house chores maintenance
 
-  PhoneUse: >
+  UsingPhone: >
     single hand only unilateral grip holding thin flat rectangular smartphone device.
     glowing illuminated digital screen display lit up bright.
     thumb actively scrolling swiping tapping touching glass screen surface.
@@ -255,15 +278,3 @@ vision_prototypes:
   Walking: >
     locomotion legs stepping alternating feet forward displacement moving room path hallway.
     arms swinging naturally body coordination walking gait translation motion velocity
-
-behaviours:
-  Laying:
-    head_pitch:
-      ideal: -83
-      tolerance: 10
-  Sitting:
-    head_pitch:
-      range: [-40, 40]
-  Standing:
-    arm_elevation:
-      min: 165

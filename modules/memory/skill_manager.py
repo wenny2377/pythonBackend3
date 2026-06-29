@@ -1,6 +1,6 @@
+import re
 import json
 import logging
-import re
 import requests
 from datetime import datetime, timedelta
 from pymongo import MongoClient
@@ -10,13 +10,10 @@ logger = logging.getLogger(__name__)
 
 LLM_TIMEOUT = Config.LLM_TIMEOUT
 LLM_TEMP    = Config.LLM_TEMPERATURE
-STALE_DAYS  = getattr(Config, 'SKILL_STALE_DAYS', 30)
+STALE_DAYS  = 30
 
-MAX_SKILL_LEN         = 2500
-MAX_BULLETS           = 8
-SKILL_CHUNK_TOP_K     = 2
-SBERT_DEDUP_THRESHOLD = 0.85
-SUPPORT_THRESHOLD     = 2
+MAX_SKILL_LEN = 2500
+MAX_BULLETS   = 8
 
 REQUIRED_SECTIONS = [
     "## Behavior Patterns",
@@ -35,7 +32,7 @@ RULES:
 1. ONLY record: physical needs, location/object preferences, time patterns, service feedback.
 2. NEVER include: weather, greetings, small talk, assumptions not backed by observations.
 3. Each section: max 8 bullets. Start each bullet with "- " (hyphen space). Do NOT use * or **.
-4. If no data for a section, leave the HTML comment line only.
+4. If no data for a section, leave the section header only.
 5. Output ONLY the filled Markdown. No explanations. No bold text."""
 
 UPDATE_SYSTEM = """You are a skill profile updater for a home service robot.
@@ -58,12 +55,12 @@ def _call_llm(ollama_url, model, system, user, max_tokens=600):
         resp = requests.post(
             f"{ollama_url}/api/chat",
             json={
-                "model": model,
+                "model":    model,
                 "messages": [
                     {"role": "system", "content": system},
                     {"role": "user",   "content": user},
                 ],
-                "stream": False,
+                "stream":  False,
                 "options": {"temperature": LLM_TEMP, "num_predict": max_tokens},
             },
             timeout=LLM_TIMEOUT,
@@ -81,7 +78,7 @@ def _call_llm_json(ollama_url, model, system, user):
         return None
     try:
         clean = re.sub(r'```(?:json)?\s*', '', raw).strip().rstrip('`')
-        m = re.search(r'\{.*\}', clean, re.DOTALL)
+        m     = re.search(r'\{.*\}', clean, re.DOTALL)
         if m:
             return json.loads(m.group(0))
     except json.JSONDecodeError as e:
@@ -112,8 +109,8 @@ def validate_skill(skill_md):
         if kw in lower:
             return False, f"Forbidden: '{kw}'"
     for s in REQUIRED_SECTIONS:
-        start = skill_md.find(s)
-        end   = len(skill_md)
+        start   = skill_md.find(s)
+        end     = len(skill_md)
         for other in REQUIRED_SECTIONS:
             if other != s:
                 idx = skill_md.find(other, start + 1)
@@ -181,101 +178,6 @@ class SkillManager:
         self.ollama_url = ollama_url
         self.model_name = model_name
 
-        self._sbert             = None
-        self._skill_chunk_index = None
-        self._skill_chunk_meta  = []
-        self._init_skill_faiss()
-
-    def _init_skill_faiss(self):
-        try:
-            import faiss
-            import numpy as np
-            from sentence_transformers import SentenceTransformer
-
-            self._sbert             = SentenceTransformer('paraphrase-MiniLM-L6-v2', device='cuda')
-            self._skill_chunk_index = faiss.IndexFlatIP(384)
-
-            chunks = list(self.db.skill_chunks.find({}))
-            if chunks:
-                for chunk in chunks:
-                    if "vector" in chunk:
-                        vec = np.array(chunk["vector"], dtype=np.float32).reshape(1, -1)
-                        faiss.normalize_L2(vec)
-                        self._skill_chunk_index.add(vec)
-                        self._skill_chunk_meta.append(chunk)
-        except Exception as e:
-            logger.warning(f"[SkillChunk] FAISS init failed: {e}")
-
-    def _chunk_skill_md(self, skill_md: str, user_id: str) -> list:
-        if not self._sbert or not skill_md:
-            return []
-
-        import faiss
-        import numpy as np
-
-        chunks   = []
-        sections = re.split(r'\n(?=## )', skill_md)
-
-        for section in sections:
-            section = section.strip()
-            if not section or len(section) < 10:
-                continue
-
-            title_match = re.match(r'## (.+)', section)
-            title       = title_match.group(1).strip() if title_match else "general"
-            vec         = self._sbert.encode(
-                section, normalize_embeddings=True).astype(np.float32)
-
-            chunk_doc = {
-                "user_id":    user_id,
-                "title":      title,
-                "content":    section,
-                "vector":     vec.tolist(),
-                "updated_at": datetime.utcnow(),
-            }
-
-            existing = self._find_similar_chunk(user_id, vec)
-            if existing:
-                self.db.skill_chunks.update_one(
-                    {"_id": existing["_id"]},
-                    {
-                        "$inc": {"support": 1},
-                        "$set": {"content": section, "updated_at": datetime.utcnow()},
-                    },
-                )
-            else:
-                chunk_doc["support"] = 1
-                result               = self.db.skill_chunks.insert_one(chunk_doc)
-                chunk_doc["_id"]     = result.inserted_id
-
-                vec_norm = vec.reshape(1, -1).copy()
-                faiss.normalize_L2(vec_norm)
-                self._skill_chunk_index.add(vec_norm)
-                self._skill_chunk_meta.append(chunk_doc)
-
-            chunks.append(chunk_doc)
-
-        return chunks
-
-    def _find_similar_chunk(self, user_id: str, vec) -> dict | None:
-        if not self._skill_chunk_index or self._skill_chunk_index.ntotal == 0:
-            return None
-        try:
-            import numpy as np
-            import faiss
-            q = vec.reshape(1, -1).copy().astype(np.float32)
-            faiss.normalize_L2(q)
-            scores, indices = self._skill_chunk_index.search(q, 1)
-            if scores[0][0] >= SBERT_DEDUP_THRESHOLD:
-                idx = indices[0][0]
-                if idx < len(self._skill_chunk_meta):
-                    candidate = self._skill_chunk_meta[idx]
-                    if candidate.get("user_id") == user_id:
-                        return candidate
-        except Exception as e:
-            logger.warning(f"[SkillChunk] similarity search failed: {e}")
-        return None
-
     def _insert_if_new(self, user_id: str, section: str, bullet: str) -> bool:
         doc = self.db.user_skills.find_one({"user_id": user_id})
         if not doc:
@@ -289,88 +191,29 @@ class SkillManager:
         updated = _normalize_bullets(updated)
         valid, reason = validate_skill(updated)
         if not valid:
+            logger.warning(f"[SkillManager] Invalid after insert: {reason}")
             return False
 
         self._save(user_id, updated)
-        self._chunk_skill_md(updated, user_id)
         print(f"[SkillManager] Written to {section}: {bullet[:60]}")
         return True
 
     def _is_duplicate(self, new_bullet: str, skill_md: str, section: str) -> bool:
-        try:
-            import numpy as np
-            from sentence_transformers import SentenceTransformer
-
-            idx = skill_md.find(section)
-            if idx == -1:
-                return False
-            after = skill_md[idx:]
-            end   = len(after)
-            for s in REQUIRED_SECTIONS:
-                if s == section:
-                    continue
-                i = after.find(s, len(section))
-                if i != -1 and i < end:
-                    end = i
-            block   = after[:end]
-            bullets = [l.strip() for l in block.split('\n')
-                       if l.strip().startswith('-')]
-            if not bullets:
-                return False
-            model = SentenceTransformer("paraphrase-MiniLM-L6-v2")
-            new_v = model.encode([new_bullet], normalize_embeddings=True)[0]
-            old_v = model.encode(bullets, normalize_embeddings=True)
-            return float((old_v @ new_v).max()) >= 0.78
-        except Exception:
-            return new_bullet.lower() in skill_md.lower()
-
-    def get_skill_chunks(self, user_id: str, query: str) -> str | None:
-        if not self._sbert or not self._skill_chunk_index:
-            return None
-        if self._skill_chunk_index.ntotal == 0:
-            return None
-
-        user_chunks = [
-            (i, m) for i, m in enumerate(self._skill_chunk_meta)
-            if m.get("user_id") == user_id and m.get("support", 1) >= SUPPORT_THRESHOLD
-        ]
-        if not user_chunks:
-            user_chunks = [
-                (i, m) for i, m in enumerate(self._skill_chunk_meta)
-                if m.get("user_id") == user_id
-            ]
-        if not user_chunks:
-            return None
-
-        try:
-            import numpy as np
-            import faiss
-
-            q_vec = self._sbert.encode(
-                query, normalize_embeddings=True
-            ).astype(np.float32).reshape(1, -1)
-            faiss.normalize_L2(q_vec)
-
-            scored = []
-            for _, meta in user_chunks:
-                chunk_vec = np.array(
-                    meta["vector"], dtype=np.float32
-                ).reshape(1, -1)
-                faiss.normalize_L2(chunk_vec)
-                sim = float(np.dot(q_vec[0], chunk_vec[0]))
-                scored.append((sim, meta))
-
-            scored.sort(key=lambda x: x[0], reverse=True)
-            top = scored[:SKILL_CHUNK_TOP_K]
-
-            if not top:
-                return None
-
-            return "\n\n".join(m["content"] for _, m in top)
-
-        except Exception as e:
-            logger.warning(f"[SkillChunk] retrieval failed: {e}")
-            return None
+        idx = skill_md.find(section)
+        if idx == -1:
+            return False
+        after = skill_md[idx:]
+        end   = len(after)
+        for s in REQUIRED_SECTIONS:
+            if s == section:
+                continue
+            i = after.find(s, len(section))
+            if i != -1 and i < end:
+                end = i
+        block   = after[:end]
+        bullets = [l.strip() for l in block.split('\n') if l.strip().startswith('-')]
+        new_low = new_bullet.lower().strip()
+        return any(new_low in b.lower() or b.lower() in new_low for b in bullets)
 
     def get_skill(self, user_id):
         doc = self.db.user_skills.find_one({"user_id": user_id})
@@ -378,7 +221,7 @@ class SkillManager:
             return None
         skill = doc["skill_md"]
         if doc.get("is_stale", False):
-            skill = f"> Warning: skill profile not used for over {STALE_DAYS} days.\n\n" + skill
+            skill = f"> Warning: skill profile not updated for over {STALE_DAYS} days.\n\n" + skill
         return skill
 
     def get_version(self, user_id):
@@ -411,12 +254,10 @@ class SkillManager:
             valid, reason = validate_skill(skill_md)
             if valid:
                 self._save(user_id, skill_md)
-                self._chunk_skill_md(skill_md, user_id)
                 return skill_md
 
         fallback = self._fallback(user_id, habits)
         self._save(user_id, fallback)
-        self._chunk_skill_md(fallback, user_id)
         return fallback
 
     def should_update(self, user_id, query, answer, trace):
@@ -424,13 +265,12 @@ class SkillManager:
             return False
         result = _call_llm_json(
             self.ollama_url, self.model_name, RELEVANCE_SYSTEM,
-            f'User said: "{query}"\nRobot answered: "{answer}"\n\n'
-            f'Update skill profile?',
+            f'User said: "{query}"\nRobot answered: "{answer}"\n\nUpdate skill profile?',
         )
         if result is None:
             return False
         should = result.get("should_update", False)
-        print(f"[RelevanceGate] {should} — {result.get('reason', '')}", flush=True)
+        print(f"[RelevanceGate] {should} — {result.get('reason', '')}")
         return should
 
     def update(self, user_id, query, answer, trace):
@@ -486,9 +326,7 @@ class SkillManager:
         valid, reason = validate_skill(updated)
         if valid:
             self._save(user_id, updated)
-            self._chunk_skill_md(updated, user_id)
             return updated
-
         return current
 
     def check_stale(self, user_id):
@@ -516,10 +354,9 @@ class SkillManager:
         )
         if refactored:
             refactored = _normalize_bullets(refactored)
-            valid, _ = validate_skill(refactored)
+            valid, _   = validate_skill(refactored)
             if valid:
                 self._save(user_id, refactored)
-                self._chunk_skill_md(refactored, user_id)
                 return refactored
         return current
 

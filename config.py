@@ -2,26 +2,14 @@ import os
 import torch
 
 
-def _ask_db() -> str:
-    print("\nWhich DB?")
-    print("  1) Baseline   (robot_exp_baseline)")
-    print("  2) Corruption (robot_exp_corruption)")
-    print("  3) Demo       (robot_exp_demo)")
-    try:
-        choice = input("Choice [1]: ").strip() or "1"
-    except EOFError:
-        choice = "1"
-
-    db = {
-        "1": "robot_exp_baseline",
-        "2": "robot_exp_corruption",
-        "3": "robot_exp_demo",
-    }.get(choice, "robot_exp_baseline")
-
-    if choice == "3":
-        print("[DEMO MODE] Using robot_exp_demo — experiment DBs untouched.")
-
-    return db
+def _resolve_db() -> str:
+    env_db = os.environ.get("DB_NAME", "").strip()
+    if env_db:
+        print(f"[Config] DB_NAME from env: {env_db}")
+        return env_db
+    print("[Config] Defaulting to robot_exp_baseline")
+    print("[Config] Use DB_NAME=robot_exp_corruption python app.py to override")
+    return "robot_exp_baseline"
 
 
 class Config:
@@ -33,7 +21,7 @@ class Config:
     LLM_MODEL  = "llama3.1:8b"
 
     MONGO_URI = "mongodb://127.0.0.1:27017/"
-    DB_NAME   = os.environ.get("DB_NAME") or _ask_db()
+    DB_NAME   = _resolve_db()
 
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -43,11 +31,13 @@ class Config:
     DYNAMIC_META_PATH      = "dynamic_memory_meta.json"
     SKILL_CHUNK_INDEX_PATH = "skill_chunks.index"
     SKILL_CHUNK_META_PATH  = "skill_chunks_meta.json"
-    MAX_FAISS_VECTORS      = 5000
 
     LLM_TEMPERATURE = 0.3
     LLM_MAX_TOKENS  = 500
     LLM_TIMEOUT     = 60
+    VLM_TIMEOUT     = 120
+    VLM_MAX_RETRIES = 2
+    VLM_RETRY_DELAY = 2.0
 
     SNAPSHOT_TTL_HOURS = 2
     SNAPSHOT_MAX_ITEMS = 30
@@ -56,13 +46,46 @@ class Config:
     HABIT_MIN_WEIGHT     = 1.0
     OBSERVATION_TTL_DAYS = 14
 
-    CLEANUP_RETAIN_DAYS    = 90
-    CLEANUP_INTERVAL_HOURS = 24
-
-    DEPTH_SCALE      = 0.5
-    MIDAS_MODEL_TYPE = "MiDaS_small"
-
     OBJECT_CONFUSION_ENABLED = False
 
+    NORMALIZE_THRESHOLD      = 0.38
+    SEMANTIC_THRESHOLD       = 0.35
+    COORD_VERIFY_DIST        = 2.0
+    COORD_MATCH_DIST         = 1.5
+    BULK_WRITE_THRESHOLD     = 20
+    BULK_WRITE_INTERVAL      = 30.0
+    NEARBY_OBJECT_RADIUS     = 2.0
+    HEADING_THRESHOLD        = 0.55
+    VLM_CONFIDENCE_THRESHOLD = 0.50
+    MIN_WRITE_CONFIDENCE     = 0.20
 
-print(f"DB={Config.DB_NAME} | device={Config.DEVICE} | LLM={Config.LLM_MODEL}")
+    DELTA_THRESHOLD      = 0.30
+    CROSS_ROOM_GAMMA     = 10.0
+    BASE_MASS_CH12       = 1.0
+    BASE_MASS_CH3        = 1.2
+    BASE_MASS_WEAK       = 0.5
+    MAX_ZONE_SEARCH      = 5.0
+    SCENE_RETRY_INTERVAL = 5.0
+    SCENE_RETRY_MAX      = 60
+
+    ENTROPY_HIGH_THRESHOLD   = 1.2
+    ENTROPY_LOW_THRESHOLD    = 0.4
+    ENTROPY_VLM_WEIGHT_HIGH  = 0.10
+    ENTROPY_VLM_WEIGHT_LOW   = 0.30
+
+    SAYCAN_ENV_FALLBACK   = 0.30
+    SAYCAN_MIN_GATE_SCORE = 0.05
+
+    MANIFOLD_MIN_TRAIN_SAMPLE = 20
+    MANIFOLD_AUGMENT_FACTOR   = 100
+    MANIFOLD_RETRAIN_EVERY    = 20
+    MANIFOLD_TIME_NOISE_STD   = 0.5 / 24
+    MANIFOLD_POS_NOISE_STD    = 0.05
+    MANIFOLD_MIN_CONFIDENCE   = 0.60
+
+    DEFINITIONS_YAML = "config/definitions.yaml"
+    OBJECTS_YAML     = "config/objects.yaml"
+
+
+print(f"[Config] DB={Config.DB_NAME} | device={Config.DEVICE} "
+      f"| LLM={Config.LLM_MODEL} | VLM={Config.VLM_MODEL}")
