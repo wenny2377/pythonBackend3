@@ -7,6 +7,8 @@ import numpy as np
 from dataclasses import dataclass, field
 
 from config import Config
+from modules.memory.pattern_analyzer import PatternAnalyzer
+from modules.memory.skill_manager import preferred_item_from_skill_md
 
 logger = logging.getLogger(__name__)
 
@@ -24,12 +26,6 @@ SBERT_THRESHOLD = 0.40
 OBJECT_EXCLUDES = {
     "user_mom", "user_dad", "user", "person", "people",
     "wall", "floor", "ceiling", "window", "door",
-}
-
-PREF_STOPWORDS = {
-    "user", "enjoys", "drink", "food", "likes", "frequently", "uses",
-    "during", "in", "the", "a", "an", "some", "often", "usually",
-    "mom", "dad", "recommend", "not", "do", "to", "this",
 }
 
 INTERRUPT_WORDS = {"stop", "cancel", "abort", "never mind", "forget it"}
@@ -131,6 +127,7 @@ class ReactiveService:
         self.skill_manager = skill_manager
         self.ollama_url    = ollama_url
         self.llm_model     = llm_model
+        self.pattern_analyzer = PatternAnalyzer(db)
         self._sessions     = {}
         self._vec_cache    = {}
         from sentence_transformers import SentenceTransformer
@@ -658,32 +655,22 @@ class ReactiveService:
 
     def _preference(self, user_id, available_items, need_type=None):
         available_labels = {i["label"].lower() for i in available_items}
+
+        actions = (DRINK_ACTIONS if need_type == "drink"
+                   else FOOD_ACTIONS if need_type == "food"
+                   else DRINK_ACTIONS + FOOD_ACTIONS)
+
+        found = self.pattern_analyzer.preferred_item(
+            user_id, available_labels, actions)
+        if found:
+            return found
+
         skill_md = self._skill_md(user_id)
-        if skill_md:
-            m = re.search(r"## Preferences\n(.*?)(?=\n## |$)",
-                          skill_md, re.DOTALL)
-            if m:
-                for line in m.group(1).split("\n"):
-                    if not line.strip():
-                        continue
-                    if need_type == "drink" and not any(
-                            w in line.lower() for w in DRINK_KEYWORDS):
-                        continue
-                    if need_type == "food" and not any(
-                            w in line.lower() for w in FOOD_KEYWORDS):
-                        continue
-                    if any(w in line.lower() for w in
-                           ["enjoys", "likes", "frequently",
-                            "drinks", "eats", "prefers"]):
-                        for p in re.findall(r"\b[a-z]+\b", line):
-                            if (p not in PREF_STOPWORDS
-                                    and len(p) > 2
-                                    and p in available_labels):
-                                return p
+        found = preferred_item_from_skill_md(skill_md, available_labels, need_type)
+        if found:
+            return found
+
         try:
-            actions = (DRINK_ACTIONS if need_type == "drink"
-                       else FOOD_ACTIONS if need_type == "food"
-                       else DRINK_ACTIONS + FOOD_ACTIONS)
             obs = list(self.db.observation_logs.find(
                 {"user": user_id, "action": {"$in": actions}},
                 {"zone_name": 1, "weight": 1},
