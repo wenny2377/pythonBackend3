@@ -239,7 +239,8 @@ _robot_state = {"nav_target": None, "nav_label": "", "last_answer": "", "highlig
 _demo_state  = {"current_scene": 0, "scene_done": False, "scene_user": ""}
 _speaking_state    = {"who": "none"}
 _experiment_state  = {"mode": "baseline", "ablation_mode": "full",
-                      "collection_suffix": "", "active": False}
+                      "collection_suffix": "", "system_mode": "semantic",
+                      "active": False}
 
 
 # ─── DB switch ────────────────────────────────────────────────────────────────
@@ -325,9 +326,11 @@ def start_experiment():
     _experiment_state["mode"]              = data.get("experiment_mode",   "baseline")
     _experiment_state["ablation_mode"]     = data.get("ablation_mode",     "full")
     _experiment_state["collection_suffix"] = data.get("collection_suffix", "")
+    _experiment_state["system_mode"]       = data.get("system_mode",       "semantic")
     _experiment_state["active"]            = True
     print(f"[Experiment] START mode={_experiment_state['mode']} "
-          f"db={db_name} suffix='{_experiment_state['collection_suffix']}'")
+          f"db={db_name} system={_experiment_state['system_mode']} "
+          f"suffix='{_experiment_state['collection_suffix']}'")
     return jsonify({"status": "ok", **_experiment_state}), 200
 
 
@@ -703,6 +706,7 @@ def _process_predict(episode_id: str, data: dict):
     data["experiment_mode"]   = _experiment_state.get("mode",              "baseline")
     data["ablation_mode"]     = _experiment_state.get("ablation_mode",     "full")
     data["collection_suffix"] = _experiment_state.get("collection_suffix", "")
+    data["system_mode"]       = _experiment_state.get("system_mode",       "semantic")
 
     _wait_for_scene(max_wait=12.0)
 
@@ -724,7 +728,9 @@ def _process_predict(episode_id: str, data: dict):
 
     NO_RECORD = {"Walking", "Standing", "StandUp", "PickingUp", "PuttingDown"}
 
-    if zone_label and spatial_action not in NO_RECORD and _exp_mode == "baseline":
+    _sys_mode = data.get("system_mode", "semantic")
+    if (zone_label and spatial_action not in NO_RECORD and
+            _exp_mode == "baseline" and _sys_mode == "semantic"):
         pos_xy = [(est_pos["x"] if est_pos else 0) / 10.0,
                   (est_pos["z"] if est_pos else 0) / 10.0]
         observation_store.record(

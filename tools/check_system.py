@@ -186,7 +186,7 @@ def check_scene(db):
 
 
 def check_observations(db):
-    section("Observation Logs & Habits")
+    section("Behavioral Pattern Accumulation (BPA)")
     total = db.observation_logs.count_documents({})
     if total == 0:
         warn("observation_logs EMPTY")

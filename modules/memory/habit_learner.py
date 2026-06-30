@@ -1,6 +1,13 @@
 import datetime
 import math
 
+# ── Behavioral Pattern Accumulation (BPA) parameters ─────────────────────────
+# MIN_TRANSITION_COUNT: minimum times a behavior transition must be observed
+# before it is considered a reliable personal pattern.
+# Set to 3 based on a 7-day observation cycle:
+#   - Requires the transition to appear in ≥43% of days (3/7)
+#   - At system accuracy p=0.76, P(≥2 correct in 3) ≈ 86%
+#   - Filters incidental behaviors, retains stable personal routines
 MIN_TRANSITION_COUNT     = 3
 MIN_LOOKAHEAD_CONFIDENCE = 0.25
 RECENCY_DECAY            = 0.05

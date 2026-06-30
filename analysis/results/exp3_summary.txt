@@ -1,24 +1,9 @@
-Experiment 3: Days to Reach FAT per Activity
-DB: robot_exp_baseline  |  FAT = 5  |  Day 1–21
+Experiment 3: Modality Ablation
+DB: robot_exp_baseline
 
-User_Mom  (9 habits reached FAT=5):
-    Day  2  Reading
-    Day  3  Cooking
-    Day  3  Eating
-    Day  4  Cleaning
-    Day  4  SittingDrink
-    Day  6  Laying
-    Day  6  Watching
-    Day  8  Sitting
-    Day 10  PhoneUse
-    Day --  Drinking  (not reached within 21 days)
-
-User_Dad  (8 habits reached FAT=5):
-    Day  2  PhoneUse
-    Day  2  Typing
-    Day  2  SittingDrink
-    Day  3  Laying
-    Day  4  Eating
-    Day  5  Watching
-    Day 12  Sitting
-    Day 16  Drinking
+Method                        Acc    Delta      N
+--------------------------------------------------
+Full System                75.9%       --    199
+w/o Skeleton               52.8%   -23.1%    199
+w/o Object Events          22.1%   -53.8%    199
+w/o Spatial Context        55.8%   -20.1%    199

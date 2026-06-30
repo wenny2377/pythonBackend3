@@ -1,39 +1,61 @@
 import os
 
-# ── MongoDB ───────────────────────────────────────────────────────────────────
 MONGO_URI     = "mongodb://127.0.0.1:27017/"
 DB_BASELINE   = "robot_exp_baseline"
 DB_CORRUPTION = "robot_exp_corruption"
 BACKEND_URL   = "http://127.0.0.1:5000"
+OLLAMA_URL    = "http://localhost:11434"
+LLM_MODEL     = "llama3.1:8b"
 
 RESULTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "results")
 
-# ── ADL Labels ────────────────────────────────────────────────────────────────
-ADL_LABELS = [
-    "Drinking", "SittingDrink", "Sitting", "Eating", "Cooking",
-    "Laying", "Watching", "Reading", "Cleaning", "PhoneUse", "Typing",
-]
+# collections
+COL_BASELINE          = "experiment_logs"
+COL_SEMANTIC          = "experiment_logs"
+COL_VLM_SOM           = "experiment_logs_vlm_som"
+COL_CORRUPTION_LIGHT  = "experiment_logs_corruption_light"
+COL_CORRUPTION_MEDIUM = "experiment_logs_corruption_medium"
+COL_CORRUPTION_HEAVY  = "experiment_logs_corruption_heavy"
+COL_ABL_NO_SKELETON   = "ablation_no_skeleton"
+COL_ABL_NO_VLM        = "ablation_no_vlm"
+COL_ABL_NO_OBJECT     = "ablation_no_object"
+COL_ABL_NO_SPATIAL    = "ablation_no_spatial"
 
-# Opening / StandUp are captured but not evaluated
-ALL_BEHAVIORS = ADL_LABELS + ["Opening", "StandUp",
-    "Standing", "Walking", "PickingUp", "PuttingDown"]
+ADL_LABELS = [
+    "Drinking", "Sitting", "Eating", "Cooking",
+    "Laying", "Watching", "Reading", "Cleaning",
+    "UsingPhone", "Typing", "Opening",
+]
 
 USERS = ["User_Mom", "User_Dad"]
 
-# ── Color palette (used across all plots) ────────────────────────────────────
-C = {
-    "baseline":   "#2196F3",   # blue  — baseline / positive result
-    "corruption": "#F44336",   # red   — corruption / negative result
-    "pass":       "#4CAF50",   # green — above threshold
-    "warn":       "#FF9800",   # orange — below threshold
-    "mom":        "#E91E63",   # pink  — User_Mom
-    "dad":        "#1976D2",   # dark blue — User_Dad
-    "threshold":  "#9E9E9E",   # grey  — reference lines
-    "ablation":   "#7E57C2",   # purple — ablation bars
-    "highlight":  "#FF5722",   # deep orange — key result callout
+GT_NORMALIZE_MAP = {
+    "seateddrinking": "Drinking",
+    "dadreading":     "Reading",
+    "dadcleaning":    "Cleaning",
+    "dadphone":       "UsingPhone",
 }
 
-# ── Plot style ────────────────────────────────────────────────────────────────
+ROOM_IMPOSSIBLE = {
+    "DadRoom":    {"Cooking", "Cleaning"},
+    "Kitchen":    {"Laying", "Typing"},
+    "LivingRoom": {"Typing", "Cooking"},
+}
+
+C = {
+    "baseline":          "#2196F3",
+    "corruption_light":  "#FF9800",
+    "corruption_medium": "#F44336",
+    "corruption_heavy":  "#B71C1C",
+    "pass":              "#4CAF50",
+    "warn":              "#FF9800",
+    "mom":               "#E91E63",
+    "dad":               "#1976D2",
+    "threshold":         "#9E9E9E",
+    "ablation":          "#7E57C2",
+    "highlight":         "#FF5722",
+}
+
 FONT_TITLE  = 13
 FONT_AXIS   = 11
 FONT_TICK   = 10
@@ -42,8 +64,8 @@ LINE_WIDTH  = 2.0
 MARKER_SIZE = 7
 FIG_DPI     = 200
 
+
 def apply_style():
-    """Call once at the top of each script."""
     import matplotlib.pyplot as plt
     plt.rcParams.update({
         "font.family":       "DejaVu Sans",
@@ -59,34 +81,31 @@ def apply_style():
         "figure.dpi":        FIG_DPI,
     })
 
-# ── Ground-truth habits (from ExperimentRunner.cs TimeSlots) ─────────────────
-# Format: (user, action, time_slot)
-# These are the "stable" behaviors designed into the experiment.
-GT_HABITS = [
-    # User_Mom
-    ("User_Mom", "Eating",       "Morning"),
-    ("User_Mom", "Drinking",     "Morning"),
-    ("User_Mom", "Cleaning",     "Morning"),
-    ("User_Mom", "Reading",      "Noon"),
-    ("User_Mom", "Laying",       "Noon"),
-    ("User_Mom", "Reading",      "Afternoon"),
-    ("User_Mom", "Cleaning",     "Afternoon"),
-    ("User_Mom", "SittingDrink", "Afternoon"),
-    ("User_Mom", "Watching",     "Evening"),
-    ("User_Mom", "Eating",       "Evening"),
-    ("User_Mom", "Laying",       "Night"),
-    ("User_Mom", "Reading",      "Night"),
-    # User_Dad
-    ("User_Dad", "Typing",       "Morning"),
-    ("User_Dad", "Eating",       "Morning"),
-    ("User_Dad", "Drinking",     "Morning"),
-    ("User_Dad", "Laying",       "Noon"),
-    ("User_Dad", "Watching",     "Noon"),
-    ("User_Dad", "Typing",       "Afternoon"),
-    ("User_Dad", "PhoneUse",     "Afternoon"),
-    ("User_Dad", "PhoneUse",     "Evening"),
-    ("User_Dad", "SittingDrink", "Evening"),
-    ("User_Dad", "Watching",     "Evening"),
-    ("User_Dad", "Laying",       "Night"),
-    ("User_Dad", "PhoneUse",     "Night"),
-]
+
+def normalize_gt(label: str) -> str:
+    if not label:
+        return label
+    key = label.lower().strip().replace(" ", "").replace("_", "")
+    return GT_NORMALIZE_MAP.get(key, label)
+
+
+def load_docs(db, collection: str) -> list:
+    docs = list(db[collection].find(
+        {"ground_truth": {"$exists": True, "$ne": ""},
+         "spatial_action": {"$exists": True}},
+    ))
+    for d in docs:
+        d["ground_truth"] = normalize_gt(d.get("ground_truth", ""))
+        pred = d.get("spatial_action") or d.get("vlm_output", "")
+        d["_pred"] = normalize_gt(pred)
+    return docs
+
+
+def compute_accuracy(docs) -> tuple:
+    total = correct = 0
+    for d in docs:
+        gt = d.get("ground_truth", "")
+        if gt in ADL_LABELS:
+            total   += 1
+            correct += int(gt == d.get("_pred", ""))
+    return (correct / total if total else 0.0), correct, total

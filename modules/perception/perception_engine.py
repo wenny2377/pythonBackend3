@@ -111,10 +111,7 @@ MIN_WRITE_CONFIDENCE     = Config.MIN_WRITE_CONFIDENCE
 VLM_MAX_RETRIES          = Config.VLM_MAX_RETRIES
 VLM_RETRY_DELAY          = Config.VLM_RETRY_DELAY
 
-ENTROPY_HIGH = Config.ENTROPY_HIGH_THRESHOLD
-ENTROPY_LOW  = Config.ENTROPY_LOW_THRESHOLD
-VLM_W_HIGH   = Config.ENTROPY_VLM_WEIGHT_HIGH
-VLM_W_LOW    = Config.ENTROPY_VLM_WEIGHT_LOW
+
 
 ACTION_TO_RELATION = {
     "Drinking":       "holding",
@@ -451,6 +448,21 @@ class PerceptionEngine:
             print(f"[SoM] {e}")
             return []
 
+    def _som_objects_from_2d(self, objects_2d: list) -> list:
+        """Convert Unity objects_2d payload to SoM object list for text description."""
+        if not objects_2d:
+            return []
+        result = []
+        for obj in objects_2d:
+            label = obj.get("label", "").strip()
+            if not label:
+                continue
+            result.append({
+                "label":  label,
+                "status": "held" if obj.get("held") else "nearby",
+            })
+        return result[:8]
+
     def _get_held_object_from_scene(self, user_id: str,
                                     user_pos: dict = None,
                                     t_capture: str = None) -> tuple:
@@ -483,7 +495,7 @@ class PerceptionEngine:
             elif age < 10:
                 event_desc = f"holding {label} for {int(age)} seconds"
             else:
-                event_desc = f"holding {label} for a while"
+                event_desc = f"has been holding {label} for a while"
             print(f"[HeldObj] {user_id}: {event_desc}")
             return event_desc, age
         except Exception as e:
@@ -815,13 +827,6 @@ class PerceptionEngine:
             "bound_instance": "Unknown_Area", "bound_room": "", "confidence": "unknown",
         }
 
-    def _compute_vote_entropy(self, votes: list) -> float:
-        if not votes:
-            return 0.0
-        counts = Counter(votes)
-        total  = len(votes)
-        return round(-sum((c/total) * math.log2(c/total) for c in counts.values()), 4)
-
     def _write_experiment_log(self, payload: dict, final_user: str,
                                spatial_action: str, activity_hint: str,
                                upgrade_reason: str, zone_label: str,
@@ -859,6 +864,7 @@ class PerceptionEngine:
                 "interacting_items":  interacting_items,
                 "ablation_mode":      ablation_mode,
                 "experiment_mode":    experiment_mode,
+                "system_mode":        payload.get("system_mode", "semantic"),
                 "collection_suffix":  collection_suffix,
                 "body_axis_angle":    float(payload.get("body_axis_angle",    -1)),
                 "head_pitch":         float(payload.get("head_pitch",         -1)),
@@ -929,9 +935,17 @@ class PerceptionEngine:
             hint_user_id, user_pos, t_capture)
         held_event = ablated_payload.get("_ablation_held_event", held_event_raw)
 
-        som_objects = self._get_som_objects(
-            user_pos=user_pos, room_name=room_name,
-            user_id=hint_user_id, held_event=held_event)
+        _objects_2d = payload.get("objects_2d", [])
+        _system_mode = payload.get("system_mode", Config.SYSTEM_MODE)
+        if _system_mode == "vlm_som":
+            if _objects_2d:
+                som_objects = self._som_objects_from_2d(_objects_2d)
+            else:
+                som_objects = self._get_som_objects(
+                    user_pos=user_pos, room_name=room_name,
+                    user_id=hint_user_id, held_event=held_event)
+        else:
+            som_objects = []
         if ablated_payload.get("_ablation_som_objects") is not None:
             som_objects = ablated_payload["_ablation_som_objects"]
 
@@ -951,13 +965,15 @@ class PerceptionEngine:
         used_scores_list   = []
         vlm_timed_out      = False
 
+        system_mode = payload.get("system_mode", Config.SYSTEM_MODE)
+
         for idx in sample_indices:
             try:
                 img_b64   = image_list[idx]
                 uid       = self._get_user_id(img_b64, hint_user_id)
                 user_votes.append(uid)
 
-                if ablation_mode == "no_vlm":
+                if ablation_mode == "no_vlm" or system_mode == "semantic":
                     visual_state_votes.append("")
                     key_object_votes.append("none")
                     confidence_list.append(0.0)
@@ -966,7 +982,9 @@ class PerceptionEngine:
 
                 try:
                     from modules.perception.som_marker import mark_objects_on_image as _mark
-                    marked_b64 = _mark(img_b64, som_objects)
+                    _objects_2d = payload.get("objects_2d", [])
+                    marked_b64  = _mark(img_b64, som_objects,
+                                        objects_2d=_objects_2d if _objects_2d else None)
                 except Exception:
                     marked_b64 = img_b64
 
@@ -1007,21 +1025,19 @@ class PerceptionEngine:
 
         activity_hint = vlm_scene_desc
 
-        _vs_entropy      = self._compute_vote_entropy(visual_state_votes)
-        _ko_entropy      = self._compute_vote_entropy(key_object_votes)
-        _overall_entropy = _vs_entropy * 0.6 + _ko_entropy * 0.4
-
-        if _overall_entropy >= ENTROPY_HIGH:
-            _dynamic_vlm_w = VLM_W_HIGH
-        elif _overall_entropy <= ENTROPY_LOW:
-            _dynamic_vlm_w = VLM_W_LOW
-        else:
-            _ratio         = (_overall_entropy - ENTROPY_LOW) / (ENTROPY_HIGH - ENTROPY_LOW)
-            _dynamic_vlm_w = round(VLM_W_LOW + _ratio * (VLM_W_HIGH - VLM_W_LOW), 3)
+        from collections import Counter as _Counter
+        vlm_scene_desc = (
+            _Counter(visual_state_votes).most_common(1)[0][0]
+            if visual_state_votes else ""
+        )
+        vlm_key_object = (
+            _Counter(key_object_votes).most_common(1)[0][0]
+            if key_object_votes else "none"
+        )
 
         print(f"[VLM] desc='{vlm_scene_desc[:30]}' key={vlm_key_object} "
               f"held={held_event} conf={vlm_confidence:.2f} "
-              f"entropy={_overall_entropy:.2f} W_VLM={_dynamic_vlm_w:.2f}")
+              f"frames={len(visual_state_votes)}")
 
         spatial_action, upgrade_reason, zone_label = self._spatial_reasoning(
             activity_hint=activity_hint, vlm_scene_desc=vlm_scene_desc,

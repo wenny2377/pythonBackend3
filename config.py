@@ -8,8 +8,14 @@ def _resolve_db() -> str:
         print(f"[Config] DB_NAME from env: {env_db}")
         return env_db
     print("[Config] Defaulting to robot_exp_baseline")
-    print("[Config] Use DB_NAME=robot_exp_corruption python app.py to override")
     return "robot_exp_baseline"
+
+def _resolve_system_mode() -> str:
+    mode = os.environ.get("SYSTEM_MODE", "semantic").strip()
+    if mode not in ("semantic", "vlm_som"):
+        print(f"[Config] Unknown SYSTEM_MODE={mode}, defaulting to semantic")
+        return "semantic"
+    return mode
 
 
 class Config:

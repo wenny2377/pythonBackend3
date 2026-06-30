@@ -32,15 +32,18 @@ COLLECTIONS_LEARNING = [
 
 COLLECTIONS_EXPERIMENT = [
     "experiment_logs",
-    "experiment_logs_corruption_light",
-    "experiment_logs_corruption_medium",
-    "experiment_logs_corruption_heavy",
+    "experiment_logs_semantic",
+    "experiment_logs_vlm_som",
+    "experiment_logs_corruption_light_semantic",
+    "experiment_logs_corruption_medium_semantic",
+    "experiment_logs_corruption_heavy_semantic",
     "eval_logs", "exp_checkpoint_logs",
 ]
 
 COLLECTIONS_ABLATION = [
-    "ablation_no_skeleton", "ablation_no_vlm",
-    "ablation_no_object",   "ablation_no_spatial",
+    "ablation_no_skeleton",
+    "ablation_no_object",
+    "ablation_no_spatial",
 ]
 
 COLLECTIONS_RUNTIME = [
@@ -112,14 +115,14 @@ MODES = {
 
 
 EXPERIMENT_COLLECTIONS = [
-    ("experiment_logs",                    "Baseline"),
-    ("experiment_logs_corruption_light",   "Corruption Light"),
-    ("experiment_logs_corruption_medium",  "Corruption Medium"),
-    ("experiment_logs_corruption_heavy",   "Corruption Heavy"),
-    ("ablation_no_skeleton",               "Ablation: no skeleton"),
-    ("ablation_no_vlm",                    "Ablation: no VLM"),
-    ("ablation_no_object",                 "Ablation: no object"),
-    ("ablation_no_spatial",               "Ablation: no spatial"),
+    ("experiment_logs_semantic",                    "System A: Baseline"),
+    ("experiment_logs_vlm_som",                     "System B: VLM+SoM Baseline"),
+    ("experiment_logs_corruption_light_semantic",   "System A: Corruption Light"),
+    ("experiment_logs_corruption_medium_semantic",  "System A: Corruption Medium"),
+    ("experiment_logs_corruption_heavy_semantic",   "System A: Corruption Heavy"),
+    ("ablation_no_skeleton",                        "Ablation: no skeleton"),
+    ("ablation_no_object",                          "Ablation: no object"),
+    ("ablation_no_spatial",                         "Ablation: no spatial"),
 ]
 
 def _ask_single_experiment(db) -> list:

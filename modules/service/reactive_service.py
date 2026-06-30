@@ -126,19 +126,16 @@ class ConversationSession:
 
 class ReactiveService:
 
-    def __init__(self, db, skill_manager, vector_memory, ollama_url, llm_model):
+    def __init__(self, db, skill_manager, ollama_url, llm_model):
         self.db            = db
         self.skill_manager = skill_manager
         self.ollama_url    = ollama_url
         self.llm_model     = llm_model
         self._sessions     = {}
         self._vec_cache    = {}
-        self._sbert        = None
-        try:
-            if hasattr(vector_memory, "model"):
-                self._sbert = vector_memory.model
-        except Exception:
-            pass
+        from sentence_transformers import SentenceTransformer
+        from config import Config
+        self._sbert = SentenceTransformer('paraphrase-MiniLM-L6-v2', device=Config.DEVICE)
         self._warm_cache()
 
     def process(self, query, user_id, room=""):
