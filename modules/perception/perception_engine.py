@@ -112,7 +112,6 @@ VLM_MAX_RETRIES          = Config.VLM_MAX_RETRIES
 VLM_RETRY_DELAY          = Config.VLM_RETRY_DELAY
 
 
-
 ACTION_TO_RELATION = {
     "Drinking":       "holding",
     "SeatedDrinking": "holding",
@@ -137,6 +136,8 @@ GT_NORMALIZE_MAP = {
     "dadcleaning":    "Cleaning",
     "dadphone":       "UsingPhone",
 }
+
+DEBUG_IMAGE_DIR = "debug_images"
 
 
 def normalize_ground_truth(label: str) -> str:
@@ -449,7 +450,6 @@ class PerceptionEngine:
             return []
 
     def _som_objects_from_2d(self, objects_2d: list) -> list:
-        """Convert Unity objects_2d payload to SoM object list for text description."""
         if not objects_2d:
             return []
         result = []
@@ -462,6 +462,22 @@ class PerceptionEngine:
                 "status": "held" if obj.get("held") else "nearby",
             })
         return result[:8]
+
+    def _save_som_debug_image(self, marked_b64: str, episode_id: str,
+                               ground_truth: str, user_id: str,
+                               frame_idx: int) -> None:
+        try:
+            save_dir = os.path.join(DEBUG_IMAGE_DIR, "som")
+            os.makedirs(save_dir, exist_ok=True)
+            raw = marked_b64.split(',')[1] if ',' in marked_b64 else marked_b64
+            img_bytes = base64.b64decode(raw)
+            gt_clean   = (ground_truth or "Unknown").replace(" ", "")
+            user_clean = (user_id or "Unknown").replace(" ", "")
+            fname = f"{episode_id}_{gt_clean}_{user_clean}_f{frame_idx}.jpg"
+            with open(os.path.join(save_dir, fname), "wb") as f:
+                f.write(img_bytes)
+        except Exception as e:
+            print(f"[SoM Debug] save failed: {e}")
 
     def _get_held_object_from_scene(self, user_id: str,
                                     user_pos: dict = None,
@@ -917,6 +933,7 @@ class PerceptionEngine:
         virtual_hour          = payload.get("virtual_hour", None)
         virtual_day           = payload.get("virtual_day",  None)
         ground_truth_activity = payload.get("activity", None)
+        episode_id             = payload.get("episode_id", "unknown")
 
         if not image_list:
             return self._empty_result(hint_user_id)
@@ -987,6 +1004,13 @@ class PerceptionEngine:
                                         objects_2d=_objects_2d if _objects_2d else None)
                 except Exception:
                     marked_b64 = img_b64
+
+                self._save_som_debug_image(
+                    marked_b64,
+                    episode_id=episode_id,
+                    ground_truth=ground_truth_activity,
+                    user_id=hint_user_id,
+                    frame_idx=idx)
 
                 img_clean = marked_b64.split(',')[1] if ',' in marked_b64 else marked_b64
                 parsed    = self._call_vlm_with_retry(prompt, img_clean)
