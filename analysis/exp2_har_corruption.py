@@ -52,7 +52,7 @@ def plot_accuracy_drop(results: dict, save_path: str):
     accs  = [results[n]["acc"] * 100 for n in names]
     colors = [r[3] for r in CONDITIONS if r[0] in names]
 
-    fig, ax = plt.subplots(figsize=(10, 5.5))
+    fig, ax = plt.subplots(figsize=(13, 6.5))
     bars = ax.bar(range(len(names)), accs, color=colors,
                   alpha=0.88, width=0.55, edgecolor="white")
 
@@ -68,15 +68,16 @@ def plot_accuracy_drop(results: dict, save_path: str):
                 color=C["highlight"] if drop > 5 else "#333",
                 fontweight="bold" if drop > 5 else "normal")
 
-    tick_labels = [
-        f"{n}\n{NOISE_DETAIL.get(n, '')}".rstrip()
-        for n in names
-    ]
+    tick_labels = []
+    for n in names:
+        detail = NOISE_DETAIL.get(n, "")
+        detail_lines = detail.replace(" / ", "\n") if detail else ""
+        tick_labels.append(f"{n}\n{detail_lines}".rstrip())
 
     ax.axhline(baseline_acc, color=C["baseline"], linestyle="--",
                lw=1.5, alpha=0.6, label=f"Baseline ({baseline_acc:.1f}%)")
     ax.set_xticks(range(len(names)))
-    ax.set_xticklabels(tick_labels, fontsize=FONT_TICK - 1)
+    ax.set_xticklabels(tick_labels, fontsize=FONT_TICK - 2)
     ax.set_ylabel("Accuracy (%)", fontsize=FONT_AXIS)
     ax.set_ylim(0, 110)
     ax.set_title("HAR Accuracy vs Sensor Corruption Level",
