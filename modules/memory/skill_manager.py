@@ -27,6 +27,15 @@ FORBIDDEN_KEYWORDS = [
     "feelings about", "personal belief", "opinion on",
 ]
 
+DRINK_KEYWORDS = {"drink", "beverage", "thirst", "water", "juice", "soda", "cola", "bottle"}
+FOOD_KEYWORDS  = {"eat", "food", "meal", "snack", "hungry", "fruit", "bowl", "plate"}
+
+PREF_STOPWORDS = {
+    "user", "enjoys", "drink", "food", "likes", "frequently", "uses",
+    "during", "in", "the", "a", "an", "some", "often", "usually",
+    "mom", "dad", "recommend", "not", "do", "to", "this",
+}
+
 GENERATE_SYSTEM = """You are a skill profile generator for a home service robot.
 RULES:
 1. ONLY record: physical needs, location/object preferences, time patterns, service feedback.
@@ -48,6 +57,35 @@ RELEVANCE_SYSTEM = (
     'correction, or rejection about FOOD, DRINK, or HOME OBJECTS. '
     'Ignore preferences about people, emotions, or topics unrelated to home objects.'
 )
+
+
+def preferred_item_from_skill_md(skill_md: str, available_labels: set,
+                                  need_type: str = None) -> str:
+    if not skill_md:
+        return ""
+
+    m = re.search(r"## Preferences\n(.*?)(?=\n## |$)", skill_md, re.DOTALL)
+    if not m:
+        return ""
+
+    for line in m.group(1).split("\n"):
+        if not line.strip():
+            continue
+        if need_type == "drink" and not any(
+                w in line.lower() for w in DRINK_KEYWORDS):
+            continue
+        if need_type == "food" and not any(
+                w in line.lower() for w in FOOD_KEYWORDS):
+            continue
+        if any(w in line.lower() for w in
+               ["enjoys", "likes", "frequently",
+                "drinks", "eats", "prefers"]):
+            for p in re.findall(r"\b[a-z]+\b", line):
+                if (p not in PREF_STOPWORDS
+                        and len(p) > 2
+                        and p in available_labels):
+                    return p
+    return ""
 
 
 def _call_llm(ollama_url, model, system, user, max_tokens=600):
@@ -169,6 +207,25 @@ def _insert_bullet(skill_md: str, section: str, bullet: str) -> str:
     return skill_md[:idx] + updated_block + rest
 
 
+def _pattern_to_bullets(pattern: dict) -> tuple:
+    action    = pattern.get("action", "")
+    zone_name = pattern.get("zone_name", "")
+    time_slot = pattern.get("time_slot", "")
+    weight    = int(pattern.get("sample_count", 0))
+    items     = pattern.get("common_items", [])
+
+    item_str = f" with {', '.join(items)}" if items else ""
+    slot_str = f" in {time_slot}" if time_slot and time_slot != "Unknown" else ""
+    behavior_bullet = f"- {action} near {zone_name}{item_str}{slot_str} ({weight} times)"
+
+    preference_bullets = []
+    for item in items:
+        preference_bullets.append(
+            f"- User frequently uses {item} during {action}{slot_str}")
+
+    return behavior_bullet, preference_bullets
+
+
 class SkillManager:
 
     def __init__(self, db_client=None, ollama_url="http://localhost:11434",
@@ -177,6 +234,45 @@ class SkillManager:
                           MongoClient("mongodb://localhost:27017")[db_name]
         self.ollama_url = ollama_url
         self.model_name = model_name
+
+    def sync_from_patterns(self, user_id: str, patterns: list):
+        doc = self.db.user_skills.find_one({"user_id": user_id})
+        if not doc:
+            self.generate(user_id)
+            doc = self.db.user_skills.find_one({"user_id": user_id})
+            if not doc:
+                return False
+
+        current = doc.get("skill_md", "")
+        changed = False
+
+        for pattern in patterns:
+            behavior_bullet, preference_bullets = _pattern_to_bullets(pattern)
+
+            if not self._is_duplicate(behavior_bullet, current, "## Behavior Patterns"):
+                candidate = _insert_bullet(current, "## Behavior Patterns", behavior_bullet)
+                if candidate != current:
+                    current = candidate
+                    changed = True
+
+            for pb in preference_bullets:
+                if not self._is_duplicate(pb, current, "## Preferences"):
+                    candidate = _insert_bullet(current, "## Preferences", pb)
+                    if candidate != current:
+                        current = candidate
+                        changed = True
+
+        if not changed:
+            return False
+
+        current = _normalize_bullets(current)
+        valid, reason = validate_skill(current)
+        if not valid:
+            logger.warning(f"[SkillManager] Invalid after pattern sync: {reason}")
+            return False
+
+        self._save(user_id, current)
+        return True
 
     def _insert_if_new(self, user_id: str, section: str, bullet: str) -> bool:
         doc = self.db.user_skills.find_one({"user_id": user_id})
