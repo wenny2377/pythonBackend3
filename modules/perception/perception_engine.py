@@ -1079,10 +1079,17 @@ class PerceptionEngine:
         bound_room  = bound_doc.get("room",  room_name)      if bound_doc else room_name
         nearby_objs = self._get_nearby_objects(user_pos, room_name)
 
+        try:
+            from modules.perception.som_marker import extract_label_from_held_event
+            held_item_label = extract_label_from_held_event(held_event)
+        except Exception:
+            held_item_label = ""
+        interacting_item_list = [held_item_label] if held_item_label else []
+
         result = {
             "location":         bound_label,
             "room":             bound_room,
-            "interacting_items":[],
+            "interacting_items": interacting_item_list,
             "scene_items":      nearby_objs,
             "all_items":        nearby_objs,
             "spatial_relations":[],
@@ -1100,9 +1107,9 @@ class PerceptionEngine:
             "_entropy":         0.0,
         }
 
-        self._update_scene_snapshot(bound_doc, [], nearby_objs, [])
+        self._update_scene_snapshot(bound_doc, interacting_item_list, nearby_objs, [])
         self._update_dynamic_objects(
-            user_id=final_user, interacting_items=[],
+            user_id=final_user, interacting_items=interacting_item_list,
             scene_items=nearby_objs, bound_doc=bound_doc,
             room_name=bound_room, user_pos=user_pos)
 
@@ -1113,7 +1120,7 @@ class PerceptionEngine:
                 spatial_action=spatial_action, activity_hint=activity_hint,
                 upgrade_reason=upgrade_reason, zone_label=zone_label,
                 vlm_confidence=vlm_confidence, held_event=held_event,
-                user_pos=user_pos, interacting_items=[],
+                user_pos=user_pos, interacting_items=interacting_item_list,
                 ground_truth_raw=ground_truth_activity,
                 ablation_mode=ablation_mode, experiment_mode=experiment_mode,
                 collection_suffix=collection_suffix, vlm_timed_out=vlm_timed_out,
@@ -1129,7 +1136,8 @@ class PerceptionEngine:
 
         print(f"[Done] {final_user} | spatial={spatial_action} | "
               f"reason={upgrade_reason} | zone={zone_label} | "
-              f"ablation={ablation_mode} | vlm_ok={not vlm_timed_out}")
+              f"ablation={ablation_mode} | vlm_ok={not vlm_timed_out} | "
+              f"item={held_item_label or 'none'}")
 
         return {
             "user":              final_user,
@@ -1138,7 +1146,7 @@ class PerceptionEngine:
             "upgrade_reason":    upgrade_reason,
             "zone_label":        zone_label,
             "result":            result,
-            "items":             [],
+            "items":             interacting_item_list,
             "all_items":         nearby_objs,
             "spatial_relations": [],
             "bound_instance":    bound_label,
