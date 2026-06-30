@@ -1,13 +1,8 @@
 import datetime
 import math
 
-# ── Behavioral Pattern Accumulation (BPA) parameters ─────────────────────────
-# MIN_TRANSITION_COUNT: minimum times a behavior transition must be observed
-# before it is considered a reliable personal pattern.
-# Set to 3 based on a 7-day observation cycle:
-#   - Requires the transition to appear in ≥43% of days (3/7)
-#   - At system accuracy p=0.76, P(≥2 correct in 3) ≈ 86%
-#   - Filters incidental behaviors, retains stable personal routines
+from modules.memory.pattern_analyzer import PatternAnalyzer
+
 MIN_TRANSITION_COUNT     = 3
 MIN_LOOKAHEAD_CONFIDENCE = 0.25
 RECENCY_DECAY            = 0.05
@@ -46,6 +41,7 @@ class HabitLearner:
         self.skill_manager   = skill_manager
         self.col_transitions = db.transition_counts
         self.col_obs         = db.observation_logs
+        self.pattern_analyzer = PatternAnalyzer(db)
 
     def on_new_observation(self, user_id: str, action: str,
                             prev_action: str, time_slot: str,
@@ -64,7 +60,7 @@ class HabitLearner:
             time_slot=time_slot,
         )
 
-        self._maybe_update_skill(user_id)
+        self._refresh_patterns_and_skill(user_id)
 
     def get_top_transitions(self, user_id: str, from_action: str,
                              time_slot: str = None,
@@ -177,41 +173,11 @@ class HabitLearner:
         except Exception as e:
             print(f"[HabitLearner] decay error: {e}")
 
-    def _maybe_update_skill(self, user_id: str):
-        SKILL_UPDATE_THRESHOLD = 5
-
+    def _refresh_patterns_and_skill(self, user_id: str):
         try:
-            habits = list(self.col_obs.find({
-                "user":   user_id,
-                "weight": {"$gte": SKILL_UPDATE_THRESHOLD},
-            }))
-            if not habits:
+            patterns = self.pattern_analyzer.analyze_user(user_id)
+            if not patterns:
                 return
-
-            for h in habits:
-                action    = h.get("action", "")
-                instance  = h.get("zone_name") or h.get("instance", "")
-                weight    = int(h.get("weight", 0))
-                items     = h.get("interacting_items", [])
-                time_slot = h.get("time_slot", "")
-
-                if not action or not instance:
-                    continue
-
-                item_str = f" with {', '.join(items)}" if items else ""
-                slot_str = (f" in {time_slot}"
-                            if time_slot and time_slot != "Unknown" else "")
-                bullet   = (f"- {action} near {instance}"
-                            f"{item_str}{slot_str} ({weight} times)")
-
-                self.skill_manager._insert_if_new(
-                    user_id, "## Behavior Patterns", bullet)
-
-                for item in items:
-                    pref = (f"- User frequently uses {item} during "
-                            f"{action}{slot_str}")
-                    self.skill_manager._insert_if_new(
-                        user_id, "## Preferences", pref)
-
+            self.skill_manager.sync_from_patterns(user_id, patterns)
         except Exception as e:
-            print(f"[HabitLearner] skill update error: {e}")
+            print(f"[HabitLearner] pattern refresh error: {e}")
