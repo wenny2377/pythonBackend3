@@ -120,9 +120,11 @@ def _wait_for_scene(max_wait: float = 12.0, poll: float = 1.0):
         waited += poll
 
 
-def preview_images(image_list, source_nodes, hint_user_id, activity):
-    save_dir = "debug_images"
+def preview_images(image_list, episode_id, ground_truth, hint_user_id):
+    save_dir = os.path.join("debug_images", "raw")
     os.makedirs(save_dir, exist_ok=True)
+    gt_clean   = (ground_truth or "Unknown").replace(" ", "")
+    user_clean = (hint_user_id or "Unknown").replace(" ", "")
     for i, img_b64 in enumerate(image_list):
         try:
             img_clean = img_b64.split(",")[1] if "," in img_b64 else img_b64
@@ -130,9 +132,8 @@ def preview_images(image_list, source_nodes, hint_user_id, activity):
             frame     = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
             if frame is None:
                 continue
-            ts        = datetime.datetime.now().strftime("%H%M%S")
-            node_name = source_nodes[i] if i < len(source_nodes) else f"img_{i}"
-            cv2.imwrite(f"{save_dir}/{ts}_{hint_user_id}_{activity}_{node_name}.jpg", frame)
+            fname = f"{episode_id}_{gt_clean}_{user_clean}_f{i}.jpg"
+            cv2.imwrite(os.path.join(save_dir, fname), frame)
         except Exception as e:
             print(f"[Preview] {e}")
 
@@ -670,7 +671,7 @@ def _process_predict(episode_id: str, data: dict):
     if not image_list:
         return
 
-    preview_images(image_list, source_nodes, hint_user_id, activity)
+    preview_images(image_list, episode_id, activity, hint_user_id)
 
     est_pos = None
     if user_pos_raw:
