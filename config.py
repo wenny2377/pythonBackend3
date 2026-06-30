@@ -27,7 +27,8 @@ class Config:
     LLM_MODEL  = "llama3.1:8b"
 
     MONGO_URI = "mongodb://127.0.0.1:27017/"
-    DB_NAME   = _resolve_db()
+    DB_NAME      = _resolve_db()
+    SYSTEM_MODE  = _resolve_system_mode()
 
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 

@@ -39,12 +39,20 @@ def per_class_accuracy(docs: list) -> dict:
     return by_class
 
 
+NOISE_DETAIL = {
+    "Baseline（System A）": "",
+    "Light Corruption":    "pickup 15% / putdown 5% / obj 10% / skel 5°",
+    "Medium Corruption":   "pickup 25% / putdown 10% / obj 15% / skel 10°",
+    "Heavy Corruption":    "pickup 35% / putdown 15% / obj 20% / skel 15°",
+}
+
+
 def plot_accuracy_drop(results: dict, save_path: str):
     names = list(results.keys())
     accs  = [results[n]["acc"] * 100 for n in names]
     colors = [r[3] for r in CONDITIONS if r[0] in names]
 
-    fig, ax = plt.subplots(figsize=(9, 5))
+    fig, ax = plt.subplots(figsize=(10, 5.5))
     bars = ax.bar(range(len(names)), accs, color=colors,
                   alpha=0.88, width=0.55, edgecolor="white")
 
@@ -60,82 +68,20 @@ def plot_accuracy_drop(results: dict, save_path: str):
                 color=C["highlight"] if drop > 5 else "#333",
                 fontweight="bold" if drop > 5 else "normal")
 
+    tick_labels = [
+        f"{n}\n{NOISE_DETAIL.get(n, '')}".rstrip()
+        for n in names
+    ]
+
     ax.axhline(baseline_acc, color=C["baseline"], linestyle="--",
                lw=1.5, alpha=0.6, label=f"Baseline ({baseline_acc:.1f}%)")
     ax.set_xticks(range(len(names)))
-    ax.set_xticklabels(names, fontsize=FONT_TICK)
+    ax.set_xticklabels(tick_labels, fontsize=FONT_TICK - 1)
     ax.set_ylabel("Accuracy (%)", fontsize=FONT_AXIS)
     ax.set_ylim(0, 110)
     ax.set_title("HAR Accuracy vs Sensor Corruption Level",
                  fontsize=FONT_TITLE, fontweight="bold", pad=10)
     ax.legend(fontsize=FONT_TICK)
-
-    plt.tight_layout()
-    plt.savefig(save_path, dpi=FIG_DPI, bbox_inches="tight")
-    plt.close()
-    print(f"[exp2] Saved: {save_path}")
-
-
-def plot_per_class_comparison(results: dict, save_path: str):
-    n_labels = len(ADL_LABELS)
-    n_cond   = len(results)
-    x        = np.arange(n_labels)
-    width    = 0.8 / n_cond
-
-    fig, ax = plt.subplots(figsize=(14, 6))
-    for i, (name, data) in enumerate(results.items()):
-        by_class = data["by_class"]
-        accs = []
-        for label in ADL_LABELS:
-            info = by_class.get(label, {"tp": 0, "total": 0})
-            accs.append(info["tp"] / info["total"] * 100
-                        if info["total"] > 0 else 0)
-        color = next((r[3] for r in CONDITIONS if r[0] == name), "#999")
-        ax.bar(x + i * width - (n_cond - 1) * width / 2, accs,
-               width=width * 0.9, label=name, color=color, alpha=0.85)
-
-    ax.axhline(70, color="#999", linestyle="--", lw=1.0, alpha=0.5)
-    ax.set_xticks(x)
-    ax.set_xticklabels(ADL_LABELS, rotation=35, ha="right", fontsize=FONT_TICK)
-    ax.set_ylabel("Accuracy (%)", fontsize=FONT_AXIS)
-    ax.set_ylim(0, 115)
-    ax.set_title("Per-class Accuracy across Corruption Levels",
-                 fontsize=FONT_TITLE, fontweight="bold", pad=10)
-    ax.legend(fontsize=FONT_TICK, loc="upper right")
-
-    plt.tight_layout()
-    plt.savefig(save_path, dpi=FIG_DPI, bbox_inches="tight")
-    plt.close()
-    print(f"[exp2] Saved: {save_path}")
-
-
-def plot_heatmap(results: dict, save_path: str):
-    names  = list(results.keys())
-    matrix = []
-    for name in names:
-        row = []
-        for label in ADL_LABELS:
-            info = results[name]["by_class"].get(label, {"tp": 0, "total": 0})
-            row.append(info["tp"] / info["total"] * 100 if info["total"] > 0 else 0)
-        matrix.append(row)
-
-    matrix = np.array(matrix)
-    fig, ax = plt.subplots(figsize=(13, 4))
-    im = ax.imshow(matrix, cmap="RdYlGn", vmin=0, vmax=100, aspect="auto")
-    plt.colorbar(im, ax=ax, label="Accuracy (%)")
-
-    for i in range(len(names)):
-        for j in range(len(ADL_LABELS)):
-            ax.text(j, i, f"{matrix[i,j]:.0f}",
-                    ha="center", va="center", fontsize=8,
-                    color="white" if matrix[i, j] < 30 else "black")
-
-    ax.set_xticks(range(len(ADL_LABELS)))
-    ax.set_xticklabels(ADL_LABELS, rotation=35, ha="right", fontsize=FONT_TICK)
-    ax.set_yticks(range(len(names)))
-    ax.set_yticklabels(names, fontsize=FONT_TICK)
-    ax.set_title("Accuracy Heatmap — Baseline vs Corruption",
-                 fontsize=FONT_TITLE, fontweight="bold", pad=10)
 
     plt.tight_layout()
     plt.savefig(save_path, dpi=FIG_DPI, bbox_inches="tight")
@@ -163,10 +109,12 @@ def save_summary(results: dict, save_path: str):
     lines += ["", "Worst drop by class (Baseline → Heavy):"]
     if "Baseline" in results and "Heavy Corruption" in results:
         for label in ADL_LABELS:
-            b_info = results["Baseline"]["by_class"].get(label, {"tp": 0, "total": 1})
-            h_info = results["Heavy Corruption"]["by_class"].get(label, {"tp": 0, "total": 1})
-            b_acc  = b_info["tp"] / b_info["total"] if b_info["total"] else 0
-            h_acc  = h_info["tp"] / h_info["total"] if h_info["total"] else 0
+            b_info = results["Baseline"]["by_class"].get(label, {"tp": 0, "total": 0})
+            h_info = results["Heavy Corruption"]["by_class"].get(label, {"tp": 0, "total": 0})
+            if b_info["total"] == 0 or h_info["total"] == 0:
+                continue
+            b_acc  = b_info["tp"] / b_info["total"]
+            h_acc  = h_info["tp"] / h_info["total"]
             drop   = b_acc - h_acc
             if drop > 0.1:
                 lines.append(f"  {label:<16} {b_acc:.1%} → {h_acc:.1%}  (−{drop:.1%})")
@@ -201,8 +149,6 @@ def main():
         return
 
     plot_accuracy_drop(results, os.path.join(RESULTS_DIR, "exp2_accuracy_drop.png"))
-    plot_per_class_comparison(results, os.path.join(RESULTS_DIR, "exp2_per_class_comparison.png"))
-    plot_heatmap(results, os.path.join(RESULTS_DIR, "exp2_heatmap.png"))
     save_summary(results, os.path.join(RESULTS_DIR, "exp2_summary.txt"))
 
     print("\n[exp2] Done.")

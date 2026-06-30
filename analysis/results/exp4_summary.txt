@@ -1,0 +1,32 @@
+Experiment 4: Behavior Pattern Differentiation
+DB: robot_exp_baseline
+
+Note: data comes from the system's own HAR predictions (spatial_action),
+not ground truth. This mirrors real deployment, where no ground truth
+is available.
+Exp 1 measured 89.9% HAR accuracy on this same data; the question here is whether the learned pattern still matches the designed routine despite that error rate.
+
+Mom — design intent: All-day household routine (cooking/cleaning/reading spread across morning to night)
+  Never scheduled for this user (by design): Typing
+  Eating           total= 29  peak=12:00
+  Cooking          total= 19  peak=10:00
+  Reading          total= 14  peak=10:00
+  Cleaning         total= 10  peak=08:00
+  Watching         total=  9  peak=18:00
+  Laying           total=  9  peak=22:00
+  Drinking         total=  7  peak=20:00
+  Opening          total=  5  peak=06:00
+  UsingPhone       total=  4  peak=16:00
+  Designed-vs-Observed match rate: 7/9 slots (77.8%)
+
+Dad — design intent: Office-hours pattern (Typing concentrated 08:00-16:00, leisure only in the evening)
+  Never scheduled for this user (by design): Cleaning, Cooking, Opening, Reading
+  WARNING — observed but never scheduled (likely HAR misclassification, not a real occurrence): Reading
+  Eating           total= 21  peak=12:00
+  Typing           total= 12  peak=08:00
+  Drinking         total= 12  peak=08:00
+  UsingPhone       total= 11  peak=20:00
+  Watching         total= 11  peak=18:00
+  Laying           total=  9  peak=22:00
+  Reading          total=  7  peak=12:00  [unexpected]
+  Designed-vs-Observed match rate: 8/9 slots (88.9%)

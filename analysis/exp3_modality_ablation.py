@@ -1,13 +1,10 @@
-import os, sys, re, json, requests
+import os, sys, datetime, requests
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, _ROOT)
 
-import datetime
-import numpy as np
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-from collections import defaultdict
 from pymongo import MongoClient
 
 from exp_config import (
@@ -34,6 +31,13 @@ ABLATION_LABELS = {
     "no_skeleton": "w/o Skeleton",
     "no_object":   "w/o Object Events",
     "no_spatial":  "w/o Spatial Context",
+}
+
+ABLATION_COLORS = {
+    "full":        C["baseline"],
+    "no_skeleton": C["corruption_light"],
+    "no_object":   C["corruption_medium"],
+    "no_spatial":  C["ablation"],
 }
 
 
@@ -170,8 +174,7 @@ def plot_ablation_bar(results: dict, save_path: str):
     names    = [ABLATION_LABELS[k] for k in order if k in results]
     accs     = [results[k]["acc"] * 100 for k in order if k in results]
     full_acc = results.get("full", {}).get("acc", 0) * 100
-    colors   = [C["baseline"] if k == "full" else C["ablation"]
-                for k in order if k in results]
+    colors   = [ABLATION_COLORS[k] for k in order if k in results]
 
     order_idx = sorted(range(len(names)), key=lambda i: accs[i])
     names  = [names[i]  for i in order_idx]
@@ -199,79 +202,6 @@ def plot_ablation_bar(results: dict, save_path: str):
         "Modality Ablation Study\n(LLM re-inference with each modality masked)",
         fontsize=FONT_TITLE, fontweight="bold", pad=10)
 
-    plt.tight_layout()
-    plt.savefig(save_path, dpi=FIG_DPI, bbox_inches="tight")
-    plt.close()
-    print(f"[exp3] Saved: {save_path}")
-
-
-def plot_ablation_table(results: dict, save_path: str):
-    order    = ["full", "no_skeleton", "no_object", "no_spatial"]
-    full_acc = results.get("full", {}).get("acc", 0)
-
-    modality_map = {
-        "full":        (True,  True,  True),
-        "no_skeleton": (False, True,  True),
-        "no_object":   (True,  False, True),
-        "no_spatial":  (True,  True,  False),
-    }
-
-    col_headers = ["Method", "Skeleton", "Object\nEvents", "Spatial\nCtx", "Acc (%)", "Delta"]
-    rows = []
-
-    for k in order:
-        if k not in results:
-            continue
-        skel, obj, spa = modality_map[k]
-        acc   = results[k]["acc"]
-        delta = (full_acc - acc) * 100
-        rows.append([
-            ABLATION_LABELS[k],
-            "+" if skel else "-",
-            "+" if obj  else "-",
-            "+" if spa  else "-",
-            f"{acc*100:.1f}%",
-            "--" if k == "full" else f"-{delta:.1f}%",
-        ])
-
-    fig, ax = plt.subplots(figsize=(11, 3.5))
-    ax.axis("off")
-    table = ax.table(
-        cellText=rows, colLabels=col_headers,
-        cellLoc="center", loc="center",
-        colWidths=[0.32, 0.12, 0.13, 0.13, 0.14, 0.12])
-    table.auto_set_font_size(False)
-    table.set_fontsize(11)
-    table.scale(1, 2.2)
-
-    header_color = "#2C3E50"
-    for j in range(len(col_headers)):
-        cell = table[0, j]
-        cell.set_facecolor(header_color)
-        cell.set_text_props(color="white", fontweight="bold")
-
-    row_colors = ["#EBF5FB", "#FDFEFE"] * 5
-    for i, row_data in enumerate(rows):
-        delta_str = row_data[5]
-        try:
-            is_high = (delta_str not in ("--",) and
-                       float(delta_str.replace("-", "").replace("%", "")) > 5)
-        except ValueError:
-            is_high = False
-
-        for j in range(len(col_headers)):
-            cell = table[i + 1, j]
-            cell.set_facecolor("#FDEDEC" if is_high else row_colors[i])
-            if j in (1, 2, 3):
-                txt = row_data[j]
-                cell.set_text_props(
-                    color="#27AE60" if txt == "+" else "#E74C3C",
-                    fontweight="bold", fontsize=13)
-            if j == 5 and is_high:
-                cell.set_text_props(color="#E74C3C", fontweight="bold")
-
-    ax.set_title("Modality Ablation Study",
-                 fontsize=FONT_TITLE, fontweight="bold", pad=16)
     plt.tight_layout()
     plt.savefig(save_path, dpi=FIG_DPI, bbox_inches="tight")
     plt.close()
@@ -306,8 +236,7 @@ def save_summary(results: dict, save_path: str):
 def main():
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument("--plot-only", action="store_true",
-                        help="Skip LLM, read existing ablation collections")
+    parser.add_argument("--plot-only", action="store_true")
     args = parser.parse_args()
 
     os.makedirs(RESULTS_DIR, exist_ok=True)
@@ -348,8 +277,6 @@ def main():
 
     plot_ablation_bar(
         results, os.path.join(RESULTS_DIR, "exp3_ablation_bar.png"))
-    plot_ablation_table(
-        results, os.path.join(RESULTS_DIR, "exp3_ablation_table.png"))
     save_summary(
         results, os.path.join(RESULTS_DIR, "exp3_summary.txt"))
 

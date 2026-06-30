@@ -11,7 +11,7 @@ from pymongo import MongoClient
 
 from exp_config import (
     MONGO_URI, DB_BASELINE,
-    COL_SEMANTIC, COL_VLM_SOM,
+    COL_BASELINE, COL_SEMANTIC, COL_VLM_SOM,
     ADL_LABELS, USERS, C,
     FONT_TITLE, FONT_AXIS, FONT_ANNOT, FONT_TICK,
     FIG_DPI, RESULTS_DIR,
@@ -32,7 +32,7 @@ def per_class_accuracy(docs: list) -> dict:
     return by_class
 
 
-def plot_confusion_matrix(docs: list, save_path: str) -> tuple:
+def plot_confusion_matrix(docs: list, save_path: str, system_label: str = "Baseline") -> tuple:
     present = [l for l in ADL_LABELS
                if any(d.get("ground_truth") == l for d in docs)]
     n      = len(present)
@@ -73,7 +73,7 @@ def plot_confusion_matrix(docs: list, save_path: str) -> tuple:
     ax.set_xlabel("Predicted", fontsize=FONT_AXIS)
     ax.set_ylabel("Ground Truth", fontsize=FONT_AXIS)
     ax.set_title(
-        f"HAR Confusion Matrix — Baseline\n"
+        f"HAR Confusion Matrix — {system_label}\n"
         f"Overall Accuracy: {acc:.1%}  ({correct}/{total} episodes)",
         fontsize=FONT_TITLE, fontweight="bold", pad=12)
 
@@ -84,7 +84,7 @@ def plot_confusion_matrix(docs: list, save_path: str) -> tuple:
     return acc, correct, total
 
 
-def plot_per_class_bar(docs: list, save_path: str):
+def plot_per_class_bar(docs: list, save_path: str, system_label: str = "Baseline"):
     by_class = per_class_accuracy(docs)
     present  = [(l, by_class[l]) for l in ADL_LABELS
                 if by_class[l]["total"] > 0]
@@ -117,7 +117,7 @@ def plot_per_class_bar(docs: list, save_path: str):
     ax.set_yticklabels(labels, fontsize=FONT_TICK)
     ax.set_xlabel("Accuracy (%)", fontsize=FONT_AXIS)
     ax.set_xlim(0, 120)
-    ax.set_title("Per-class Recognition Accuracy — Baseline",
+    ax.set_title(f"Per-class Recognition Accuracy — {system_label}",
                  fontsize=FONT_TITLE, fontweight="bold", pad=10)
 
     from matplotlib.patches import Patch
@@ -133,7 +133,7 @@ def plot_per_class_bar(docs: list, save_path: str):
     print(f"[exp1] Saved: {save_path}")
 
 
-def plot_user_breakdown(docs: list, save_path: str):
+def plot_user_breakdown(docs: list, save_path: str, system_label: str = "Baseline"):
     fig, axes = plt.subplots(1, 2, figsize=(14, 5))
     for ax, uid in zip(axes, USERS):
         user_docs = [d for d in docs if d.get("user") == uid]
@@ -161,7 +161,7 @@ def plot_user_breakdown(docs: list, save_path: str):
         ax.set_title(f"{uid}\nOverall: {acc_all:.1%}",
                      fontsize=FONT_TITLE, fontweight="bold")
 
-    plt.suptitle("Per-class Accuracy by User — Baseline",
+    plt.suptitle(f"Per-class Accuracy by User — {system_label}",
                  fontsize=FONT_TITLE + 1, fontweight="bold")
     plt.tight_layout()
     plt.savefig(save_path, dpi=FIG_DPI, bbox_inches="tight")
@@ -169,11 +169,12 @@ def plot_user_breakdown(docs: list, save_path: str):
     print(f"[exp1] Saved: {save_path}")
 
 
-def save_summary(docs: list, acc: float, correct: int, total: int, save_path: str):
+def save_summary(docs: list, acc: float, correct: int, total: int, save_path: str,
+                  system_label: str = "Baseline", collection_name: str = ""):
     by_class = per_class_accuracy(docs)
     lines = [
-        "Experiment 1: HAR Baseline",
-        f"DB: {DB_BASELINE} | Collection: {COL_BASELINE}",
+        f"Experiment 1: HAR {system_label}",
+        f"DB: {DB_BASELINE} | Collection: {collection_name}",
         f"Episodes: {total}  Correct: {correct}  Overall: {acc:.1%}",
         "",
         f"{'Action':<16} {'Acc':>6} {'TP':>5} {'Total':>7}",
@@ -259,25 +260,34 @@ def main():
 
     # System A analysis
     acc_a, correct_a, total_a = plot_confusion_matrix(
-        docs_a, os.path.join(RESULTS_DIR, "exp1_confusion_matrix_semantic.png"))
+        docs_a, os.path.join(RESULTS_DIR, "exp1_confusion_matrix_semantic.png"),
+        system_label="System A (Skeleton+Object+Spatial)")
 
     plot_per_class_bar(
-        docs_a, os.path.join(RESULTS_DIR, "exp1_per_class_bar_semantic.png"))
+        docs_a, os.path.join(RESULTS_DIR, "exp1_per_class_bar_semantic.png"),
+        system_label="System A (Skeleton+Object+Spatial)")
 
     plot_user_breakdown(
-        docs_a, os.path.join(RESULTS_DIR, "exp1_user_breakdown_semantic.png"))
+        docs_a, os.path.join(RESULTS_DIR, "exp1_user_breakdown_semantic.png"),
+        system_label="System A (Skeleton+Object+Spatial)")
 
     save_summary(docs_a, acc_a, correct_a, total_a,
-                 os.path.join(RESULTS_DIR, "exp1_summary_semantic.txt"))
+                 os.path.join(RESULTS_DIR, "exp1_summary_semantic.txt"),
+                 system_label="System A (Skeleton+Object+Spatial)",
+                 collection_name=COL_SEMANTIC)
 
     # System B analysis（if data exists）
     if docs_b:
         acc_b, correct_b, total_b = plot_confusion_matrix(
-            docs_b, os.path.join(RESULTS_DIR, "exp1_confusion_matrix_vlm_som.png"))
+            docs_b, os.path.join(RESULTS_DIR, "exp1_confusion_matrix_vlm_som.png"),
+            system_label="System B (VLM+SoM)")
         plot_per_class_bar(
-            docs_b, os.path.join(RESULTS_DIR, "exp1_per_class_bar_vlm_som.png"))
+            docs_b, os.path.join(RESULTS_DIR, "exp1_per_class_bar_vlm_som.png"),
+            system_label="System B (VLM+SoM)")
         save_summary(docs_b, acc_b, correct_b, total_b,
-                     os.path.join(RESULTS_DIR, "exp1_summary_vlm_som.txt"))
+                     os.path.join(RESULTS_DIR, "exp1_summary_vlm_som.txt"),
+                     system_label="System B (VLM+SoM)",
+                     collection_name=COL_VLM_SOM)
 
     # Comparison
     plot_system_comparison(

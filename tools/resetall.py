@@ -30,6 +30,15 @@ COLLECTIONS_LEARNING = [
     "robot_memory", "semantic_memories", "habit_snapshots",
 ]
 
+# Verified against ExperimentRunner.AllSchedule + app.py /predict suffix logic:
+#   _semantic                       -> experiment_logs_semantic          (System A baseline)
+#   _vlm_som                        -> experiment_logs_vlm_som           (System B baseline)
+#   _corruption_light_semantic      -> experiment_logs_corruption_light_semantic
+#   _corruption_medium_semantic     -> experiment_logs_corruption_medium_semantic
+#   _corruption_heavy_semantic      -> experiment_logs_corruption_heavy_semantic
+#   (empty suffix)                  -> experiment_logs (fallback if /predict called
+#                                       without /start_experiment first)
+# These six names match what app.py and ExperimentRunner actually produce — confirmed correct.
 COLLECTIONS_EXPERIMENT = [
     "experiment_logs",
     "experiment_logs_semantic",
@@ -40,6 +49,18 @@ COLLECTIONS_EXPERIMENT = [
     "eval_logs", "exp_checkpoint_logs",
 ]
 
+# UNVERIFIED — these three collection names do not match anything seen in
+# perception_engine.py. PerceptionEngine._write_experiment_log always writes
+# to f"experiment_logs{collection_suffix}", never to a fixed "ablation_no_X"
+# name. PerceptionEngine._apply_ablation also only implements
+# no_skeleton / no_object / no_vlm modes — there is no no_spatial mode in
+# the code reviewed so far.
+# If your offline ablation script (referenced in print_next_steps mode "3" as
+# analysis/exp3_modality_ablation.py) writes its own collections under these
+# names, this list is correct. If it writes elsewhere (e.g. back into
+# experiment_logs with an extra field, or under different names), Mode 3
+# will silently clear nothing and report 0 docs deleted with no error.
+# Confirm against exp3_modality_ablation.py before relying on Mode 3.
 COLLECTIONS_ABLATION = [
     "ablation_no_skeleton",
     "ablation_no_object",
@@ -73,6 +94,17 @@ MODES = {
         "collections": COLLECTIONS_EXPERIMENT + COLLECTIONS_ABLATION,
         "reset_skill": False,
         "clean_files": False,
+        # WARNING: this mode intentionally keeps observation_logs/transition_counts.
+        # That is correct if you are re-running Exp 1/2/3 (System A/B HAR accuracy,
+        # corruption robustness, ablation) since those don't depend on a fresh
+        # 7-day BPA window. It is NOT correct if you are re-running the System A
+        # baseline (_semantic) specifically to re-collect Exp 4 (BPA personalization)
+        # data — re-running baseline without clearing COLLECTIONS_LEARNING first
+        # will accumulate transition/observation weight on top of the previous
+        # run's data, silently violating the "7-day observation cycle" assumption
+        # used throughout Ch3/Ch4 (the slides' threshold-3 justification of
+        # "≥43% of 7 days" no longer holds if the data actually spans two
+        # separate runs). Use Mode 4 first if you intend to re-collect Exp 4 data.
     },
     "3": {
         "label":      "Ablation only — keep experiment_logs, re-run ablation",
@@ -113,7 +145,6 @@ MODES = {
 }
 
 
-
 EXPERIMENT_COLLECTIONS = [
     ("experiment_logs_semantic",                    "System A: Baseline"),
     ("experiment_logs_vlm_som",                     "System B: VLM+SoM Baseline"),
@@ -149,6 +180,10 @@ def _ask_mode() -> str:
     print("\nWhat to reset?")
     for k, v in MODES.items():
         print(f"  {k}) {v['label']}")
+        if k == "2":
+            print("       (note: re-running baseline under this mode will accumulate")
+            print("        on top of previous BPA data — use Mode 4 first if you need")
+            print("        a clean 7-day window for Exp 4)")
     try:
         choice = input("Choice [3]: ").strip() or "3"
     except EOFError:
@@ -333,7 +368,9 @@ def print_next_steps(mode_key: str):
     steps = {
         "1": ["python app.py", "Run Baseline in Unity (autoRunAll=false, experimentType=Baseline)",
               "Then run Corruption in Unity"],
-        "2": ["python app.py", "Re-run experiments in Unity"],
+        "2": ["python app.py", "Re-run experiments in Unity",
+              "If re-running baseline for Exp 4 data, run Mode 4 first to avoid "
+              "accumulating BPA on top of a previous run"],
         "3": ["DB_NAME=robot_exp_baseline python analysis/exp3_modality_ablation.py"],
         "4": ["python app.py", "Re-run Baseline in Unity to re-learn habits"],
         "5": ["Legacy collections removed, existing experiment data preserved"],

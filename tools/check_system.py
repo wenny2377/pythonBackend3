@@ -42,26 +42,32 @@ def err(msg):  print(f"  ERR   {msg}")
 
 def _dominant_layer(reason: str) -> str:
     r = (reason or "").lower()
-    if "pmi_llm" in r:              return "llm"
+    # NOTE: order matters — more specific substrings must be checked
+    # before the generic "pmi_llm" catch-all, since "pmi_llm_error_fallback"
+    # and "pmi_llm_fallback:..." both contain "pmi_llm" and would otherwise
+    # be misclassified as a normal successful LLM call.
+    if "pmi_llm_error_fallback" in r: return "llm_error"
+    if "pmi_llm_fallback" in r:       return "llm_low_conf"
+    if "pmi_llm" in r:                return "llm"
     if "zone_affinity_fallback" in r: return "zone_fallback"
-    if "coord_priority" in r:       return "coord"
-    if "coord_only" in r:           return "coord"
-    if "sbert" in r:                return "sbert"
-    if "llm_error_fallback" in r:   return "llm_fallback"
-    if "zone_not_ready" in r:       return "not_ready"
+    if "coord_priority" in r:         return "coord"
+    if "coord_only" in r:             return "coord"
+    if "sbert" in r:                  return "sbert"
+    if "zone_not_ready" in r:         return "not_ready"
     return "other"
 
 
-def check_watch(db, n=15, interval=3, acc_threshold=0.50, window=20):
-    print(f"\n[Watch] DB={DB_NAME} | refresh={interval}s | window={window}")
+def check_watch(db, n=15, interval=3, acc_threshold=0.50, window=20, collection="experiment_logs"):
+    print(f"\n[Watch] DB={DB_NAME} | collection={collection} | refresh={interval}s | window={window}")
     print("Ctrl+C to stop.\n")
     seen_ids = set()
+    col = db[collection]
 
     while True:
         try:
-            docs     = list(db.experiment_logs.find({}).sort("timestamp", -1).limit(n))
-            all_docs = list(db.experiment_logs.find({}).sort("timestamp", -1).limit(window))
-            total    = db.experiment_logs.count_documents({})
+            docs     = list(col.find({}).sort("timestamp", -1).limit(n))
+            all_docs = list(col.find({}).sort("timestamp", -1).limit(window))
+            total    = col.count_documents({})
 
             os.system("clear")
             now_str = datetime.datetime.now().strftime("%H:%M:%S")
@@ -73,7 +79,7 @@ def check_watch(db, n=15, interval=3, acc_threshold=0.50, window=20):
             )
             acc_window = correct_window / len(all_docs) if all_docs else 0.0
 
-            total_sample  = list(db.experiment_logs.find(
+            total_sample  = list(col.find(
                 {}, {"spatial_action":1,"vlm_output":1,"ground_truth":1}
             ).sort("timestamp",-1).limit(200))
             correct_total = sum(
@@ -81,8 +87,8 @@ def check_watch(db, n=15, interval=3, acc_threshold=0.50, window=20):
                 if (d.get("spatial_action") or d.get("vlm_output", "")) ==
                    d.get("ground_truth", "")
             )
-            if total_sample: acc_total = correct_total / len(total_sample)
-            acc_total  = correct_total / total if total > 0 else 0.0
+            # accuracy over the most recent 200 episodes (or all, if fewer exist)
+            acc_total  = correct_total / len(total_sample) if total_sample else 0.0
             pause_flag = acc_window < acc_threshold and len(all_docs) >= window
 
             obs_total = db.observation_logs.count_documents({})
@@ -145,11 +151,13 @@ def check_watch(db, n=15, interval=3, acc_threshold=0.50, window=20):
                     _dominant_layer(d.get("upgrade_reason", ""))
                     for d in wrong).most_common(1)[0][0]
                 hints = {
-                    "llm":          "Check LLM prompt and scene_text quality",
-                    "zone_fallback": "LLM failed, check Ollama connectivity",
-                    "coord":        "Check scene_snapshots positions",
-                    "sbert":        "Check furniture label normalization",
-                    "not_ready":    "Scene engine not ready, check /ready endpoint",
+                    "llm_error":     "LLM call failed entirely, check Ollama connectivity",
+                    "llm_low_conf":  "LLM picked invalid/low-confidence action, check prompt and scene_text quality",
+                    "llm":           "LLM ran normally but result was still wrong, check ground truth labeling",
+                    "zone_fallback": "LLM produced no usable candidates, fell back to zone affinity ranking",
+                    "coord":         "Check scene_snapshots positions",
+                    "sbert":         "Check furniture label normalization",
+                    "not_ready":     "Scene engine not ready, check /ready endpoint",
                 }
                 print(f"\n  Hint: {hints.get(top_layer, f'Main error: {top_layer}')}")
 
@@ -384,6 +392,9 @@ def main():
     parser.add_argument("--interval",  type=int,   default=3)
     parser.add_argument("--threshold", type=float, default=0.50)
     parser.add_argument("--window",    type=int,   default=20)
+    parser.add_argument("--collection", type=str,  default="experiment_logs",
+                         help="Collection to watch, e.g. experiment_logs_corruption_light_semantic "
+                              "for a running corruption experiment")
     args = parser.parse_args()
 
     db = connect()
@@ -391,7 +402,8 @@ def main():
 
     if args.watch:
         check_watch(db, n=args.n, interval=args.interval,
-                    acc_threshold=args.threshold, window=args.window)
+                    acc_threshold=args.threshold, window=args.window,
+                    collection=args.collection)
         return
 
     if args.quick:

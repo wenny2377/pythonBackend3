@@ -1045,7 +1045,7 @@ class PerceptionEngine:
             user_pos=user_pos, user_forward=user_forward,
             room_name=room_name, user_id=final_user,
             vlm_confidence=vlm_confidence, payload=ablated_payload,
-            vlm_weight_override=_dynamic_vlm_w,
+            vlm_weight_override=0.0,
             coord_label=coord_label, held_age=held_age,
             som_objects=som_objects,
         )
@@ -1073,7 +1073,7 @@ class PerceptionEngine:
             "_vlm_confidence":  round(vlm_confidence, 3),
             "_som_objects":     som_objects,
             "_vlm_timed_out":   vlm_timed_out,
-            "_entropy":         round(_overall_entropy, 4),
+            "_entropy":         0.0,
         }
 
         self._update_scene_snapshot(bound_doc, [], nearby_objs, [])
