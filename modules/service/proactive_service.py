@@ -3,6 +3,7 @@ import logging
 import requests
 
 from config import Config
+from modules.memory.skill_manager import preferred_item_from_skill_md
 
 logger = logging.getLogger(__name__)
 
@@ -22,12 +23,13 @@ NO_INTERRUPT_ACTIONS = {
 class ProactiveService:
 
     def __init__(self, db, habit_learner, proposal_manager,
-                 ollama_url: str, llm_model: str):
+                 ollama_url: str, llm_model: str, skill_manager=None):
         self.db               = db
         self.habit_learner    = habit_learner
         self.proposal_manager = proposal_manager
         self.ollama_url       = ollama_url
         self.llm_model        = llm_model
+        self.skill_manager    = skill_manager
 
     def evaluate(self, user_id: str, current_action: str,
                  prev_action: str, time_slot: str,
@@ -52,7 +54,7 @@ class ProactiveService:
             return None
 
         need = lookahead["need"]
-        available_item = self._find_available_item(need)
+        available_item = self._find_available_item(user_id, need)
         if not available_item:
             return None
 
@@ -71,17 +73,37 @@ class ProactiveService:
               f"| conf={lookahead['confidence']:.2f}")
         return proposal
 
-    def _find_available_item(self, need: str) -> dict | None:
+    def _find_available_item(self, user_id: str, need: str) -> dict | None:
         if not need:
             return None
         cutoff = datetime.datetime.utcnow() - datetime.timedelta(hours=TTL_HOURS)
-        item = self.db.dynamic_objects.find_one(
+
+        candidates = list(self.db.dynamic_objects.find(
             {"category": need, "last_seen": {"$gte": cutoff}},
-            sort=[("interact_count", -1)])
-        if not item:
-            item = self.db.dynamic_objects.find_one(
-                {"category": need}, sort=[("interact_count", -1)])
-        return item
+            sort=[("interact_count", -1)]))
+        if not candidates:
+            candidates = list(self.db.dynamic_objects.find(
+                {"category": need}, sort=[("interact_count", -1)]))
+        if not candidates:
+            return None
+
+        preferred_label = self._preferred_label(user_id, candidates, need)
+        if preferred_label:
+            for c in candidates:
+                if c["label"].lower() == preferred_label.lower():
+                    return c
+
+        return candidates[0]
+
+    def _preferred_label(self, user_id: str, candidates: list, need: str) -> str:
+        if self.skill_manager is None:
+            return ""
+        try:
+            skill_md = self.skill_manager.get_skill(user_id)
+        except Exception:
+            return ""
+        available_labels = {c["label"].lower() for c in candidates}
+        return preferred_item_from_skill_md(skill_md, available_labels, need)
 
     def _check_interval(self, user_id: str) -> bool:
         last = self.db.service_proposals.find_one(
