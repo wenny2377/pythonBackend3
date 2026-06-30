@@ -5,6 +5,16 @@ import cv2
 import numpy as np
 
 
+def extract_label_from_held_event(held_event: str) -> str:
+    if not held_event or held_event in ("none", "unknown", ""):
+        return ""
+    for kw in ("just picked up ", "holding ", "holding:"):
+        if kw in held_event.lower():
+            after = held_event.lower().split(kw, 1)[1]
+            return after.split(" for")[0].strip()
+    return ""
+
+
 def build_som_text(object_list: list) -> str:
     if not object_list:
         return ""
@@ -121,7 +131,7 @@ def get_som_objects_from_db(db, user_pos: dict, room_name: str,
     objects = []
 
     if held_event and held_event not in ("none", "unknown", ""):
-        label = _extract_label_from_held_event(held_event)
+        label = extract_label_from_held_event(held_event)
         if label:
             objects.append({"label": label, "status": "held"})
 
@@ -162,13 +172,3 @@ def get_som_objects_from_db(db, user_pos: dict, room_name: str,
             dedup.append(obj)
 
     return dedup[:8]
-
-
-def _extract_label_from_held_event(held_event: str) -> str:
-    if not held_event or held_event in ("none", "unknown", ""):
-        return ""
-    for kw in ("just picked up ", "holding ", "holding:"):
-        if kw in held_event.lower():
-            after = held_event.lower().split(kw, 1)[1]
-            return after.split(" for")[0].strip()
-    return ""
