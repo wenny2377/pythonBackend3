@@ -42,10 +42,6 @@ def err(msg):  print(f"  ERR   {msg}")
 
 def _dominant_layer(reason: str) -> str:
     r = (reason or "").lower()
-    # NOTE: order matters — more specific substrings must be checked
-    # before the generic "pmi_llm" catch-all, since "pmi_llm_error_fallback"
-    # and "pmi_llm_fallback:..." both contain "pmi_llm" and would otherwise
-    # be misclassified as a normal successful LLM call.
     if "pmi_llm_error_fallback" in r: return "llm_error"
     if "pmi_llm_fallback" in r:       return "llm_low_conf"
     if "pmi_llm" in r:                return "llm"
@@ -87,7 +83,6 @@ def check_watch(db, n=15, interval=3, acc_threshold=0.50, window=20, collection=
                 if (d.get("spatial_action") or d.get("vlm_output", "")) ==
                    d.get("ground_truth", "")
             )
-            # accuracy over the most recent 200 episodes (or all, if fewer exist)
             acc_total  = correct_total / len(total_sample) if total_sample else 0.0
             pause_flag = acc_window < acc_threshold and len(all_docs) >= window
 
@@ -233,13 +228,15 @@ def check_observations(db):
 
 def check_eval(db):
     section(f"Evaluation Results — {DB_NAME}")
-    all_docs_combined = []
     col_names = [
         "experiment_logs",
-        "experiment_logs_corruption_light",
-        "experiment_logs_corruption_medium",
-        "experiment_logs_corruption_heavy",
+        "experiment_logs_semantic",
+        "experiment_logs_vlm_som",
+        "experiment_logs_corruption_light_semantic",
+        "experiment_logs_corruption_medium_semantic",
+        "experiment_logs_corruption_heavy_semantic",
     ]
+    all_docs_combined = []
     for col in col_names:
         docs = list(db[col].find(
             {"ground_truth": {"$exists": True, "$ne": ""}},
@@ -249,6 +246,7 @@ def check_eval(db):
         if docs:
             print(f"  {col}: {len(docs)} episodes")
         all_docs_combined.extend(docs)
+
     total = len(all_docs_combined)
     if total == 0:
         warn("experiment_logs EMPTY")
@@ -268,7 +266,7 @@ def check_eval(db):
     print(f"\n  Accuracy:")
     print(f"    Full system : {s2_correct}/{total} = {s2_correct/total:.1%}")
 
-    reasons  = Counter(_dominant_layer(d.get("upgrade_reason", "")) for d in all_docs_combined)
+    reasons = Counter(_dominant_layer(d.get("upgrade_reason", "")) for d in all_docs_combined)
     print(f"\n  Layer distribution:")
     for r, n in reasons.most_common():
         bar = "█" * int(n / total * 20)
@@ -279,9 +277,8 @@ def check_eval(db):
         "Drinking", "SeatedDrinking", "Sitting", "Eating", "Cooking",
         "Opening", "Laying", "Watching", "Reading", "Cleaning", "UsingPhone", "Typing",
     ]
-    all_gt = all_docs_combined
     for label in labels:
-        docs_label = [d for d in all_gt if d.get("ground_truth") == label]
+        docs_label = [d for d in all_docs_combined if d.get("ground_truth") == label]
         if not docs_label:
             continue
         correct = sum(
@@ -341,7 +338,7 @@ def check_skill(db):
         if not doc:
             warn(f"{uid}: no SKILL.md")
             continue
-        skill_md = doc.get("skill_md", "")
+        skill_md  = doc.get("skill_md", "")
         n_bullets = skill_md.count("\n- ")
         ok(f"{uid}: v{doc.get('version',1)} | {n_bullets} bullets")
         pref_start = skill_md.find("## Preferences")
@@ -356,25 +353,41 @@ def check_skill(db):
 
 def summary(db):
     section(f"Summary — {DB_NAME}")
+
+    all_exp_cols = [
+        "experiment_logs",
+        "experiment_logs_semantic",
+        "experiment_logs_vlm_som",
+        "experiment_logs_corruption_light_semantic",
+        "experiment_logs_corruption_medium_semantic",
+        "experiment_logs_corruption_heavy_semantic",
+    ]
+    exp_total = sum(db[c].count_documents({}) for c in all_exp_cols)
+
     checks = [
-        ("scene_snapshots",  db.scene_snapshots.count_documents({}),  1),
-        ("transition_counts", db.transition_counts.count_documents({}), 1),
-        ("observation_logs", db.observation_logs.count_documents({}),  1),
-        ("experiment_logs", db.experiment_logs.count_documents({}),         1),
-        ("dynamic_objects",  db.dynamic_objects.count_documents({}),   1),
-        ("user_skills",      db.user_skills.count_documents({}),       2),
+        ("scene_snapshots",   db.scene_snapshots.count_documents({}),   1),
+        ("transition_counts", db.transition_counts.count_documents({}),  1),
+        ("observation_logs",  db.observation_logs.count_documents({}),   1),
+        ("experiment_logs",   exp_total,                                  1),
+        ("dynamic_objects",   db.dynamic_objects.count_documents({}),    1),
+        ("user_skills",       db.user_skills.count_documents({}),        2),
     ]
     for name, count, threshold in checks:
         if count >= threshold: ok(f"{name:26}: {count}")
         else:                  warn(f"{name:26}: {count} (need >= {threshold})")
 
-    total = db.experiment_logs.count_documents({})
-    if total > 0:
+    all_docs = []
+    for col in all_exp_cols:
+        all_docs.extend(list(db[col].find(
+            {}, {"spatial_action":1,"vlm_output":1,"ground_truth":1}
+        )))
+    if all_docs:
         correct = sum(
-            1 for d in db.experiment_logs.find({})
+            1 for d in all_docs
             if (d.get("spatial_action") or d.get("vlm_output", "")) ==
                d.get("ground_truth", "")
         )
+        total = len(all_docs)
         print(f"\n  Overall accuracy: {correct}/{total} = {correct/total:.1%}")
 
     n_trans  = db.transition_counts.count_documents({"count": {"$gte": 3}})
@@ -386,15 +399,14 @@ def summary(db):
 def main():
     parser = argparse.ArgumentParser(
         description=f"Check Robot Brain system (DB={DB_NAME})")
-    parser.add_argument("--quick",     action="store_true", help="Summary only")
-    parser.add_argument("--watch",     action="store_true", help="Live monitor mode")
-    parser.add_argument("--n",         type=int,   default=15)
-    parser.add_argument("--interval",  type=int,   default=3)
-    parser.add_argument("--threshold", type=float, default=0.50)
-    parser.add_argument("--window",    type=int,   default=20)
-    parser.add_argument("--collection", type=str,  default="experiment_logs",
-                         help="Collection to watch, e.g. experiment_logs_corruption_light_semantic "
-                              "for a running corruption experiment")
+    parser.add_argument("--quick",      action="store_true", help="Summary only")
+    parser.add_argument("--watch",      action="store_true", help="Live monitor mode")
+    parser.add_argument("--n",          type=int,   default=15)
+    parser.add_argument("--interval",   type=int,   default=3)
+    parser.add_argument("--threshold",  type=float, default=0.50)
+    parser.add_argument("--window",     type=int,   default=20)
+    parser.add_argument("--collection", type=str,   default="experiment_logs",
+                        help="Collection to watch, e.g. experiment_logs_corruption_light_semantic")
     args = parser.parse_args()
 
     db = connect()

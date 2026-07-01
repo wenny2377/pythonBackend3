@@ -3,7 +3,7 @@ DB: robot_exp_baseline
 
 Method                        Acc    Delta      N
 --------------------------------------------------
-Full System                89.9%       --    189
-w/o Skeleton               50.3%   -39.7%    189
-w/o Object Events          21.2%   -68.8%    189
-w/o Spatial Context        57.1%   -32.8%    189
+Full System                87.8%       --    189
+w/o Skeleton               57.7%   -30.2%    189
+w/o Object Events          19.6%   -68.3%    189
+w/o Spatial Context        70.9%   -16.9%    189

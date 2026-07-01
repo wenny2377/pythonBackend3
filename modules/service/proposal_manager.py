@@ -29,10 +29,7 @@ class ProposalManager:
         return proposal_id
 
     def get_next(self) -> dict | None:
-        doc = self.col.find_one(
-            {"status": "pending"},
-            sort=[("created_at", 1)],
-        )
+        doc = self.col.find_one({"status": "pending"}, sort=[("created_at", 1)])
         if not doc:
             return None
         return {
@@ -44,8 +41,7 @@ class ProposalManager:
             "confidence":  doc.get("confidence", 0.0),
         }
 
-    def handle_response(self, proposal_id: str, user_id: str,
-                         result: str) -> dict:
+    def handle_response(self, proposal_id: str, user_id: str, result: str) -> dict:
         self.col.update_one(
             {"proposal_id": proposal_id},
             {"$set": {
@@ -54,28 +50,17 @@ class ProposalManager:
             }},
         )
         print(f"[ProposalManager] Response: {proposal_id} → {result}")
-        return {
-            "status":      "ok",
-            "proposal_id": proposal_id,
-            "result":      result,
-        }
+        return {"status": "ok", "proposal_id": proposal_id, "result": result}
 
     def get_history(self, user_id: str = None, limit: int = 50) -> list:
         query = {"user_id": user_id} if user_id else {}
-        docs  = list(
-            self.col.find(query, {"_id": 0})
-            .sort("created_at", -1)
-            .limit(limit)
-        )
+        docs  = list(self.col.find(query, {"_id": 0}).sort("created_at", -1).limit(limit))
         for d in docs:
-            for k in ["created_at", "responded_at"]:
+            for k in ("created_at", "responded_at"):
                 if k in d and hasattr(d[k], "isoformat"):
                     d[k] = d[k].isoformat()
         return docs
 
     def get_last_proposal_time(self, user_id: str) -> datetime.datetime | None:
-        doc = self.col.find_one(
-            {"user_id": user_id},
-            sort=[("created_at", -1)],
-        )
+        doc = self.col.find_one({"user_id": user_id}, sort=[("created_at", -1)])
         return doc.get("created_at") if doc else None

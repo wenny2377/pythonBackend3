@@ -1,16 +1,16 @@
 Experiment 1: HAR System A (Skeleton+Object+Spatial)
 DB: robot_exp_baseline | Collection: experiment_logs_semantic
-Episodes: 189  Correct: 170  Overall: 89.9%
+Episodes: 189  Correct: 166  Overall: 87.8%
 
 Action              Acc    TP   Total
 --------------------------------------
 Drinking         79.2%    19      24
 Eating           100.0%    44      44
 Cooking          100.0%    14      14
-Laying           60.0%    18      30
+Laying           53.3%    16      30
 Watching         100.0%    20      20
 Reading          100.0%    13      13
 Cleaning         100.0%    10      10
 UsingPhone       100.0%    15      15
 Typing           100.0%    12      12
-Opening          71.4%     5       7
+Opening          42.9%     3       7

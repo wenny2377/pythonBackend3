@@ -30,15 +30,6 @@ COLLECTIONS_LEARNING = [
     "robot_memory", "semantic_memories", "habit_snapshots",
 ]
 
-# Verified against ExperimentRunner.AllSchedule + app.py /predict suffix logic:
-#   _semantic                       -> experiment_logs_semantic          (System A baseline)
-#   _vlm_som                        -> experiment_logs_vlm_som           (System B baseline)
-#   _corruption_light_semantic      -> experiment_logs_corruption_light_semantic
-#   _corruption_medium_semantic     -> experiment_logs_corruption_medium_semantic
-#   _corruption_heavy_semantic      -> experiment_logs_corruption_heavy_semantic
-#   (empty suffix)                  -> experiment_logs (fallback if /predict called
-#                                       without /start_experiment first)
-# These six names match what app.py and ExperimentRunner actually produce — confirmed correct.
 COLLECTIONS_EXPERIMENT = [
     "experiment_logs",
     "experiment_logs_semantic",
@@ -49,18 +40,6 @@ COLLECTIONS_EXPERIMENT = [
     "eval_logs", "exp_checkpoint_logs",
 ]
 
-# UNVERIFIED — these three collection names do not match anything seen in
-# perception_engine.py. PerceptionEngine._write_experiment_log always writes
-# to f"experiment_logs{collection_suffix}", never to a fixed "ablation_no_X"
-# name. PerceptionEngine._apply_ablation also only implements
-# no_skeleton / no_object / no_vlm modes — there is no no_spatial mode in
-# the code reviewed so far.
-# If your offline ablation script (referenced in print_next_steps mode "3" as
-# analysis/exp3_modality_ablation.py) writes its own collections under these
-# names, this list is correct. If it writes elsewhere (e.g. back into
-# experiment_logs with an extra field, or under different names), Mode 3
-# will silently clear nothing and report 0 docs deleted with no error.
-# Confirm against exp3_modality_ablation.py before relying on Mode 3.
 COLLECTIONS_ABLATION = [
     "ablation_no_skeleton",
     "ablation_no_object",
@@ -83,67 +62,55 @@ COLLECTIONS_LEGACY = [
 
 MODES = {
     "1": {
-        "label":      "Full reset — everything (re-run from scratch)",
+        "label":       "Full reset — everything (re-run from scratch)",
         "collections": (COLLECTIONS_LEARNING + COLLECTIONS_EXPERIMENT +
                         COLLECTIONS_ABLATION + COLLECTIONS_RUNTIME + COLLECTIONS_LEGACY),
         "reset_skill": True,
         "clean_files": True,
     },
     "2": {
-        "label":      "Experiment + Ablation — keep learning, re-run experiments",
+        "label":       "Experiment + Ablation — keep learning, re-run experiments",
         "collections": COLLECTIONS_EXPERIMENT + COLLECTIONS_ABLATION,
         "reset_skill": False,
         "clean_files": False,
-        # WARNING: this mode intentionally keeps observation_logs/transition_counts.
-        # That is correct if you are re-running Exp 1/2/3 (System A/B HAR accuracy,
-        # corruption robustness, ablation) since those don't depend on a fresh
-        # 7-day BPA window. It is NOT correct if you are re-running the System A
-        # baseline (_semantic) specifically to re-collect Exp 4 (BPA personalization)
-        # data — re-running baseline without clearing COLLECTIONS_LEARNING first
-        # will accumulate transition/observation weight on top of the previous
-        # run's data, silently violating the "7-day observation cycle" assumption
-        # used throughout Ch3/Ch4 (the slides' threshold-3 justification of
-        # "≥43% of 7 days" no longer holds if the data actually spans two
-        # separate runs). Use Mode 4 first if you intend to re-collect Exp 4 data.
     },
     "3": {
-        "label":      "Ablation only — keep experiment_logs, re-run ablation",
+        "label":       "Ablation only — keep experiment_logs, re-run ablation",
         "collections": COLLECTIONS_ABLATION,
         "reset_skill": False,
         "clean_files": False,
     },
     "4": {
-        "label":      "Learning only — reset obs/habits/skills",
+        "label":       "Learning only — reset obs/habits/skills",
         "collections": COLLECTIONS_LEARNING,
         "reset_skill": True,
         "clean_files": False,
     },
     "5": {
-        "label":      "Legacy cleanup — remove old collections from previous runs",
+        "label":       "Legacy cleanup — remove old collections from previous runs",
         "collections": COLLECTIONS_LEGACY,
         "reset_skill": False,
         "clean_files": False,
     },
     "6": {
-        "label":      "Custom — choose collections interactively",
+        "label":       "Custom — choose collections interactively",
         "collections": [],
         "reset_skill": False,
         "clean_files": False,
     },
     "7": {
-        "label":      "Wipe ALL — delete every collection in the DB",
+        "label":       "Wipe ALL — delete every collection in the DB",
         "collections": [],
         "reset_skill": True,
         "clean_files": True,
     },
     "8": {
-        "label":      "Single experiment — pick one collection to clear",
+        "label":       "Single experiment — pick one collection to clear",
         "collections": [],
         "reset_skill": False,
         "clean_files": False,
     },
 }
-
 
 EXPERIMENT_COLLECTIONS = [
     ("experiment_logs_semantic",                    "System A: Baseline"),
@@ -156,9 +123,10 @@ EXPERIMENT_COLLECTIONS = [
     ("ablation_no_spatial",                         "Ablation: no spatial"),
 ]
 
+
 def _ask_single_experiment(db) -> list:
     print("\nWhich experiment collection to clear?")
-    existing = set(db.list_collection_names())
+    existing  = set(db.list_collection_names())
     available = [(col, label) for col, label in EXPERIMENT_COLLECTIONS if col in existing]
     if not available:
         print("  No experiment collections found in DB.")
@@ -168,7 +136,7 @@ def _ask_single_experiment(db) -> list:
         print(f"  {i}) {label:35} ({col}) — {n} docs")
     try:
         choice = input("Choice: ").strip()
-        idx = int(choice) - 1
+        idx    = int(choice) - 1
         if 0 <= idx < len(available):
             return [available[idx][0]]
     except (ValueError, EOFError):
@@ -235,6 +203,23 @@ def _confirm(prompt: str) -> bool:
         return False
 
 
+def _reset_skills(db):
+    print("\n  Resetting SKILL.md...")
+    date = datetime.now().strftime("%Y-%m-%d")
+    for uid in SKILL_USERS:
+        db.user_skills.update_one(
+            {"user_id": uid},
+            {"$set": {
+                "skill_md":   CLEAN_SKILL.format(user_id=uid, date=date),
+                "version":    1,
+                "updated_at": datetime.utcnow(),
+                "is_stale":   False,
+            }},
+            upsert=True,
+        )
+        print(f"  {uid} SKILL.md reset")
+
+
 def reset_db(db_name: str, mode_key: str):
     client = MongoClient(MONGO_URI)
     db     = client[db_name]
@@ -281,20 +266,7 @@ def reset_db(db_name: str, mode_key: str):
                 print(f"  cleared {col}: {n}")
         print(f"  Total deleted: {total} docs")
         if mode.get("reset_skill"):
-            print("\n  Resetting SKILL.md...")
-            date = datetime.now().strftime("%Y-%m-%d")
-            for uid in SKILL_USERS:
-                db.user_skills.update_one(
-                    {"user_id": uid},
-                    {"$set": {
-                        "skill_md":   CLEAN_SKILL.format(user_id=uid, date=date),
-                        "version":    1,
-                        "updated_at": datetime.utcnow(),
-                        "is_stale":   False,
-                    }},
-                    upsert=True,
-                )
-                print(f"  {uid} SKILL.md reset")
+            _reset_skills(db)
         client.close()
         return
 
@@ -332,20 +304,7 @@ def reset_db(db_name: str, mode_key: str):
     print(f"  Total deleted: {total} docs")
 
     if mode.get("reset_skill"):
-        print("\n  Resetting SKILL.md...")
-        date = datetime.now().strftime("%Y-%m-%d")
-        for uid in SKILL_USERS:
-            db.user_skills.update_one(
-                {"user_id": uid},
-                {"$set": {
-                    "skill_md":   CLEAN_SKILL.format(user_id=uid, date=date),
-                    "version":    1,
-                    "updated_at": datetime.utcnow(),
-                    "is_stale":   False,
-                }},
-                upsert=True,
-            )
-            print(f"  {uid} SKILL.md reset")
+        _reset_skills(db)
 
     client.close()
 

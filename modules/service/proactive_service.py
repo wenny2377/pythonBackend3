@@ -13,11 +13,7 @@ TTL_HOURS            = Config.SNAPSHOT_TTL_HOURS
 LLM_TIMEOUT          = Config.LLM_TIMEOUT
 LLM_TEMP             = Config.LLM_TEMPERATURE
 
-NO_INTERRUPT_ACTIONS = {
-    "Laying",
-    "Typing",
-    "UsingPhone",
-}
+NO_INTERRUPT_ACTIONS = {"Laying", "Typing", "UsingPhone"}
 
 
 class ProactiveService:
@@ -31,10 +27,8 @@ class ProactiveService:
         self.llm_model        = llm_model
         self.skill_manager    = skill_manager
 
-    def evaluate(self, user_id: str, current_action: str,
-                 prev_action: str, time_slot: str,
-                 user_pos: dict = None) -> dict | None:
-
+    def evaluate(self, user_id: str, current_action: str, prev_action: str,
+                 time_slot: str, user_pos: dict = None) -> dict | None:
         if current_action != "Standing":
             return None
         if not prev_action or prev_action in ("Standing", "Walking"):
@@ -47,13 +41,10 @@ class ProactiveService:
             current_action=prev_action,
             time_slot=time_slot,
         )
-
-        if not lookahead["actionable"]:
-            return None
-        if lookahead["confidence"] < MIN_CONFIDENCE:
+        if not lookahead["actionable"] or lookahead["confidence"] < MIN_CONFIDENCE:
             return None
 
-        need = lookahead["need"]
+        need           = lookahead["need"]
         available_item = self._find_available_item(user_id, need)
         if not available_item:
             return None
@@ -68,7 +59,6 @@ class ProactiveService:
             time_slot=time_slot,
             prev_action=prev_action,
         )
-
         print(f"[ProactiveService] {user_id}: {available_item['label']} "
               f"| conf={lookahead['confidence']:.2f}")
         return proposal
@@ -80,10 +70,12 @@ class ProactiveService:
 
         candidates = list(self.db.dynamic_objects.find(
             {"category": need, "last_seen": {"$gte": cutoff}},
-            sort=[("interact_count", -1)]))
+            sort=[("interact_count", -1)],
+        ))
         if not candidates:
             candidates = list(self.db.dynamic_objects.find(
-                {"category": need}, sort=[("interact_count", -1)]))
+                {"category": need}, sort=[("interact_count", -1)],
+            ))
         if not candidates:
             return None
 
@@ -106,13 +98,10 @@ class ProactiveService:
         return preferred_item_from_skill_md(skill_md, available_labels, need)
 
     def _check_interval(self, user_id: str) -> bool:
-        last = self.db.service_proposals.find_one(
-            {"user_id": user_id},
-            sort=[("created_at", -1)],
-        )
-        if not last:
+        last_time = self.proposal_manager.get_last_proposal_time(user_id)
+        if not last_time:
             return True
-        elapsed = (datetime.datetime.utcnow() - last["created_at"]).seconds
+        elapsed = (datetime.datetime.utcnow() - last_time).total_seconds()
         return elapsed >= MIN_INTERVAL_MINUTES * 60
 
     def _generate_proposal(self, user_id: str, lookahead: dict,
@@ -152,8 +141,7 @@ class ProactiveService:
             "created_at": datetime.datetime.utcnow(),
         }
 
-    def _call_llm(self, system: str, user: str,
-                  max_tokens: int = 100) -> str | None:
+    def _call_llm(self, system: str, user: str, max_tokens: int = 100) -> str | None:
         try:
             resp = requests.post(
                 f"{self.ollama_url}/api/chat",
@@ -164,10 +152,7 @@ class ProactiveService:
                         {"role": "user",   "content": user},
                     ],
                     "stream":  False,
-                    "options": {
-                        "temperature": LLM_TEMP,
-                        "num_predict": max_tokens,
-                    },
+                    "options": {"temperature": LLM_TEMP, "num_predict": max_tokens},
                 },
                 timeout=LLM_TIMEOUT,
             )

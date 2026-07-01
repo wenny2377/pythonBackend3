@@ -312,10 +312,12 @@ class PerceptionEngine:
         self._proto_vecs_sbert = None
         self._build_prototype_vecs()
 
-        self._room_cache = RoomEmbeddingCache(self.sbert)
-        self.room_cache  = RoomEmbeddingCache(self.sbert)
-        self._bulk_buf   = BulkWriteBuffer(self.col_dynamic)
-        self._lock       = threading.Lock()
+        self._vocab_vecs = self.sbert.encode(
+            OBJECT_VOCAB, normalize_embeddings=True).astype("float32")
+
+        self.room_cache = RoomEmbeddingCache(self.sbert)
+        self._bulk_buf  = BulkWriteBuffer(self.col_dynamic)
+        self._lock      = threading.Lock()
 
     def _build_prototype_vecs(self):
         labels = list(VISION_PROTOTYPES.keys())
@@ -403,10 +405,9 @@ class PerceptionEngine:
             if vocab_word in raw_lower:
                 return vocab_word
         try:
-            vocab_vecs = self.sbert.encode(OBJECT_VOCAB, normalize_embeddings=True)
-            raw_vec    = self.sbert.encode([raw_lower], normalize_embeddings=True)[0]
-            sims       = vocab_vecs @ raw_vec
-            best_idx   = int(sims.argmax())
+            raw_vec  = self.sbert.encode([raw_lower], normalize_embeddings=True)[0]
+            sims     = self._vocab_vecs @ raw_vec
+            best_idx = int(sims.argmax())
             if float(sims[best_idx]) > 0.45:
                 return OBJECT_VOCAB[best_idx]
         except Exception:
@@ -577,9 +578,9 @@ class PerceptionEngine:
 
         try:
             from modules.perception.scene_graph import build_scene_text
-            skel_args   = self._skeleton_args_from_payload(payload)
-            _tv_on      = bool(payload.get("tv_on", False)) if payload else None
-            _scene_text = build_scene_text(
+            skel_args = self._skeleton_args_from_payload(payload)
+            _tv_on    = bool(payload.get("tv_on", False)) if payload else None
+            scene     = build_scene_text(
                 user_pos=user_pos, user_forward=user_forward,
                 room_name=room_name, held_event=held_event,
                 held_age=held_age, db=self.db, user_id=user_id,
@@ -596,14 +597,14 @@ class PerceptionEngine:
                 "som_objects": som_objects or [],
             }
             llm_action, llm_reason, llm_conf = self._llm_reason(
-                _scene_text, pmi, candidates, self._llm_url, self._llm_model)
+                scene, pmi, candidates, self._llm_url, self._llm_model)
             if llm_action:
                 return llm_action, llm_reason, zone_label
         except Exception as e:
             print(f"[LLM Reason] skipped: {e}")
 
         try:
-            zone_ranked    = sorted(
+            zone_ranked     = sorted(
                 candidates,
                 key=lambda a: self.scene_engine.get_zone_affinity(zone_label, a)
                 if zone_label else 0,
@@ -614,45 +615,35 @@ class PerceptionEngine:
         print(f"[ZoneFallback] {fallback_action}")
         return fallback_action, "zone_affinity_fallback", zone_label
 
-    def _llm_reason(self, scene_text: str, pmi: dict,
+    def _llm_reason(self, scene: dict, pmi: dict,
                     candidates: set, llm_url: str, llm_model: str) -> tuple:
         if not candidates:
             return None, "", 0.0
 
-        near        = pmi.get("near",       "")
-        nearby_objs = pmi.get("nearby",     [])
-        vlm_desc    = pmi.get("vlm_desc",   "")
-        key_object  = pmi.get("key_object", "none")
+        near        = pmi.get("near",        "")
+        nearby_objs = pmi.get("nearby",      [])
+        vlm_desc    = pmi.get("vlm_desc",    "")
+        key_object  = pmi.get("key_object",  "none")
         som_objects = pmi.get("som_objects", [])
 
-        _room_str    = ""
-        _time_str    = ""
-        _posture_str = ""
-        _event_line  = ""
-        _facing_str  = ""
+        room_str    = scene.get("room",    "")
+        time_str    = scene.get("time",    "")
+        posture_str = scene.get("posture", "")
+        facing_str  = scene.get("facing",  "")
+        held_str    = scene.get("held",    "")
+        tv_on       = scene.get("tv_on",   False)
+        scene_text  = scene.get("text",    "")
 
-        for _line in scene_text.split("\n"):
-            _l = _line.strip()
-            if _l.startswith("Room:"):         _room_str    = _l.replace("Room: ", "").strip()
-            if _l.startswith("Time:"):         _time_str    = _l
-            if _l.startswith("Posture"):       _posture_str = _l.replace("Posture cues:", "").strip()
-            if _l.startswith("Object event:"): _event_line  = _l
-            if _l.startswith("Facing:"):       _facing_str  = _l
-
-        tv_on = any(
-            _l.strip().startswith("TV:") and "ON" in _l
-            for _l in scene_text.split("\n"))
-
-        nl_parts = [f"A person is in the {_room_str or 'home'}."]
-        if _time_str:                           nl_parts.append(_time_str + ".")
-        if _posture_str:                        nl_parts.append(f"Posture: {_posture_str}.")
-        if _event_line:                         nl_parts.append(f"{_event_line}.")
-        if _facing_str:                         nl_parts.append(f"{_facing_str}.")
+        nl_parts = [f"A person is in the {room_str or 'home'}."]
+        if time_str:                            nl_parts.append(f"Time: {time_str}.")
+        if posture_str:                         nl_parts.append(f"Posture: {posture_str}.")
+        if held_str:                            nl_parts.append(f"Object event: {held_str}.")
+        if facing_str:                          nl_parts.append(f"Facing: {facing_str}.")
         if vlm_desc:                            nl_parts.append(f"VLM observation: {vlm_desc}.")
         if key_object and key_object != "none": nl_parts.append(f"Key object: {key_object}.")
         if som_objects:
             labels_str = ", ".join(
-                f"{o['label']} ({o.get('status','')})" for o in som_objects)
+                f"{o['label']} ({o.get('status', '')})" for o in som_objects)
             nl_parts.append(f"Scene objects: {labels_str}.")
         nl_parts.append(f"Nearest area: {near or 'unknown'}.")
         nl_parts.append("TV: ON" if tv_on else "TV: off")
@@ -933,7 +924,7 @@ class PerceptionEngine:
         virtual_hour          = payload.get("virtual_hour", None)
         virtual_day           = payload.get("virtual_day",  None)
         ground_truth_activity = payload.get("activity", None)
-        episode_id             = payload.get("episode_id", "unknown")
+        episode_id            = payload.get("episode_id", "unknown")
 
         if not image_list:
             return self._empty_result(hint_user_id)
@@ -952,7 +943,7 @@ class PerceptionEngine:
             hint_user_id, user_pos, t_capture)
         held_event = ablated_payload.get("_ablation_held_event", held_event_raw)
 
-        _objects_2d = payload.get("objects_2d", [])
+        _objects_2d  = payload.get("objects_2d", [])
         _system_mode = payload.get("system_mode", Config.SYSTEM_MODE)
         if _system_mode == "vlm_som":
             if _objects_2d:
@@ -1028,43 +1019,32 @@ class PerceptionEngine:
                 print(f"[Frame {idx}] error: {e}")
                 vlm_timed_out = True
 
-        def _weighted_vote(votes: list, scores: list, default: str = "") -> str:
-            if not votes:
-                return default
-            weights = defaultdict(float)
-            for v, s in zip(votes, scores):
-                weights[v] += max(float(s), 0.1)
-            return max(weights, key=weights.get)
+        final_user = max(set(user_votes), key=user_votes.count) if user_votes else hint_user_id
 
-        final_user     = max(set(user_votes), key=user_votes.count) if user_votes else hint_user_id
-        vlm_scene_desc = _weighted_vote(visual_state_votes, used_scores_list, default="")
-        vlm_key_object = _weighted_vote(key_object_votes,   used_scores_list, default="none")
-        vlm_confidence = (sum(confidence_list) / len(confidence_list)
-                          if confidence_list else 0.0)
+        vlm_scene_desc = (
+            Counter(visual_state_votes).most_common(1)[0][0]
+            if visual_state_votes else ""
+        )
+        vlm_key_object = (
+            Counter(key_object_votes).most_common(1)[0][0]
+            if key_object_votes else "none"
+        )
+        vlm_confidence = (
+            sum(confidence_list) / len(confidence_list)
+            if confidence_list else 0.0
+        )
 
         if ablation_mode == "no_vlm":
             vlm_scene_desc = ablated_payload.get("_ablation_vlm_desc",    "")
             vlm_key_object = ablated_payload.get("_ablation_vlm_key_obj", "none")
             vlm_confidence = 0.0
 
-        activity_hint = vlm_scene_desc
-
-        from collections import Counter as _Counter
-        vlm_scene_desc = (
-            _Counter(visual_state_votes).most_common(1)[0][0]
-            if visual_state_votes else ""
-        )
-        vlm_key_object = (
-            _Counter(key_object_votes).most_common(1)[0][0]
-            if key_object_votes else "none"
-        )
-
         print(f"[VLM] desc='{vlm_scene_desc[:30]}' key={vlm_key_object} "
               f"held={held_event} conf={vlm_confidence:.2f} "
               f"frames={len(visual_state_votes)}")
 
         spatial_action, upgrade_reason, zone_label = self._spatial_reasoning(
-            activity_hint=activity_hint, vlm_scene_desc=vlm_scene_desc,
+            activity_hint=vlm_scene_desc, vlm_scene_desc=vlm_scene_desc,
             vlm_key_object=vlm_key_object, held_event=held_event,
             user_pos=user_pos, user_forward=user_forward,
             room_name=room_name, user_id=final_user,
@@ -1097,7 +1077,7 @@ class PerceptionEngine:
             "_vlm_scene_desc":  vlm_scene_desc,
             "_vlm_key_object":  vlm_key_object,
             "_held_event":      held_event,
-            "_activity_hint":   activity_hint,
+            "_activity_hint":   vlm_scene_desc,
             "_coord_label":     coord_label,
             "_coord_dist":      round(coord_dist, 2) if coord_dist != float('inf') else None,
             "_confidence":      confidence,
@@ -1117,7 +1097,7 @@ class PerceptionEngine:
             payload["_vlm_key_object"] = vlm_key_object
             self._write_experiment_log(
                 payload=payload, final_user=final_user,
-                spatial_action=spatial_action, activity_hint=activity_hint,
+                spatial_action=spatial_action, activity_hint=vlm_scene_desc,
                 upgrade_reason=upgrade_reason, zone_label=zone_label,
                 vlm_confidence=vlm_confidence, held_event=held_event,
                 user_pos=user_pos, interacting_items=interacting_item_list,
@@ -1141,7 +1121,7 @@ class PerceptionEngine:
 
         return {
             "user":              final_user,
-            "action":            activity_hint,
+            "action":            vlm_scene_desc,
             "spatial_action":    spatial_action,
             "upgrade_reason":    upgrade_reason,
             "zone_label":        zone_label,
@@ -1182,10 +1162,16 @@ class PerceptionEngine:
         bound_label = bound_doc.get("label", "Unknown_Area") if bound_doc else "Unknown_Area"
         bound_pos   = bound_doc.get("pos")                   if bound_doc else None
 
+        all_labels      = list(set(interacting_items + scene_items))
+        known_in_scene  = {
+            d["label"] for d in
+            self.col_scene.find({"label": {"$in": all_labels}}, {"label": 1})
+        }
+
         def _upsert(label, is_interacting):
             if not label or label in STRUCTURAL_BLACKLIST:
                 return
-            if self.col_scene.find_one({"label": label}):
+            if label in known_in_scene:
                 return
             base_set  = {
                 "last_seen_on": bound_label, "spatial_rel": "near",

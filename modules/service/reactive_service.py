@@ -18,10 +18,11 @@ LLM_TOKENS  = Config.LLM_MAX_TOKENS
 TTL_HOURS   = Config.SNAPSHOT_TTL_HOURS
 MAX_ITEMS   = Config.SNAPSHOT_MAX_ITEMS
 
-HIGH_WEIGHT     = 10
-SESSION_TTL     = 30
-MAX_HISTORY     = 5
-SBERT_THRESHOLD = 0.40
+HIGH_WEIGHT      = 10
+SESSION_TTL_SECS = 30 * 60
+MAX_HISTORY      = 5
+SBERT_THRESHOLD  = 0.40
+FALLBACK_TTL_DAYS = 7
 
 OBJECT_EXCLUDES = {
     "user_mom", "user_dad", "user", "person", "people",
@@ -43,11 +44,7 @@ DISLIKE_WORDS = {
     "never", "not again", "awful", "terrible",
 }
 
-NO_INTERRUPT_ACTIONS = {
-    "Laying",
-    "Typing",
-    "UsingPhone",
-}
+NO_INTERRUPT_ACTIONS = {"Laying", "Typing", "UsingPhone"}
 
 TIME_TONE = {
     "Morning":   "cheerful and energetic",
@@ -95,17 +92,15 @@ class ConversationSession:
     excluded_items:  set  = field(default_factory=set)
     available_items: list = field(default_factory=list)
     turn_history:    list = field(default_factory=list)
-    last_updated:    datetime.datetime = field(
-        default_factory=datetime.datetime.utcnow)
+    last_updated:    datetime.datetime = field(default_factory=datetime.datetime.utcnow)
 
-    def expired(self):
-        return (datetime.datetime.utcnow() -
-                self.last_updated).seconds > SESSION_TTL * 60
+    def expired(self) -> bool:
+        return (datetime.datetime.utcnow() - self.last_updated).total_seconds() > SESSION_TTL_SECS
 
     def touch(self):
         self.last_updated = datetime.datetime.utcnow()
 
-    def add_turn(self, role, content):
+    def add_turn(self, role: str, content: str):
         self.turn_history.append({"role": role, "content": content})
         if len(self.turn_history) > MAX_HISTORY * 2:
             self.turn_history = self.turn_history[-(MAX_HISTORY * 2):]
@@ -122,20 +117,26 @@ class ConversationSession:
 
 class ReactiveService:
 
-    def __init__(self, db, skill_manager, ollama_url, llm_model):
-        self.db            = db
-        self.skill_manager = skill_manager
-        self.ollama_url    = ollama_url
-        self.llm_model     = llm_model
+    def __init__(self, db, skill_manager, ollama_url: str, llm_model: str,
+                 sbert_model=None):
+        self.db               = db
+        self.skill_manager    = skill_manager
+        self.ollama_url       = ollama_url
+        self.llm_model        = llm_model
         self.pattern_analyzer = PatternAnalyzer(db)
-        self._sessions     = {}
-        self._vec_cache    = {}
-        from sentence_transformers import SentenceTransformer
-        from config import Config
-        self._sbert = SentenceTransformer('paraphrase-MiniLM-L6-v2', device=Config.DEVICE)
+        self._sessions        = {}
+        self._vec_cache       = {}
+
+        if sbert_model is not None:
+            self._sbert = sbert_model
+        else:
+            from sentence_transformers import SentenceTransformer
+            self._sbert = SentenceTransformer(
+                'paraphrase-MiniLM-L6-v2', device=Config.DEVICE)
+
         self._warm_cache()
 
-    def process(self, query, user_id, room=""):
+    def process(self, query: str, user_id: str, room: str = "") -> dict:
         session = self._session(user_id)
 
         if self._is_interrupt(query):
@@ -161,13 +162,12 @@ class ReactiveService:
         session.add_turn("assistant", r.get("answer", ""))
         return r
 
-    def process_stream(self, query, user_id, room=""):
+    def process_stream(self, query: str, user_id: str, room: str = ""):
         session = self._session(user_id)
 
         if self._is_interrupt(query):
             session.reset()
-            yield {"type": "done",
-                   **self._resp("Understood, stopping now.", "interrupt")}
+            yield {"type": "done", **self._resp("Understood, stopping now.", "interrupt")}
             return
 
         if session.state == "CONFIRMING":
@@ -187,10 +187,10 @@ class ReactiveService:
         else:
             yield from self._chat_stream(query, user_id)
 
-    def _is_interrupt(self, query):
+    def _is_interrupt(self, query: str) -> bool:
         return any(w in query.lower() for w in INTERRUPT_WORDS)
 
-    def _classify_intent(self, query) -> tuple:
+    def _classify_intent(self, query: str) -> tuple:
         raw = self._llm_call(
             "You are an intent classifier for a home robot.\n"
             "Reply with exactly two comma-separated words.\n"
@@ -247,9 +247,7 @@ class ReactiveService:
 
         devices = list(self.db.device_states.find({}, {"label": 1, "state": 1}))
         if devices:
-            lines = "\n".join(
-                f"  {d['label']}: {d.get('state','unknown')}"
-                for d in devices)
+            lines = "\n".join(f"  {d['label']}: {d.get('state','unknown')}" for d in devices)
             parts.append(f"Device states:\n{lines}")
 
         habits = list(self.db.observation_logs.find(
@@ -270,7 +268,7 @@ class ReactiveService:
 
         return "\n\n".join(parts)
 
-    def _handle_query(self, query, user_id):
+    def _handle_query(self, query: str, user_id: str) -> dict:
         snapshot = self._build_snapshot(user_id)
         system   = (
             "You are a home robot assistant.\n\n"
@@ -281,13 +279,11 @@ class ReactiveService:
             "- If something is not in the snapshot, say you don't know.\n"
             "- Keep answers concise. 1-3 sentences."
         )
-        answer    = self._llm_call(system, query, max_tokens=120) \
-                    or "I'm not sure, let me check."
+        answer     = self._llm_call(system, query, max_tokens=120) or "I'm not sure, let me check."
         nav_label, nav_target = self._extract_nav(answer, self._available(None))
-        return self._resp(answer, "query",
-                          nav_label=nav_label, nav_target=nav_target)
+        return self._resp(answer, "query", nav_label=nav_label, nav_target=nav_target)
 
-    def _query_stream(self, query, user_id):
+    def _query_stream(self, query: str, user_id: str):
         snapshot = self._build_snapshot(user_id)
         system   = (
             "You are a home robot assistant.\n\n"
@@ -307,11 +303,10 @@ class ReactiveService:
             full = "I'm not sure, let me check."
             yield {"type": "token", "content": full}
         nav_label, nav_target = self._extract_nav(full, items)
-        yield {"type": "done",
-               **self._resp(full, "query",
-                            nav_label=nav_label, nav_target=nav_target)}
+        yield {"type": "done", **self._resp(full, "query", nav_label=nav_label, nav_target=nav_target)}
 
-    def _resolve_need(self, query, user_id, session, category):
+    def _resolve_need(self, query: str, user_id: str, session: ConversationSession,
+                       category: str | None) -> tuple:
         session.need_type = category or ""
         excl      = session.excluded_items | self._skill_exclusions(user_id)
         available = self._available(category=category, excluded=excl)
@@ -320,7 +315,8 @@ class ReactiveService:
         item = self._pick_item(query, user_id, available, category)
         return item, available
 
-    def _handle_need(self, query, user_id, session, category=None):
+    def _handle_need(self, query: str, user_id: str, session: ConversationSession,
+                      category: str | None = None) -> dict:
         item, available = self._resolve_need(query, user_id, session, category)
 
         if not item:
@@ -328,8 +324,7 @@ class ReactiveService:
 
         session.pending_item    = item["label"]
         session.available_items = available
-        obj        = self.db.dynamic_objects.find_one(
-            {"label": item["label"].lower()})
+        obj        = self.db.dynamic_objects.find_one({"label": item["label"].lower()})
         nav_label  = obj.get("last_seen_on") if obj else None
         nav_target = self._resolve_nav(nav_label)
         weight     = self._obs_weight(user_id, item["label"])
@@ -337,12 +332,15 @@ class ReactiveService:
 
         if weight >= HIGH_WEIGHT:
             session.state = "IDLE"
-            answer = self._llm_call(
-                "You are a home robot. The user has a strong habit with "
-                "this item. Tell them you will get it. One natural sentence.",
-                f'User: "{query}"\nItem: {item["label"]}'
-                + (f' at {nav_label}' if nav_label else ''),
-                max_tokens=50) or f"I'll get your {item['label']} right away!"
+            answer = (
+                self._llm_call(
+                    "You are a home robot. The user has a strong habit with "
+                    "this item. Tell them you will get it. One natural sentence.",
+                    f'User: "{query}"\nItem: {item["label"]}'
+                    + (f' at {nav_label}' if nav_label else ''),
+                    max_tokens=50,
+                ) or f"I'll get your {item['label']} right away!"
+            )
             return self._resp(answer, "execute",
                               nav_label=nav_label, nav_target=nav_target,
                               recommendations=[{"label": item["label"]}],
@@ -350,14 +348,17 @@ class ReactiveService:
                               options=self._nav_options(nav_label, nav_target))
 
         session.state = "CONFIRMING"
-        answer = self._llm_call(
-            f"You are a home robot.\n"
-            f"User preferences:\n{skill_md[:300]}\n\n"
-            f"Offer ONLY '{item['label']}' naturally and ask for confirmation. "
-            f"One sentence. Do NOT mention any other items.",
-            f'User: "{query}"\nItem to offer: {item["label"]}'
-            + (f' at {nav_label}' if nav_label else ''),
-            max_tokens=60) or f"Would you like some {item['label']}?"
+        answer = (
+            self._llm_call(
+                f"You are a home robot.\n"
+                f"User preferences:\n{skill_md[:300]}\n\n"
+                f"Offer ONLY '{item['label']}' naturally and ask for confirmation. "
+                f"One sentence. Do NOT mention any other items.",
+                f'User: "{query}"\nItem to offer: {item["label"]}'
+                + (f' at {nav_label}' if nav_label else ''),
+                max_tokens=60,
+            ) or f"Would you like some {item['label']}?"
+        )
         return self._resp(answer, "need_confirm",
                           recommendations=[{"label": item["label"]}],
                           is_personalized=bool(
@@ -366,7 +367,8 @@ class ReactiveService:
                                    {"id": 2, "label": "No, something else"},
                                    {"id": 3, "label": "Cancel"}])
 
-    def _need_stream(self, query, user_id, session, category=None):
+    def _need_stream(self, query: str, user_id: str, session: ConversationSession,
+                      category: str | None = None):
         yield {"type": "token", "content": "Let me check... "}
 
         item, available = self._resolve_need(query, user_id, session, category)
@@ -375,11 +377,9 @@ class ReactiveService:
             tone   = TIME_TONE.get(self._time_slot(), "friendly")
             system = (f"You are a home robot with a {tone} tone. "
                       "Nothing matches. Apologise warmly and suggest "
-                      "an alternative (e.g. add to shopping list). "
-                      "1-2 sentences.")
+                      "an alternative (e.g. add to shopping list). 1-2 sentences.")
             full = ""
-            for token in self._llm_stream(system, f'User: "{query}"',
-                                          max_tokens=80):
+            for token in self._llm_stream(system, f'User: "{query}"', max_tokens=80):
                 full += token
                 yield {"type": "token", "content": token}
             if not full:
@@ -390,8 +390,7 @@ class ReactiveService:
 
         session.pending_item    = item["label"]
         session.available_items = available
-        obj        = self.db.dynamic_objects.find_one(
-            {"label": item["label"].lower()})
+        obj        = self.db.dynamic_objects.find_one({"label": item["label"].lower()})
         nav_label  = obj.get("last_seen_on") if obj else None
         nav_target = self._resolve_nav(nav_label)
         weight     = self._obs_weight(user_id, item["label"])
@@ -400,8 +399,7 @@ class ReactiveService:
         if weight >= HIGH_WEIGHT:
             session.state = "IDLE"
             system  = ("You are a home robot. The user has a strong habit "
-                       "with this item. Tell them you will get it. "
-                       "One natural sentence.")
+                       "with this item. Tell them you will get it. One natural sentence.")
             context = (f'User: "{query}"\nItem: {item["label"]}'
                        + (f' at {nav_label}' if nav_label else ''))
             full = ""
@@ -442,7 +440,7 @@ class ReactiveService:
                                      {"id": 2, "label": "No, something else"},
                                      {"id": 3, "label": "Cancel"}])}
 
-    def _handle_chat(self, query, user_id):
+    def _handle_chat(self, query: str, user_id: str) -> dict:
         session  = self._session(user_id)
         messages = (
             [{"role": "system", "content":
@@ -456,7 +454,7 @@ class ReactiveService:
         answer = self._llm_messages(messages, max_tokens=80) or "I'm here for you!"
         return self._resp(answer, "chat")
 
-    def _chat_stream(self, query, user_id):
+    def _chat_stream(self, query: str, user_id: str):
         session  = self._session(user_id)
         messages = (
             [{"role": "system", "content":
@@ -476,14 +474,17 @@ class ReactiveService:
             yield {"type": "token", "content": full}
         yield {"type": "done", **self._resp(full, "chat")}
 
-    def _confirmation_turn(self, query, session):
+    def _confirmation_turn(self, query: str, session: ConversationSession) -> dict:
         session.add_turn("user", query)
         session.touch()
         q = query.lower().strip()
 
-        if any(w in q for w in DISLIKE_WORDS): return self._dislike(session)
-        if any(w in q for w in CONFIRM_WORDS): return self._confirm(session)
-        if any(w in q for w in REJECT_WORDS):  return self._reject(session)
+        if any(w in q for w in DISLIKE_WORDS):
+            return self._dislike(session)
+        if any(w in q for w in CONFIRM_WORDS):
+            return self._confirm(session)
+        if any(w in q for w in REJECT_WORDS):
+            return self._reject(session)
 
         raw = self._llm_call(
             "Reply with exactly one word: confirm, reject, dislike, or new.\n"
@@ -492,23 +493,29 @@ class ReactiveService:
             "dislike = user strongly dislikes this item\n"
             "new     = user is making a completely different request",
             f'Context: robot just offered an item. User replied: "{query}"',
-            max_tokens=5)
+            max_tokens=5,
+        )
         if raw:
             w = raw.strip().lower().split()[0]
-            if w == "dislike": return self._dislike(session)
-            if w == "confirm": return self._confirm(session)
+            if w == "dislike":
+                return self._dislike(session)
+            if w == "confirm":
+                return self._confirm(session)
             if w == "new":
                 session.reset()
-                intent, category = self._classify_intent(query)
-                if intent == "need":
-                    return self._handle_need(query, session.user_id, session, category)
-                elif intent == "query":
-                    return self._handle_query(query, session.user_id)
-                else:
-                    return self._handle_chat(query, session.user_id)
+                return self._route_new_query(query, session)
+
         return self._reject(session)
 
-    def _confirm(self, session):
+    def _route_new_query(self, query: str, session: ConversationSession) -> dict:
+        intent, category = self._classify_intent(query)
+        if intent == "need":
+            return self._handle_need(query, session.user_id, session, category)
+        if intent == "query":
+            return self._handle_query(query, session.user_id)
+        return self._handle_chat(query, session.user_id)
+
+    def _confirm(self, session: ConversationSession) -> dict:
         item       = session.pending_item
         user_id    = session.user_id
         obj        = self.db.dynamic_objects.find_one({"label": item.lower()})
@@ -523,19 +530,22 @@ class ReactiveService:
             recommendations=[{"label": item}], is_personalized=True,
             options=self._nav_options(nav_label, nav_target))
 
-    def _reject(self, session):
+    def _reject(self, session: ConversationSession) -> dict:
         if session.pending_item:
             session.excluded_items.add(session.pending_item.lower())
+
         remaining = [i for i in session.available_items
                      if i["label"].lower() not in session.excluded_items]
         if not remaining:
             session.reset()
-            return self._resp("Sorry, no other options available right now.",
-                              "need_unavailable")
-        nxt              = remaining[0]
+            return self._resp("Sorry, no other options available right now.", "need_unavailable")
+
+        nxt = self._pick_item("", session.user_id, remaining, session.need_type or None)
+        if not nxt:
+            nxt = remaining[0]
+
         session.pending_item = nxt["label"]
-        obj        = self.db.dynamic_objects.find_one(
-            {"label": nxt["label"].lower()})
+        obj        = self.db.dynamic_objects.find_one({"label": nxt["label"].lower()})
         nav_label  = obj.get("last_seen_on") if obj else None
         nav_target = self._resolve_nav(nav_label)
         loc_str    = f" at {nav_label}" if nav_label else ""
@@ -547,21 +557,21 @@ class ReactiveService:
                      {"id": 2, "label": "No, something else"},
                      {"id": 3, "label": "Cancel"}])
 
-    def _dislike(self, session):
+    def _dislike(self, session: ConversationSession) -> dict:
         item    = session.pending_item
         user_id = session.user_id
         if item:
             session.excluded_items.add(item.lower())
             self._update_skill_async(user_id, item, session.need_type, positive=False)
+
         remaining = [i for i in session.available_items
                      if i["label"].lower() not in session.excluded_items]
         if remaining:
             nxt              = remaining[0]
             session.pending_item = nxt["label"]
-            obj        = self.db.dynamic_objects.find_one(
-                {"label": nxt["label"].lower()})
-            nav_label  = obj.get("last_seen_on") if obj else None
-            loc_str    = f" at {nav_label}" if nav_label else ""
+            obj       = self.db.dynamic_objects.find_one({"label": nxt["label"].lower()})
+            nav_label = obj.get("last_seen_on") if obj else None
+            loc_str   = f" at {nav_label}" if nav_label else ""
             return self._resp(
                 f"Got it, I won't recommend {item} again. "
                 f"Would you like {nxt['label']}{loc_str}?",
@@ -571,11 +581,13 @@ class ReactiveService:
                 options=[{"id": 1, "label": "Yes"},
                          {"id": 2, "label": "No, something else"},
                          {"id": 3, "label": "Cancel"}])
+
         session.reset()
         return self._resp(f"Got it, I won't recommend {item} again.",
                           "feedback", is_personalized=True)
 
-    def _pick_item(self, query, user_id, available, need_type=None):
+    def _pick_item(self, query: str, user_id: str, available: list,
+                    need_type: str | None = None) -> dict | None:
         if not available:
             return None
         preferred = self._preference(user_id, available, need_type)
@@ -585,13 +597,13 @@ class ReactiveService:
                     return a
         return self._semantic_match(query, available)
 
-    def _semantic_match(self, query: str, items: list):
+    def _semantic_match(self, query: str, items: list) -> dict | None:
         if not items:
             return None
-        if self._sbert:
+        if self._sbert and query:
             try:
-                q_vec     = self._sbert.encode(query, normalize_embeddings=True)
-                best_item = None
+                q_vec      = self._sbert.encode(query, normalize_embeddings=True)
+                best_item  = None
                 best_score = -1.0
                 for item in items:
                     ivec = self._get_item_vec(item)
@@ -605,6 +617,7 @@ class ReactiveService:
                     return best_item
             except Exception:
                 pass
+
         labels_text = "\n".join(
             f"- {i['label']} (category: {i.get('category','?')},"
             f" at {i.get('last_seen_on','?')})"
@@ -615,7 +628,8 @@ class ReactiveService:
             "If nothing matches, reply: none\n\n"
             f"Items:\n{labels_text}",
             f'User wants: "{query}". Pick the best matching label.',
-            max_tokens=10)
+            max_tokens=10,
+        )
         if raw:
             raw_clean = raw.strip().lower().split()[0].rstrip(".,!?()")
             for i in items:
@@ -624,9 +638,9 @@ class ReactiveService:
             for i in items:
                 if raw_clean in i["label"].lower():
                     return i
-        return None
+        return items[0] if items else None
 
-    def _get_item_vec(self, item):
+    def _get_item_vec(self, item: dict):
         label    = item["label"].lower()
         category = item.get("category", "")
         synonyms = _ITEM_SYNONYMS.get(label, "")
@@ -653,20 +667,20 @@ class ReactiveService:
                 print(f"[ReactiveService] warm cache error: {e}")
         threading.Thread(target=_bg, daemon=True).start()
 
-    def _preference(self, user_id, available_items, need_type=None):
+    def _preference(self, user_id: str, available_items: list,
+                     need_type: str | None = None) -> str:
         available_labels = {i["label"].lower() for i in available_items}
 
         actions = (DRINK_ACTIONS if need_type == "drink"
                    else FOOD_ACTIONS if need_type == "food"
                    else DRINK_ACTIONS + FOOD_ACTIONS)
 
-        found = self.pattern_analyzer.preferred_item(
-            user_id, available_labels, actions)
+        found = self.pattern_analyzer.preferred_item(user_id, available_labels, actions)
         if found:
             return found
 
         skill_md = self._skill_md(user_id)
-        found = preferred_item_from_skill_md(skill_md, available_labels, need_type)
+        found    = preferred_item_from_skill_md(skill_md, available_labels, need_type)
         if found:
             return found
 
@@ -678,44 +692,44 @@ class ReactiveService:
             for doc in obs:
                 zone = doc.get("zone_name", "")
                 obj  = self.db.dynamic_objects.find_one(
-                    {"label":        {"$in": list(available_labels)},
-                     "last_seen_on": zone},
-                    sort=[("interact_count", -1)])
+                    {"label": {"$in": list(available_labels)}, "last_seen_on": zone},
+                    sort=[("interact_count", -1)],
+                )
                 if obj:
                     return obj["label"]
         except Exception:
             pass
         return None
 
-    def _skill_exclusions(self, user_id):
+    def _skill_exclusions(self, user_id: str) -> set:
         skill_md = self._skill_md(user_id)
         if not skill_md:
             return set()
         excluded = set()
-        m = re.search(r"## What NOT to do\n(.*?)(?=\n## |$)",
-                      skill_md, re.DOTALL)
+        m = re.search(r"## What NOT to do\n(.*?)(?=\n## |$)", skill_md, re.DOTALL)
         if m:
             for line in m.group(1).split("\n"):
                 if "recommend" in line.lower():
-                    for p in re.findall(r"\b[a-z]+\b", line):
-                        if (p not in {"do", "not", "recommend", "to",
-                                      "this", "user"} and len(p) > 2):
-                            excluded.add(p.lower())
+                    for p in re.findall(r"\b[a-zA-Z]+\b", line):
+                        p_lower = p.lower()
+                        if p_lower not in {"do", "not", "recommend", "to", "this", "user"} and len(p_lower) > 2:
+                            excluded.add(p_lower)
         return excluded
 
-    def _skill_md(self, user_id) -> str | None:
+    def _skill_md(self, user_id: str) -> str | None:
         try:
             return self.skill_manager.get_skill(user_id)
         except Exception:
             return None
 
-    def _update_skill_async(self, user_id, item, need_type, positive):
+    def _update_skill_async(self, user_id: str, item: str,
+                             need_type: str, positive: bool):
         def _bg():
             try:
                 section = "## Preferences" if positive else "## What NOT to do"
                 if positive:
-                    action_word = "drinks" if need_type == "drink" else "eats"
-                    bullet = f"- User enjoys {item} during {action_word.capitalize()}"
+                    action_word = "drinking" if need_type == "drink" else "eating"
+                    bullet = f"- User enjoys {item} while {action_word}"
                 else:
                     bullet = f"- Do not recommend {item} to this user"
                 self.skill_manager._insert_if_new(user_id, section, bullet)
@@ -723,7 +737,8 @@ class ReactiveService:
                 print(f"[ReactiveService] skill update error: {e}")
         threading.Thread(target=_bg, daemon=True).start()
 
-    def _available(self, category=None, excluded=None):
+    def _available(self, category: str | None = None,
+                    excluded: set | None = None) -> list:
         excluded = excluded or set()
         nin      = list(OBJECT_EXCLUDES | excluded)
         cutoff   = datetime.datetime.utcnow() - datetime.timedelta(hours=TTL_HOURS)
@@ -734,41 +749,44 @@ class ReactiveService:
             q, {"label": 1, "category": 1, "last_seen_on": 1,
                 "room": 1, "interact_count": 1},
         ).sort("interact_count", -1).limit(MAX_ITEMS))
+
         if not docs:
-            q2 = {"label": {"$nin": nin}}
+            fallback_cutoff = datetime.datetime.utcnow() - datetime.timedelta(days=FALLBACK_TTL_DAYS)
+            q2 = {"label": {"$nin": nin}, "last_seen": {"$gte": fallback_cutoff}}
             if category:
                 q2["category"] = category
             docs = list(self.db.dynamic_objects.find(
                 q2, {"label": 1, "category": 1, "last_seen_on": 1,
-                     "room": 1, "interact_count": 1},
+                      "room": 1, "interact_count": 1},
             ).limit(MAX_ITEMS))
         return docs
 
-    def _obs_weight(self, user_id, item_label):
+    def _obs_weight(self, user_id: str, item_label: str) -> float:
         try:
-            obj  = self.db.dynamic_objects.find_one(
-                {"label": item_label.lower()}, {"last_seen_on": 1})
-            zone = obj.get("last_seen_on", "") if obj else ""
-            q    = {"user": user_id,
-                    "action": {"$in": DRINK_ACTIONS + FOOD_ACTIONS}}
-            if zone:
-                q["zone_name"] = zone
-            return sum(d.get("weight", 0) for d in
-                       self.db.observation_logs.find(q, {"weight": 1}))
+            actions = DRINK_ACTIONS + FOOD_ACTIONS
+            q = {
+                "user":              user_id,
+                "action":            {"$in": actions},
+                "interacting_items": item_label.lower(),
+            }
+            return sum(
+                d.get("weight", 0)
+                for d in self.db.observation_logs.find(q, {"weight": 1})
+            )
         except Exception:
             return 0.0
 
-    def _unavailable(self, query, user_id):
+    def _unavailable(self, query: str, user_id: str) -> dict:
         tone   = TIME_TONE.get(self._time_slot(), "friendly")
         system = (f"You are a home robot with a {tone} tone. "
                   "Nothing matches the user's request. "
                   "Apologise warmly and offer an alternative "
                   "(e.g. add to shopping list). 1-2 sentences.")
-        answer = self._llm_call(system, f'User: "{query}"', max_tokens=80) \
-                 or "I'm sorry, I don't have anything for that right now."
+        answer = (self._llm_call(system, f'User: "{query}"', max_tokens=80)
+                  or "I'm sorry, I don't have anything for that right now.")
         return self._resp(answer, "need_unavailable")
 
-    def _extract_nav(self, answer, items):
+    def _extract_nav(self, answer: str, items: list) -> tuple:
         al = answer.lower()
         for i in items:
             if i["label"].lower() in al:
@@ -776,15 +794,14 @@ class ReactiveService:
                 return nav, self._resolve_nav(nav)
         return None, None
 
-    def _resolve_nav(self, label):
+    def _resolve_nav(self, label: str | None):
         if not label:
             return None
         doc = self.db.scene_snapshots.find_one(
-            {"label": {"$regex": f"^{re.escape(label.strip())}$",
-                       "$options": "i"}})
+            {"label": {"$regex": f"^{re.escape(label.strip())}$", "$options": "i"}})
         return doc.get("pos") if doc else None
 
-    def _nav_options(self, nav_label, nav_target):
+    def _nav_options(self, nav_label, nav_target) -> list:
         if nav_label and nav_target:
             return [{"id": 1, "label": f"Navigate to '{nav_label}'"},
                     {"id": 2, "label": "Just tell me the location"},
@@ -799,56 +816,60 @@ class ReactiveService:
         if h < 22: return "Evening"
         return "Night"
 
-    def _session(self, user_id):
+    def _session(self, user_id: str) -> ConversationSession:
         s = self._sessions.get(user_id)
         if s is None or s.expired():
             self._sessions[user_id] = ConversationSession(user_id=user_id)
         return self._sessions[user_id]
 
-    def _llm_call(self, system, user, max_tokens=None):
+    def _llm_call(self, system: str, user: str, max_tokens: int = None) -> str | None:
         try:
             r = requests.post(
                 f"{self.ollama_url}/api/chat",
-                json={"model": self.llm_model,
+                json={"model":    self.llm_model,
                       "messages": [{"role": "system", "content": system},
                                    {"role": "user",   "content": user}],
                       "stream":  False,
                       "options": {"temperature": LLM_TEMP,
                                   "num_predict": max_tokens or LLM_TOKENS}},
-                timeout=LLM_TIMEOUT)
+                timeout=LLM_TIMEOUT,
+            )
             r.raise_for_status()
             return r.json()["message"]["content"].strip()
         except Exception as e:
             logger.error(f"[ReactiveService] LLM: {e}")
             return None
 
-    def _llm_messages(self, messages, max_tokens=None):
+    def _llm_messages(self, messages: list, max_tokens: int = None) -> str | None:
         try:
             r = requests.post(
                 f"{self.ollama_url}/api/chat",
-                json={"model": self.llm_model, "messages": messages,
-                      "stream":  False,
-                      "options": {"temperature": LLM_TEMP,
-                                  "num_predict": max_tokens or LLM_TOKENS}},
-                timeout=LLM_TIMEOUT)
+                json={"model":    self.llm_model,
+                      "messages": messages,
+                      "stream":   False,
+                      "options":  {"temperature": LLM_TEMP,
+                                   "num_predict": max_tokens or LLM_TOKENS}},
+                timeout=LLM_TIMEOUT,
+            )
             r.raise_for_status()
             return r.json()["message"]["content"].strip()
         except Exception as e:
             logger.error(f"[ReactiveService] LLM messages: {e}")
             return None
 
-    def _llm_stream(self, system, user, max_tokens=None):
+    def _llm_stream(self, system: str, user: str, max_tokens: int = None):
         try:
             import json as _j
             r = requests.post(
                 f"{self.ollama_url}/api/chat",
-                json={"model": self.llm_model,
+                json={"model":    self.llm_model,
                       "messages": [{"role": "system", "content": system},
                                    {"role": "user",   "content": user}],
-                      "stream":  True,
-                      "options": {"temperature": LLM_TEMP,
-                                  "num_predict": max_tokens or LLM_TOKENS}},
-                stream=True, timeout=LLM_TIMEOUT)
+                      "stream":   True,
+                      "options":  {"temperature": LLM_TEMP,
+                                   "num_predict": max_tokens or LLM_TOKENS}},
+                stream=True, timeout=LLM_TIMEOUT,
+            )
             r.raise_for_status()
             for line in r.iter_lines():
                 if not line:
@@ -865,16 +886,18 @@ class ReactiveService:
         except Exception as e:
             logger.error(f"[ReactiveService] stream: {e}")
 
-    def _llm_stream_messages(self, messages, max_tokens=None):
+    def _llm_stream_messages(self, messages: list, max_tokens: int = None):
         try:
             import json as _j
             r = requests.post(
                 f"{self.ollama_url}/api/chat",
-                json={"model": self.llm_model, "messages": messages,
-                      "stream":  True,
-                      "options": {"temperature": LLM_TEMP,
-                                  "num_predict": max_tokens or LLM_TOKENS}},
-                stream=True, timeout=LLM_TIMEOUT)
+                json={"model":    self.llm_model,
+                      "messages": messages,
+                      "stream":   True,
+                      "options":  {"temperature": LLM_TEMP,
+                                   "num_predict": max_tokens or LLM_TOKENS}},
+                stream=True, timeout=LLM_TIMEOUT,
+            )
             r.raise_for_status()
             for line in r.iter_lines():
                 if not line:
@@ -891,14 +914,15 @@ class ReactiveService:
         except Exception as e:
             logger.error(f"[ReactiveService] stream messages: {e}")
 
-    def _wrap_stream(self, result):
+    def _wrap_stream(self, result: dict):
         for char in result.get("answer", ""):
             yield {"type": "token", "content": char}
         yield {"type": "done", **result}
 
-    def _resp(self, answer="", intent_type="chat", nav_label=None,
-              nav_target=None, options=None, recommendations=None,
-              is_personalized=False, confidence=0.85):
+    def _resp(self, answer: str = "", intent_type: str = "chat",
+              nav_label=None, nav_target=None, options: list = None,
+              recommendations: list = None, is_personalized: bool = False,
+              confidence: float = 0.85) -> dict:
         return {
             "status":          "Success",
             "answer":          answer,

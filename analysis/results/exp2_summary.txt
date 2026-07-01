@@ -3,9 +3,9 @@ DB: robot_exp_corruption
 
 Condition                 Acc  Correct   Total
 ------------------------------------------------
-Baseline（System A）     89.9%      170     189  
-Light Corruption       81.5%      154     189  
+Baseline（System A）     87.8%      166     189  
+Light Corruption       82.0%      155     189  
 Medium Corruption      76.7%      145     189  
-Heavy Corruption       70.4%      133     189  
+Heavy Corruption       75.1%      142     189  
 
 Worst drop by class (Baseline → Heavy):

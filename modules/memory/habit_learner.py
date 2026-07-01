@@ -12,23 +12,21 @@ ACTION_NORMALIZE = {
 }
 
 ACTION_SERVICE_NEEDS = {
-    "SeatedDrinking": "drink",
-    "Drinking":       "drink",
-    "Eating":         "food",
-    "Watching":       "drink",
-    "Reading":        "light",
-    "Typing":         "drink",
-    "UsingPhone":     None,
-    "Laying":         None,
-    "Cooking":        None,
-    "Cleaning":       None,
-    "Opening":        None,
-    "Sitting":        None,
-    "StandUp":        None,
+    "Drinking":   "drink",
+    "Eating":     "food",
+    "Watching":   "drink",
+    "Reading":    "light",
+    "Sitting":    None,
+    "Laying":     None,
+    "Cooking":    None,
+    "Cleaning":   None,
+    "Opening":    None,
+    "UsingPhone": None,
+    "StandUp":    None,
 }
 
 NO_SERVICE_ACTIONS = {
-    "Laying", "Typing", "UsingPhone", "Walking",
+    "Laying", "UsingPhone", "Walking",
     "Standing", "StandUp", "PickingUp", "PuttingDown",
     "Opening", "Cleaning", "Cooking",
 }
@@ -37,20 +35,19 @@ NO_SERVICE_ACTIONS = {
 class HabitLearner:
 
     def __init__(self, db, skill_manager):
-        self.db              = db
-        self.skill_manager   = skill_manager
-        self.col_transitions = db.transition_counts
-        self.col_obs         = db.observation_logs
+        self.db               = db
+        self.skill_manager    = skill_manager
+        self.col_transitions  = db.transition_counts
+        self.col_obs          = db.observation_logs
         self.pattern_analyzer = PatternAnalyzer(db)
+        self._obs_since_decay = 0
 
     def on_new_observation(self, user_id: str, action: str,
                             prev_action: str, time_slot: str,
                             zone_name: str):
         action      = ACTION_NORMALIZE.get(action,      action)
         prev_action = ACTION_NORMALIZE.get(prev_action, prev_action)
-        if not prev_action or not action:
-            return
-        if action == prev_action:
+        if not prev_action or not action or action == prev_action:
             return
 
         self._update_transition(
@@ -60,11 +57,15 @@ class HabitLearner:
             time_slot=time_slot,
         )
 
+        self._obs_since_decay += 1
+        if self._obs_since_decay >= 50:
+            self._apply_recency_decay()
+            self._obs_since_decay = 0
+
         self._refresh_patterns_and_skill(user_id)
 
     def get_top_transitions(self, user_id: str, from_action: str,
-                             time_slot: str = None,
-                             top_k: int = 3) -> list:
+                             time_slot: str = None, top_k: int = 3) -> list:
         query = {"user_id": user_id, "from_action": from_action}
         if time_slot:
             query["time_slot"] = time_slot
@@ -72,7 +73,6 @@ class HabitLearner:
         docs = list(self.col_transitions.find(
             query, {"to_action": 1, "weight": 1, "count": 1}
         ))
-
         if not docs:
             return []
 
@@ -101,8 +101,7 @@ class HabitLearner:
             "need": None, "confidence": 0.0, "actionable": False,
         }
 
-        step1_list = self.get_top_transitions(
-            user_id, current_action, time_slot, top_k=1)
+        step1_list = self.get_top_transitions(user_id, current_action, time_slot, top_k=1)
         if not step1_list:
             return empty
 
@@ -110,16 +109,15 @@ class HabitLearner:
         if step1["action"] in NO_SERVICE_ACTIONS:
             return empty
 
-        step2_list = self.get_top_transitions(
-            user_id, step1["action"], time_slot, top_k=1)
-
+        step2_list   = self.get_top_transitions(user_id, step1["action"], time_slot, top_k=1)
         step2        = step2_list[0] if step2_list else None
-        step2_prob   = step2["prob"] if step2 else 0.0
+        step2_prob   = step2["prob"]   if step2 else 0.0
         step2_action = step2["action"] if step2 else None
 
-        need = (ACTION_SERVICE_NEEDS.get(step2_action) or
-                ACTION_SERVICE_NEEDS.get(step1["action"]))
-
+        need = (
+            ACTION_SERVICE_NEEDS.get(step2_action)
+            or ACTION_SERVICE_NEEDS.get(step1["action"])
+        )
         confidence = step1["prob"] * step2_prob if step2 else step1["prob"] * 0.5
 
         return {
@@ -132,7 +130,8 @@ class HabitLearner:
 
     def _update_transition(self, user_id: str, from_action: str,
                             to_action: str, time_slot: str):
-        recency_weight = 1.0
+        now            = datetime.datetime.utcnow()
+        recency_weight = math.exp(-RECENCY_DECAY)
 
         try:
             self.col_transitions.update_one(
@@ -143,17 +142,14 @@ class HabitLearner:
                     "time_slot":   time_slot or "Unknown",
                 },
                 {
-                    "$inc": {
-                        "count":  1,
-                        "weight": recency_weight,
-                    },
-                    "$set":         {"last_updated": datetime.datetime.utcnow()},
+                    "$inc": {"count": 1, "weight": recency_weight},
+                    "$set": {"last_updated": now},
                     "$setOnInsert": {
                         "user_id":     user_id,
                         "from_action": from_action,
                         "to_action":   to_action,
                         "time_slot":   time_slot or "Unknown",
-                        "created_at":  datetime.datetime.utcnow(),
+                        "created_at":  now,
                     },
                 },
                 upsert=True,
@@ -164,20 +160,15 @@ class HabitLearner:
     def _apply_recency_decay(self):
         try:
             decay = math.exp(-RECENCY_DECAY)
-            self.col_transitions.update_many(
-                {},
-                {"$mul": {"weight": decay}}
-            )
+            self.col_transitions.update_many({}, {"$mul": {"weight": decay}})
             self.col_transitions.delete_many({"weight": {"$lt": 0.1}})
-            print("[HabitLearner] Recency decay applied")
         except Exception as e:
             print(f"[HabitLearner] decay error: {e}")
 
     def _refresh_patterns_and_skill(self, user_id: str):
         try:
             patterns = self.pattern_analyzer.analyze_user(user_id)
-            if not patterns:
-                return
-            self.skill_manager.sync_from_patterns(user_id, patterns)
+            if patterns:
+                self.skill_manager.sync_from_patterns(user_id, patterns)
         except Exception as e:
             print(f"[HabitLearner] pattern refresh error: {e}")

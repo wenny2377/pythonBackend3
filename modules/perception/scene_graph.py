@@ -41,12 +41,10 @@ def _skeleton_to_semantic(
 ) -> str:
     hints = []
 
-    # --- body axis + knee hip（各自獨立描述）---
     if body_axis_angle >= 0:
         if body_axis_angle > t["body_tilted"]:
             hints.append("body is significantly tilted or near-horizontal")
         else:
-            # 直立時用 knee_hip_ratio 區分站坐
             if knee_hip_ratio >= 0:
                 if knee_hip_ratio > t["sitting_ratio"]:
                     hints.append("body is upright, person is sitting")
@@ -57,14 +55,12 @@ def _skeleton_to_semantic(
             else:
                 hints.append("body is upright")
 
-    # --- head pitch ---
     if head_pitch >= 0:
         if head_pitch > t["head_down"]:
             hints.append("head is looking down")
         else:
             hints.append("head is facing forward")
 
-    # --- hand to head ---
     best_h2h = -1.0
     if hand_to_head >= 0 and left_hand_to_head >= 0:
         best_h2h = min(hand_to_head, left_hand_to_head)
@@ -81,7 +77,6 @@ def _skeleton_to_semantic(
         else:
             hints.append("hand is extended away from face")
 
-    # --- arm elevation ---
     for side, elev in [("right", arm_elevation), ("left", left_arm_elevation)]:
         if elev < 0:
             continue
@@ -116,8 +111,8 @@ def _get_facing_target(user_pos, user_forward, db, max_dist=6.0):
             pos = doc.get("pos")
             if not isinstance(pos, list) or len(pos) < 2:
                 continue
-            dx = pos[0] - ux
-            dz = pos[1] - uz
+            dx   = pos[0] - ux
+            dz   = pos[1] - uz
             dist = math.sqrt(dx ** 2 + dz ** 2)
             if dist < 0.1 or dist > max_dist:
                 continue
@@ -149,12 +144,9 @@ def build_scene_text(
     arm_elevation:      float = -1.0,
     left_arm_elevation: float = -1.0,
     skel_body:          str   = None,
-) -> str:
-    lines = []
+) -> dict:
 
-    lines.append("=== Scene Graph ===")
-    lines.append(f"Room: {room_name or 'Unknown'}")
-
+    time_str = ""
     if virtual_hour is not None:
         try:
             h = float(virtual_hour)
@@ -165,7 +157,7 @@ def build_scene_text(
                 elif h < 18:    slot = "Afternoon"
                 elif h < 22:    slot = "Evening"
                 else:           slot = "Night"
-                lines.append(f"Time: {h:.0f}:00 ({slot})")
+                time_str = f"{h:.0f}:00 ({slot})"
         except Exception:
             pass
 
@@ -178,13 +170,10 @@ def build_scene_text(
         arm_elevation=arm_elevation,
         left_arm_elevation=left_arm_elevation,
     )
-    if posture:
-        lines.append(f"Posture cues: {posture}")
 
+    held_str = ""
     if held_event and held_event not in ("none", "unknown", ""):
-        lines.append(f"Object event: {held_event}")
-    else:
-        lines.append("No recent object pickups")
+        held_str = held_event
 
     facing   = _get_facing_target(user_pos, user_forward, db)
     tv_scene = None
@@ -203,16 +192,11 @@ def build_scene_text(
 
     tv_state_str = "ON" if tv_on else "off"
 
-    if facing in ("tv", "television"):
-        lines.append(f"Facing: {facing} (TV is {tv_state_str})")
-    else:
-        lines.append(f"Facing: {facing}")
-
+    nearby_furniture_entries = []
     if user_pos:
         try:
             ux = float(user_pos.get("x", 0))
             uz = float(user_pos.get("z", 0))
-            nearby_furniture = []
             for doc in db.scene_snapshots.find(
                     {"room": {"$regex": room_name, "$options": "i"}} if room_name else {},
                     {"label": 1, "pos": 1}):
@@ -233,16 +217,13 @@ def build_scene_text(
                     entry = f"{label} ({d:.1f}m away)"
                     if tagged:
                         entry += f", contains: {', '.join(tagged)}"
-                    nearby_furniture.append((d, entry))
-
-            if nearby_furniture:
-                nearby_furniture.sort(key=lambda x: x[0])
-                lines.append("Nearby furniture:")
-                for _, entry in nearby_furniture[:4]:
-                    lines.append(f"  - {entry}")
+                    nearby_furniture_entries.append((d, entry))
+            nearby_furniture_entries.sort(key=lambda x: x[0])
+            nearby_furniture_entries = nearby_furniture_entries[:4]
         except Exception:
             pass
 
+    tv_dist_str = ""
     if tv_scene and user_pos:
         try:
             tv_pos = tv_scene.get("pos", [])
@@ -250,14 +231,41 @@ def build_scene_text(
                 ux2     = float(user_pos.get("x", 0))
                 uz2     = float(user_pos.get("z", 0))
                 tv_dist = math.sqrt((ux2 - tv_pos[0])**2 + (uz2 - tv_pos[1])**2)
-                lines.append(f"TV: {tv_state_str}, {tv_dist:.1f}m away"
-                             if tv_dist < 6.0 else f"TV: {tv_state_str}")
-            else:
-                lines.append(f"TV: {tv_state_str}")
+                tv_dist_str = f"{tv_dist:.1f}m" if tv_dist < 6.0 else ""
         except Exception:
-            lines.append(f"TV: {tv_state_str}")
+            pass
+
+    lines = ["=== Scene Graph ==="]
+    lines.append(f"Room: {room_name or 'Unknown'}")
+    if time_str:
+        lines.append(f"Time: {time_str}")
+    if posture:
+        lines.append(f"Posture cues: {posture}")
+    if held_str:
+        lines.append(f"Object event: {held_str}")
+    else:
+        lines.append("No recent object pickups")
+    if facing in ("tv", "television"):
+        lines.append(f"Facing: {facing} (TV is {tv_state_str})")
+    else:
+        lines.append(f"Facing: {facing}")
+    if nearby_furniture_entries:
+        lines.append("Nearby furniture:")
+        for _, entry in nearby_furniture_entries:
+            lines.append(f"  - {entry}")
+    if tv_dist_str:
+        lines.append(f"TV: {tv_state_str}, {tv_dist_str} away")
     else:
         lines.append(f"TV: {tv_state_str}")
-
     lines.append("=== End Scene ===")
-    return "\n".join(lines)
+
+    return {
+        "room":    room_name or "Unknown",
+        "time":    time_str,
+        "posture": posture,
+        "facing":  facing,
+        "tv_on":   bool(tv_on),
+        "held":    held_str,
+        "nearby":  [entry for _, entry in nearby_furniture_entries],
+        "text":    "\n".join(lines),
+    }
