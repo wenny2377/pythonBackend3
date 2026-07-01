@@ -33,7 +33,7 @@ COLLECTIONS_LEARNING = [
 COLLECTIONS_EXPERIMENT = [
     "experiment_logs",
     "experiment_logs_semantic",
-    "experiment_logs_vlm_som",
+    "experiment_logs_vlm",
     "experiment_logs_corruption_light_semantic",
     "experiment_logs_corruption_medium_semantic",
     "experiment_logs_corruption_heavy_semantic",
@@ -58,6 +58,7 @@ COLLECTIONS_LEGACY = [
     "saycan_logs", "saycan_behavior_objects",
     "skill_chunks", "episodic_summaries",
     "conversation_logs", "intent_stats",
+    "experiment_logs_vlm_som",
 ]
 
 MODES = {
@@ -114,7 +115,7 @@ MODES = {
 
 EXPERIMENT_COLLECTIONS = [
     ("experiment_logs_semantic",                    "System A: Baseline"),
-    ("experiment_logs_vlm_som",                     "System B: VLM+SoM Baseline"),
+    ("experiment_logs_vlm",                         "System B: VLM Baseline"),
     ("experiment_logs_corruption_light_semantic",   "System A: Corruption Light"),
     ("experiment_logs_corruption_medium_semantic",  "System A: Corruption Medium"),
     ("experiment_logs_corruption_heavy_semantic",   "System A: Corruption Heavy"),
@@ -126,8 +127,7 @@ EXPERIMENT_COLLECTIONS = [
 
 def _ask_single_experiment(db) -> list:
     print("\nWhich experiment collection to clear?")
-    existing  = set(db.list_collection_names())
-    available = [(col, label) for col, label in EXPERIMENT_COLLECTIONS if col in existing]
+    available = [(col, label) for col, label in EXPERIMENT_COLLECTIONS]
     if not available:
         print("  No experiment collections found in DB.")
         return []
@@ -326,6 +326,7 @@ def clean_files():
 def print_next_steps(mode_key: str):
     steps = {
         "1": ["python app.py", "Run Baseline in Unity (autoRunAll=false, experimentType=Baseline)",
+              "Then run Vlm in Unity (experimentType=Vlm)",
               "Then run Corruption in Unity"],
         "2": ["python app.py", "Re-run experiments in Unity",
               "If re-running baseline for Exp 4 data, run Mode 4 first to avoid "

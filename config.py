@@ -10,9 +10,10 @@ def _resolve_db() -> str:
     print("[Config] Defaulting to robot_exp_baseline")
     return "robot_exp_baseline"
 
+
 def _resolve_system_mode() -> str:
     mode = os.environ.get("SYSTEM_MODE", "semantic").strip()
-    if mode not in ("semantic", "vlm_som"):
+    if mode not in ("semantic", "vlm"):
         print(f"[Config] Unknown SYSTEM_MODE={mode}, defaulting to semantic")
         return "semantic"
     return mode
@@ -26,7 +27,7 @@ class Config:
     VLM_MODEL  = "gemma3:4b"
     LLM_MODEL  = "llama3.1:8b"
 
-    MONGO_URI = "mongodb://127.0.0.1:27017/"
+    MONGO_URI    = "mongodb://127.0.0.1:27017/"
     DB_NAME      = _resolve_db()
     SYSTEM_MODE  = _resolve_system_mode()
 

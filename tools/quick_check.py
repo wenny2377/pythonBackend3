@@ -7,7 +7,10 @@ db = client["robot_exp_baseline"]
 candidates_baseline = [
     "experiment_logs",
     "experiment_logs_semantic",
-    "experiment_logs_vlm_som",
+    "experiment_logs_vlm",
+    "ablation_no_skeleton",
+    "ablation_no_object",
+    "ablation_no_spatial",
     "observation_logs",
     "transition_counts",
 ]

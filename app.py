@@ -25,7 +25,7 @@ from modules.perception.perception_engine import PerceptionEngine
 from modules.perception.scene_engine      import SceneEngine
 from modules.memory.observation_store     import ObservationStore
 from modules.memory.habit_learner         import HabitLearner
-from modules.memory.skill_manager         import SkillManager
+from modules.memory.skill_manager        import SkillManager
 from modules.service.reactive_service     import ReactiveService
 from modules.service.proactive_service    import ProactiveService
 from modules.service.proposal_manager     import ProposalManager
@@ -118,23 +118,6 @@ def _wait_for_scene(max_wait: float = 12.0, poll: float = 1.0):
         waited += poll
 
 
-def preview_images(image_list, source_nodes, hint_user_id, activity):
-    save_dir = "debug_images"
-    os.makedirs(save_dir, exist_ok=True)
-    for i, img_b64 in enumerate(image_list):
-        try:
-            img_clean = img_b64.split(",")[1] if "," in img_b64 else img_b64
-            nparr     = np.frombuffer(base64.b64decode(img_clean), np.uint8)
-            frame     = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-            if frame is None:
-                continue
-            ts        = datetime.datetime.now().strftime("%H%M%S")
-            node_name = source_nodes[i] if i < len(source_nodes) else f"img_{i}"
-            cv2.imwrite(f"{save_dir}/{ts}_{hint_user_id}_{activity}_{node_name}.jpg", frame)
-        except Exception as e:
-            print(f"[Preview] {e}")
-
-
 app    = Flask(__name__)
 CORS(app)
 CONFIG = Config
@@ -223,11 +206,9 @@ classifier        = ObjectClassifier(db)
 classifier.start()
 atexit.register(perception.shutdown)
 
-_vlm_lock      = threading.Lock()
-_predict_queue = _queue.Queue()
-_is_processing = False
-_gt_cache      = {}
-_gt_cache_lock = threading.Lock()
+_vlm_lock         = threading.Lock()
+_predict_queue    = _queue.Queue()
+_processing_event = threading.Event()
 
 _robot_state      = {"nav_target": None, "nav_label": "", "last_answer": "", "highlight": ""}
 _demo_state       = {"current_scene": 0, "scene_done": False, "scene_user": ""}
@@ -235,43 +216,59 @@ _speaking_state   = {"who": "none"}
 _experiment_state = {"mode": "baseline", "ablation_mode": "full",
                      "collection_suffix": "", "active": False}
 
+_dynamic_sync_seen_labels: set = set()
+_dynamic_sync_lock = threading.Lock()
+
 
 def _switch_db(db_name: str):
     global db
+
     if db_name == db.name:
         return
-    db = mongo_client[db_name]
 
-    perception.db           = db
-    perception.col_scene    = db.scene_snapshots
-    perception.col_dynamic  = db.dynamic_objects
-    perception.col_obs      = db.observation_logs
-    perception.col_activity = db.activity_sequences
-    perception.col_user_aff = db.user_spatial_affinity
-    perception.col_aff_hist = db.affinity_history
-    perception._bulk_buf    = perception._bulk_buf.__class__(db.dynamic_objects)
+    max_wait, poll, waited = 60.0, 0.5, 0.0
+    while waited < max_wait:
+        if _predict_queue.empty() and not _processing_event.is_set():
+            break
+        time.sleep(poll)
+        waited += poll
 
-    scene_engine.db           = db
-    scene_engine.col_scene    = db.scene_snapshots
-    scene_engine.col_affinity = db.affinity_matrix
-    scene_engine.col_hist     = db.affinity_history
-    scene_engine.col_user_aff = db.user_spatial_affinity
+    if waited >= max_wait:
+        print(f"[App] _switch_db waited {waited:.1f}s, proceeding anyway")
 
-    observation_store.db      = db
-    observation_store.col_obs = db.observation_logs
-    observation_store.col_seq = db.activity_sequences
+    with _vlm_lock:
+        db = mongo_client[db_name]
 
-    habit_learner.db              = db
-    habit_learner.col_transitions = db.transition_counts
-    habit_learner.col_obs         = db.observation_logs
+        perception.db           = db
+        perception.col_scene    = db.scene_snapshots
+        perception.col_dynamic  = db.dynamic_objects
+        perception.col_obs      = db.observation_logs
+        perception.col_activity = db.activity_sequences
+        perception.col_user_aff = db.user_spatial_affinity
+        perception.col_aff_hist = db.affinity_history
+        perception._bulk_buf    = perception._bulk_buf.__class__(db.dynamic_objects)
 
-    skill_manager.db = db
+        scene_engine.db           = db
+        scene_engine.col_scene    = db.scene_snapshots
+        scene_engine.col_affinity = db.affinity_matrix
+        scene_engine.col_hist     = db.affinity_history
+        scene_engine.col_user_aff = db.user_spatial_affinity
 
-    proposal_manager.db  = db
-    proposal_manager.col = db.service_proposals
+        observation_store.db      = db
+        observation_store.col_obs = db.observation_logs
+        observation_store.col_seq = db.activity_sequences
 
-    reactive_service.db  = db
-    proactive_service.db = db
+        habit_learner.db              = db
+        habit_learner.col_transitions = db.transition_counts
+        habit_learner.col_obs         = db.observation_logs
+
+        skill_manager.db = db
+
+        proposal_manager.db  = db
+        proposal_manager.col = db.service_proposals
+
+        reactive_service.db  = db
+        proactive_service.db = db
 
     print(f"[App] Switched DB → {db_name}")
 
@@ -296,6 +293,10 @@ def start_experiment():
     _experiment_state["ablation_mode"]     = data.get("ablation_mode",     "full")
     _experiment_state["collection_suffix"] = data.get("collection_suffix", "")
     _experiment_state["active"]            = True
+
+    with _dynamic_sync_lock:
+        _dynamic_sync_seen_labels.clear()
+
     print(f"[Experiment] START mode={_experiment_state['mode']} "
           f"db={db_name} suffix='{_experiment_state['collection_suffix']}'")
     return jsonify({"status": "ok", **_experiment_state}), 200
@@ -305,7 +306,7 @@ def start_experiment():
 def experiment_done():
     max_wait, poll, waited = 300.0, 1.0, 0.0
     while waited < max_wait:
-        if _predict_queue.empty() and not _is_processing:
+        if _predict_queue.empty() and not _processing_event.is_set():
             break
         time.sleep(poll)
         waited += poll
@@ -373,7 +374,10 @@ def interact_confirm():
         return jsonify({"status": "navigate", "nav_target": nav_target,
                         "nav_label": nav_label, "message": f"Navigating to {nav_label}."})
     if choice == 2:
-        pos_str = (f"[{nav_target[0]:.1f}, {nav_target[1]:.1f}]" if nav_target else "unknown")
+        if isinstance(nav_target, (list, tuple)) and len(nav_target) >= 2:
+            pos_str = f"[{nav_target[0]:.1f}, {nav_target[1]:.1f}]"
+        else:
+            pos_str = "unknown"
         return jsonify({"status": "info_only", "message": f"{nav_label} is at {pos_str}."})
     return jsonify({"status": "cancelled", "message": "Cancelled."})
 
@@ -568,12 +572,6 @@ def predict():
     if db[col].find_one({"episode_id": episode_id}, {"_id": 1}):
         return jsonify({"status": "ok", "episode_id": episode_id, "cached": True}), 200
 
-    t_capture    = data.get("t_capture", "")
-    ground_truth = data.get("activity", "")
-    if t_capture and ground_truth:
-        with _gt_cache_lock:
-            _gt_cache[t_capture] = ground_truth
-
     data["experiment_mode"]   = _experiment_state.get("mode",              "baseline")
     data["ablation_mode"]     = _experiment_state.get("ablation_mode",     "full")
     data["collection_suffix"] = _experiment_state.get("collection_suffix", "")
@@ -586,18 +584,17 @@ def predict():
 
 
 def _predict_worker():
-    global _is_processing
     while True:
         try:
             episode_id, data = _predict_queue.get(timeout=1)
-            _is_processing = True
+            _processing_event.set()
             try:
                 _process_predict(episode_id, data)
             except Exception as e:
                 import traceback
                 print(f"[PredictWorker] {e}\n{traceback.format_exc()}")
             finally:
-                _is_processing = False
+                _processing_event.clear()
                 _predict_queue.task_done()
         except _queue.Empty:
             continue
@@ -625,8 +622,6 @@ def _process_predict(episode_id: str, data: dict):
 
     if not image_list:
         return
-
-    preview_images(image_list, source_nodes, hint_user_id, activity)
 
     est_pos = None
     if user_pos_raw:
@@ -798,6 +793,9 @@ def dynamic_sync():
         if not objects:
             return jsonify({"status": "empty"}), 200
         now, count = datetime.datetime.utcnow(), 0
+
+        incoming_unity_labels = set()
+
         for obj in objects:
             label  = obj.get("label", "").lower().strip()
             source = obj.get("source", "sensor")
@@ -840,6 +838,10 @@ def dynamic_sync():
                     set_fields["held_since"] = now
             else:
                 set_fields["last_seen_on"] = last_seen_on
+
+            if source == "unity":
+                incoming_unity_labels.add(label)
+
             db.dynamic_objects.update_one(
                 {"label": label},
                 {"$set": set_fields,
@@ -847,16 +849,17 @@ def dynamic_sync():
                  "$setOnInsert": {"first_seen": now, "spatial_rel": "on"}},
                 upsert=True)
             count += 1
-        unity_labels = [
-            obj.get("label", "").lower().strip()
-            for obj in objects
-            if obj.get("source") == "unity" and obj.get("label", "").strip()
-        ]
-        if unity_labels:
+
+        if incoming_unity_labels:
+            with _dynamic_sync_lock:
+                _dynamic_sync_seen_labels.update(incoming_unity_labels)
+                known = set(_dynamic_sync_seen_labels)
+
             stale = db.dynamic_objects.delete_many(
-                {"source": "unity", "label": {"$nin": unity_labels}})
+                {"source": "unity", "label": {"$nin": list(known)}})
             if stale.deleted_count > 0:
                 print(f"[DynamicSync] Removed {stale.deleted_count} stale objects")
+
         return jsonify({"status": "Success", "updated": count}), 200
     except Exception as e:
         import traceback

@@ -9,56 +9,18 @@ LLM_MODEL     = "llama3.1:8b"
 
 RESULTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "results")
 
-# ─── collections ──────────────────────────────────────────────────────────────
-# These MUST match the collectionSuffix values Unity's ExperimentRunner.AllSchedule
-# actually sends, which app.py/PerceptionEngine turn into f"experiment_logs{suffix}":
-#   Baseline / systemMode=semantic  -> collectionSuffix="_semantic"
-#       -> experiment_logs_semantic                  (DB_BASELINE)
-#   Baseline / systemMode=vlm_som   -> collectionSuffix="_vlm_som"
-#       -> experiment_logs_vlm_som                    (DB_BASELINE)
-#   CorruptionLight                 -> collectionSuffix="_corruption_light_semantic"
-#       -> experiment_logs_corruption_light_semantic   (DB_CORRUPTION)
-#   CorruptionMedium                -> collectionSuffix="_corruption_medium_semantic"
-#       -> experiment_logs_corruption_medium_semantic  (DB_CORRUPTION)
-#   CorruptionHeavy                 -> collectionSuffix="_corruption_heavy_semantic"
-#       -> experiment_logs_corruption_heavy_semantic   (DB_CORRUPTION)
-#
-# PREVIOUS BUG: COL_SEMANTIC pointed at the bare "experiment_logs" (no suffix),
-# and the three corruption collections were missing the trailing "_semantic".
-# Both caused exp1/exp2/exp3 to silently read 0 episodes from collections that
-# were never actually written to, while the real data sat in the correctly-
-# suffixed collections above. Fixed below.
 COL_BASELINE          = "experiment_logs_semantic"
 COL_SEMANTIC          = "experiment_logs_semantic"
-COL_VLM_SOM           = "experiment_logs_vlm_som"
+COL_VLM               = "experiment_logs_vlm"
 COL_CORRUPTION_LIGHT  = "experiment_logs_corruption_light_semantic"
 COL_CORRUPTION_MEDIUM = "experiment_logs_corruption_medium_semantic"
 COL_CORRUPTION_HEAVY  = "experiment_logs_corruption_heavy_semantic"
 
-# These four are NOT written by Unity/PerceptionEngine directly — they are
-# created by exp3_modality_ablation.py itself (run_ablation_mode) during its
-# own offline re-inference pass. Confirmed consistent: exp3 imports
-# COL_ABL_NO_SKELETON/NO_OBJECT/NO_SPATIAL and writes to exactly these names.
-# COL_ABL_NO_VLM is defined for symmetry with PerceptionEngine's online
-# ablation modes (no_skeleton/no_object/no_vlm) but is NOT currently used by
-# exp3_modality_ablation.py, which implements its own offline masking
-# (no_skeleton/no_object/no_spatial) — a deliberately different set, since
-# masking "VLM input" has no meaning when re-inferring from already-captured
-# text. Kept here in case a future online VLM-ablation analysis script needs it.
 COL_ABL_NO_SKELETON   = "ablation_no_skeleton"
 COL_ABL_NO_VLM        = "ablation_no_vlm"
 COL_ABL_NO_OBJECT     = "ablation_no_object"
 COL_ABL_NO_SPATIAL    = "ablation_no_spatial"
 
-# NOTE: this list currently has 11 entries. PerceptionEngine's BEHAVIOR_LABELS
-# has 17 total; excluding the 5 transition/no-weight actions
-# (PickingUp, PuttingDown, Walking, Standing, StandUp) leaves 12, not 11 —
-# SeatedDrinking is missing from this list below. If SeatedDrinking episodes
-# exist in your logs, they will silently fall outside ADL_LABELS and be
-# excluded from every per-class accuracy table and from compute_accuracy()'s
-# denominator (since compute_accuracy only counts docs where
-# gt in ADL_LABELS). Confirm whether this exclusion is intentional; if not,
-# add "SeatedDrinking" back to this list.
 ADL_LABELS = [
     "Drinking", "Sitting", "Eating", "Cooking",
     "Laying", "Watching", "Reading", "Cleaning",

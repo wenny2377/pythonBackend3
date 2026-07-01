@@ -11,7 +11,7 @@ from pymongo import MongoClient
 
 from exp_config import (
     MONGO_URI, DB_BASELINE,
-    COL_BASELINE, COL_SEMANTIC, COL_VLM_SOM,
+    COL_BASELINE, COL_SEMANTIC, COL_VLM,
     ADL_LABELS, USERS, C,
     FONT_TITLE, FONT_AXIS, FONT_ANNOT, FONT_TICK,
     FIG_DPI, RESULTS_DIR,
@@ -194,10 +194,6 @@ def save_summary(docs: list, acc: float, correct: int, total: int, save_path: st
 
 
 def plot_system_comparison(docs_a: list, docs_b: list, save_path: str):
-    from exp_config import C, FONT_TITLE, FONT_AXIS, FONT_ANNOT, FONT_TICK, FIG_DPI
-    import matplotlib.pyplot as plt
-    import numpy as np
-
     labels_a = [l for l in ADL_LABELS if any(d.get("ground_truth") == l for d in docs_a)]
     labels   = labels_a
 
@@ -220,7 +216,7 @@ def plot_system_comparison(docs_a: list, docs_b: list, save_path: str):
     fig, ax = plt.subplots(figsize=(14, 6))
     ax.bar(x - w/2, accs_a, w, label="System A: Skeleton+Object+Spatial→LLM",
            color=C["baseline"], alpha=0.85)
-    ax.bar(x + w/2, accs_b, w, label="System B: VLM+SoM→LLM",
+    ax.bar(x + w/2, accs_b, w, label="System B: VLM Direct",
            color=C["ablation"], alpha=0.85)
 
     acc_a, c_a, t_a = compute_accuracy(docs_a)
@@ -249,7 +245,7 @@ def main():
     db = MongoClient(MONGO_URI)[DB_BASELINE]
 
     docs_a = load_docs(db, COL_SEMANTIC)
-    docs_b = load_docs(db, COL_VLM_SOM)
+    docs_b = load_docs(db, COL_VLM)
 
     if not docs_a:
         print(f"[exp1] No System A data in {DB_BASELINE}.{COL_SEMANTIC}")
@@ -258,7 +254,6 @@ def main():
     print(f"[exp1] System A: {len(docs_a)} episodes")
     print(f"[exp1] System B: {len(docs_b)} episodes")
 
-    # System A analysis
     acc_a, correct_a, total_a = plot_confusion_matrix(
         docs_a, os.path.join(RESULTS_DIR, "exp1_confusion_matrix_semantic.png"),
         system_label="System A (Skeleton+Object+Spatial)")
@@ -276,20 +271,21 @@ def main():
                  system_label="System A (Skeleton+Object+Spatial)",
                  collection_name=COL_SEMANTIC)
 
-    # System B analysis（if data exists）
     if docs_b:
         acc_b, correct_b, total_b = plot_confusion_matrix(
-            docs_b, os.path.join(RESULTS_DIR, "exp1_confusion_matrix_vlm_som.png"),
-            system_label="System B (VLM+SoM)")
+            docs_b, os.path.join(RESULTS_DIR, "exp1_confusion_matrix_vlm.png"),
+            system_label="System B (VLM Direct)")
         plot_per_class_bar(
-            docs_b, os.path.join(RESULTS_DIR, "exp1_per_class_bar_vlm_som.png"),
-            system_label="System B (VLM+SoM)")
+            docs_b, os.path.join(RESULTS_DIR, "exp1_per_class_bar_vlm.png"),
+            system_label="System B (VLM Direct)")
+        plot_user_breakdown(
+            docs_b, os.path.join(RESULTS_DIR, "exp1_user_breakdown_vlm.png"),
+            system_label="System B (VLM Direct)")
         save_summary(docs_b, acc_b, correct_b, total_b,
-                     os.path.join(RESULTS_DIR, "exp1_summary_vlm_som.txt"),
-                     system_label="System B (VLM+SoM)",
-                     collection_name=COL_VLM_SOM)
+                     os.path.join(RESULTS_DIR, "exp1_summary_vlm.txt"),
+                     system_label="System B (VLM Direct)",
+                     collection_name=COL_VLM)
 
-    # Comparison
     plot_system_comparison(
         docs_a, docs_b,
         os.path.join(RESULTS_DIR, "exp1_system_comparison.png"))

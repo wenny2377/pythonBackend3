@@ -116,6 +116,8 @@ def _llm_predict(scene_text: str, room: str) -> str:
 
 def run_ablation_mode(db, docs: list, mask: str, col_name: str) -> list:
     col   = db[col_name]
+    # ── Clear old data before re-running ────────────────────────────
+    col.delete_many({})
     now   = datetime.datetime.utcnow()
     preds = []
 
@@ -129,23 +131,20 @@ def run_ablation_mode(db, docs: list, mask: str, col_name: str) -> list:
         correct = (gt == pred_n) if gt else None
         preds.append(pred_n)
 
-        col.update_one(
-            {"episode_id": doc.get("episode_id", str(doc.get("_id", "")))},
-            {"$set": {
-                "episode_id":    doc.get("episode_id", ""),
-                "user":          doc.get("user", ""),
-                "ground_truth":  gt,
-                "predicted":     pred_n,
-                "correct":       correct,
-                "ablation_mode": mask,
-                "room_name":     room,
-                "time_slot":     doc.get("time_slot", ""),
-                "virtual_day":   doc.get("virtual_day"),
-                "virtual_hour":  doc.get("virtual_hour"),
-                "timestamp":     now,
-            }},
-            upsert=True,
-        )
+        # ── Use insert_one instead of upsert to avoid episode_id collision ──
+        col.insert_one({
+            "source_id":     str(doc.get("_id", "")),   # reference to original doc
+            "user":          doc.get("user", ""),
+            "ground_truth":  gt,
+            "predicted":     pred_n,
+            "correct":       correct,
+            "ablation_mode": mask,
+            "room_name":     room,
+            "time_slot":     doc.get("time_slot", ""),
+            "virtual_day":   doc.get("virtual_day"),
+            "virtual_hour":  doc.get("virtual_hour"),
+            "timestamp":     now,
+        })
 
         if (i + 1) % 20 == 0:
             tot  = sum(1 for d in docs[:i+1] if d.get("ground_truth") in ADL_LABELS)
@@ -268,7 +267,7 @@ def main():
             preds    = run_ablation_mode(db, docs, mask, col_name)
             abl_docs = []
             for doc, pred in zip(docs, preds):
-                d        = dict(doc)
+                d          = dict(doc)
                 d["_pred"] = pred
                 abl_docs.append(d)
             acc, correct, total = compute_accuracy(abl_docs)
