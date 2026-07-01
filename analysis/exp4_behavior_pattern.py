@@ -33,17 +33,16 @@ DESIGN_INTENT = {
 
 ALL_SCHEDULED_ACTIONS = {
     "Opening", "Cooking", "Eating", "Cleaning", "Reading",
-    "Drinking", "SeatedDrinking", "Laying", "UsingPhone",
-    "Watching", "Typing",
+    "Drinking", "Laying", "UsingPhone", "Watching", "Typing",
 }
 
 NEVER_SCHEDULED = {
     "User_Mom": sorted(ALL_SCHEDULED_ACTIONS - {
         "Opening", "Cooking", "Eating", "Cleaning", "Reading",
-        "Drinking", "SeatedDrinking", "Laying", "UsingPhone", "Watching",
+        "Drinking", "Laying", "UsingPhone", "Watching",
     }),
     "User_Dad": sorted(ALL_SCHEDULED_ACTIONS - {
-        "Eating", "Typing", "Drinking", "SeatedDrinking",
+        "Eating", "Typing", "Drinking",
         "UsingPhone", "Laying", "Watching",
     }),
 }
@@ -52,6 +51,7 @@ SCHEDULED_FOR_USER = {
     "User_Mom": ALL_SCHEDULED_ACTIONS - set(NEVER_SCHEDULED["User_Mom"]),
     "User_Dad": ALL_SCHEDULED_ACTIONS - set(NEVER_SCHEDULED["User_Dad"]),
 }
+
 
 def load_hourly_action_data(db) -> dict:
     docs = load_docs(db, COL_SEMANTIC)
@@ -70,10 +70,10 @@ def load_hourly_action_data(db) -> dict:
 
 
 def plot_shared_vs_exclusive_actions(hourly: dict, save_path: str):
-    shared = sorted(SCHEDULED_FOR_USER["User_Mom"] & SCHEDULED_FOR_USER["User_Dad"])
+    shared   = sorted(SCHEDULED_FOR_USER["User_Mom"] & SCHEDULED_FOR_USER["User_Dad"])
     mom_only = sorted(SCHEDULED_FOR_USER["User_Mom"] - SCHEDULED_FOR_USER["User_Dad"])
     dad_only = sorted(SCHEDULED_FOR_USER["User_Dad"] - SCHEDULED_FOR_USER["User_Mom"])
-    action_order = shared + mom_only + dad_only
+    action_order = mom_only + shared + dad_only
 
     if not action_order:
         print("[exp4] Skipping shared-vs-exclusive chart: no scheduled actions found")
@@ -88,69 +88,120 @@ def plot_shared_vs_exclusive_actions(hourly: dict, save_path: str):
     x = np.arange(len(action_order))
     w = 0.35
 
-    fig, ax = plt.subplots(figsize=(max(10, len(action_order) * 1.1), 5.5))
-    bars_m = ax.bar(x - w/2, mom_vals, w, label="Mom (observed count)",
-                     color=C["mom"], alpha=0.85, edgecolor="white")
-    bars_d = ax.bar(x + w/2, dad_vals, w, label="Dad (observed count)",
-                     color=C["dad"], alpha=0.85, edgecolor="white")
+    fig, ax = plt.subplots(figsize=(max(14, len(action_order) * 1.5), 6))
 
-    for bar, val, uid, action in zip(bars_m, mom_vals, ["User_Mom"] * len(action_order), action_order):
-        if val > 0:
-            unexpected = action not in SCHEDULED_FOR_USER["User_Mom"]
-            ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.3,
-                    str(val), ha="center", va="bottom", fontsize=FONT_TICK - 1,
-                    color=C["highlight"] if unexpected else "#333",
-                    fontweight="bold" if unexpected else "normal")
-    for bar, val, uid, action in zip(bars_d, dad_vals, ["User_Dad"] * len(action_order), action_order):
-        if val > 0:
-            unexpected = action not in SCHEDULED_FOR_USER["User_Dad"]
-            ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.3,
-                    str(val), ha="center", va="bottom", fontsize=FONT_TICK - 1,
-                    color=C["highlight"] if unexpected else "#333",
-                    fontweight="bold" if unexpected else "normal")
-
-    n_shared, n_mom, n_dad = len(shared), len(mom_only), len(dad_only)
-    for boundary, label in [(n_shared - 0.5, ""), (n_shared + n_mom - 0.5, "")]:
-        if 0 < boundary < len(action_order) - 1:
-            ax.axvline(boundary, color="#999", linestyle="--", lw=1.2, alpha=0.6)
+    bars_m = ax.bar(x - w / 2, mom_vals, w, label="Mom (observed count)",
+                    color=C["mom"], alpha=0.85, edgecolor="white", zorder=3)
+    bars_d = ax.bar(x + w / 2, dad_vals, w, label="Dad (observed count)",
+                    color=C["dad"], alpha=0.85, edgecolor="white", zorder=3)
 
     ymax = max(max(mom_vals, default=1), max(dad_vals, default=1))
 
-    group_centers = []
-    group_labels = []
-    if n_shared:
-        group_centers.append((n_shared - 1) / 2)
-        group_labels.append(f"Shared by design (n={n_shared})")
-    if n_mom:
-        group_centers.append(n_shared + (n_mom - 1) / 2)
-        group_labels.append(f"Mom-only by design (n={n_mom})")
-    if n_dad:
-        group_centers.append(n_shared + n_mom + (n_dad - 1) / 2)
-        group_labels.append(f"Dad-only by design (n={n_dad})")
+    # value labels
+    for bar, val, action in zip(bars_m, mom_vals, action_order):
+        if val > 0:
+            unexpected = action not in SCHEDULED_FOR_USER["User_Mom"]
+            ax.text(
+                bar.get_x() + bar.get_width() / 2,
+                bar.get_height() + ymax * 0.01,
+                str(val),
+                ha="center", va="bottom",
+                fontsize=FONT_TICK - 1,
+                color=C["highlight"] if unexpected else "#333",
+                fontweight="bold" if unexpected else "normal",
+                zorder=4,
+            )
 
-    for cx, label in zip(group_centers, group_labels):
-        ax.text(cx, ymax * 1.20, label, ha="center", va="bottom",
-                fontsize=FONT_TICK - 1, fontweight="bold", color="#555")
+    for bar, val, action in zip(bars_d, dad_vals, action_order):
+        if val > 0:
+            unexpected = action not in SCHEDULED_FOR_USER["User_Dad"]
+            ax.text(
+                bar.get_x() + bar.get_width() / 2,
+                bar.get_height() + ymax * 0.01,
+                str(val),
+                ha="center", va="bottom",
+                fontsize=FONT_TICK - 1,
+                color=C["highlight"] if unexpected else "#333",
+                fontweight="bold" if unexpected else "normal",
+                zorder=4,
+            )
+
+    # group dividers
+    n_shared = len(shared)
+    n_mom    = len(mom_only)
+    n_dad    = len(dad_only)
+
+    # order: mom_only | shared | dad_only
+    boundaries = []
+    if n_mom and (n_shared or n_dad):
+        boundaries.append(n_mom - 0.5)
+    if n_dad and (n_shared or n_mom):
+        boundaries.append(n_mom + n_shared - 0.5)
+
+    for b in boundaries:
+        ax.axvline(b, color="#999", linestyle="--", lw=1.2, alpha=0.7, zorder=2)
+
+    # group background shading — order: mom_only | shared | dad_only
+    shade_alpha = 0.06
+    group_ranges = []
+    if n_mom:
+        group_ranges.append((0, n_mom, C["mom"], f"Mom-only (n={n_mom})"))
+    if n_shared:
+        group_ranges.append((n_mom, n_mom + n_shared, "#888888", f"Shared (n={n_shared})"))
+    if n_dad:
+        group_ranges.append((n_mom + n_shared, n_mom + n_shared + n_dad, C["dad"], f"Dad-only (n={n_dad})"))
+
+    for start, end, color, label in group_ranges:
+        ax.axvspan(start - 0.5, end - 0.5, alpha=shade_alpha, color=color, zorder=1)
+
+    # group labels — centred over each shaded region
+    for start, end, color, label in group_ranges:
+        cx = (start + end - 1) / 2
+        # single-bar group: shift right so label sits over the bar
+        if end - start == 1:
+            cx += 0.3
+        ax.text(
+            cx, ymax * 1.10,
+            label,
+            ha="center", va="bottom",
+            fontsize=FONT_TICK - 1,
+            fontweight="bold",
+            color="#444",
+        )
 
     ax.set_xticks(x)
     ax.set_xticklabels(action_order, rotation=30, ha="right", fontsize=FONT_TICK)
     ax.set_ylabel("Observed count (System A, 189 episodes)", fontsize=FONT_AXIS)
-    ax.set_ylim(0, ymax * 1.40)
-    ax.legend(fontsize=FONT_TICK, loc="upper left", bbox_to_anchor=(1.01, 1.0),
-              borderaxespad=0)
-    ax.set_title("Shared vs Exclusive Actions: Designed Grouping vs Observed Counts\n"
-                 "(highlighted bar = observed for a user it was never designed for)",
-                 fontsize=FONT_TITLE, fontweight="bold", pad=12)
+    ax.set_ylim(0, ymax * 1.35)
+    ax.grid(axis="y", linestyle="--", alpha=0.4, zorder=0)
 
-    caption = (
-        f"Grouping source: ExperimentRunner.cs schedule (MomWeekday/MomWeekend, "
-        f"DadWeekday/DadWeekend + DayDiff)\n"
-        f"Shared by design: {', '.join(shared)}\n"
-        f"Mom-only by design: {', '.join(mom_only) if mom_only else '(none)'}   |   "
-        f"Dad-only by design: {', '.join(dad_only) if dad_only else '(none)'}"
+    # legend inside plot
+    ax.legend(
+        fontsize=FONT_TICK,
+        loc="upper right",
+        framealpha=0.85,
     )
-    fig.text(0.02, -0.02, caption, ha="left", va="top",
-              fontsize=FONT_TICK - 2, color="#555", style="italic")
+
+    ax.set_title(
+        "BPA Behavioral Differentiation: Observed Action Counts per User",
+        fontsize=FONT_TITLE,
+        fontweight="bold",
+        pad=10,
+    )
+
+    # caption as x-axis label (stays inside bbox)
+    caption_lines = [
+        f"Grouping source: ExperimentRunner.cs  |  "
+        f"Shared: {', '.join(shared)}",
+        f"Mom-only: {', '.join(mom_only) if mom_only else '(none)'}   "
+        f"|   Dad-only: {', '.join(dad_only) if dad_only else '(none)'}",
+    ]
+    ax.set_xlabel(
+        "\n".join(caption_lines),
+        fontsize=FONT_TICK - 2,
+        color="#666",
+        labelpad=12,
+    )
 
     plt.tight_layout()
     plt.savefig(save_path, dpi=FIG_DPI, bbox_inches="tight")
@@ -171,7 +222,8 @@ def save_summary(hourly: dict, save_path: str, exp1_accuracy: float = None):
         lines.append(
             f"Exp 1 measured {exp1_accuracy:.1%} HAR accuracy on this same data; "
             f"the question here is whether the learned pattern still matches "
-            f"the designed routine despite that error rate.")
+            f"the designed routine despite that error rate."
+        )
     lines.append("")
 
     for uid in USERS:
@@ -179,7 +231,8 @@ def save_summary(hourly: dict, save_path: str, exp1_accuracy: float = None):
         never = NEVER_SCHEDULED.get(uid, [])
         if never:
             lines.append(
-                f"  Never scheduled for this user (by design): {', '.join(never)}")
+                f"  Never scheduled for this user (by design): {', '.join(never)}"
+            )
         data = hourly[uid]
         observed_actions = sorted(data.keys(), key=lambda a: -sum(data[a].values()))
         unexpected = [a for a in observed_actions if a in never]
@@ -187,13 +240,16 @@ def save_summary(hourly: dict, save_path: str, exp1_accuracy: float = None):
             lines.append(
                 f"  WARNING — observed but never scheduled (likely HAR "
                 f"misclassification, not a real occurrence): "
-                f"{', '.join(unexpected)}")
+                f"{', '.join(unexpected)}"
+            )
         for action in observed_actions:
-            buckets = data[action]
+            buckets  = data[action]
             peak_hour = max(buckets.items(), key=lambda x: x[1])[0]
-            total = sum(buckets.values())
-            flag = "  [unexpected]" if action in never else ""
-            lines.append(f"  {action:16} total={total:3}  peak={peak_hour:02d}:00{flag}")
+            total    = sum(buckets.values())
+            flag     = "  [unexpected]" if action in never else ""
+            lines.append(
+                f"  {action:16} total={total:3}  peak={peak_hour:02d}:00{flag}"
+            )
         lines.append("")
 
     with open(save_path, "w") as f:
@@ -207,7 +263,10 @@ def main():
     db = MongoClient(MONGO_URI)[DB_BASELINE]
 
     hourly = load_hourly_action_data(db)
-    total = sum(sum(sum(b.values()) for b in a.values()) for a in hourly.values())
+    total  = sum(
+        sum(sum(b.values()) for b in a.values())
+        for a in hourly.values()
+    )
 
     if total == 0:
         print(f"[exp4] No data in {DB_BASELINE}.{COL_SEMANTIC}")
@@ -216,13 +275,18 @@ def main():
     print(f"[exp4] {total} episodes loaded")
 
     plot_shared_vs_exclusive_actions(
-        hourly, os.path.join(RESULTS_DIR, "exp4_shared_vs_exclusive.png"))
+        hourly,
+        os.path.join(RESULTS_DIR, "exp4_shared_vs_exclusive.png"),
+    )
 
     exp1_docs = load_docs(db, COL_SEMANTIC)
     exp1_acc  = compute_accuracy(exp1_docs)[0] if exp1_docs else None
 
-    save_summary(hourly, os.path.join(RESULTS_DIR, "exp4_summary.txt"),
-                 exp1_accuracy=exp1_acc)
+    save_summary(
+        hourly,
+        os.path.join(RESULTS_DIR, "exp4_summary.txt"),
+        exp1_accuracy=exp1_acc,
+    )
 
     print("\n[exp4] Done.")
 

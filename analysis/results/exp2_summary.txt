@@ -1,0 +1,11 @@
+Experiment 2: HAR Corruption Robustness
+DB: robot_exp_corruption
+
+Condition                 Acc  Correct   Total
+------------------------------------------------
+Baseline（System A）     88.4%      167     189  
+Light Corruption       81.5%      154     189  
+Medium Corruption      76.7%      145     189  
+Heavy Corruption       74.1%      140     189  
+
+Worst drop by class (Baseline → Heavy):

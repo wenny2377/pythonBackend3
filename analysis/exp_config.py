@@ -43,17 +43,24 @@ ROOM_IMPOSSIBLE = {
 }
 
 C = {
-    "baseline":          "#2196F3",
-    "corruption_light":  "#FF9800",
-    "corruption_medium": "#F44336",
-    "corruption_heavy":  "#B71C1C",
-    "pass":              "#4CAF50",
-    "warn":              "#FF9800",
-    "mom":               "#E91E63",
-    "dad":               "#1976D2",
-    "threshold":         "#9E9E9E",
-    "ablation":          "#7E57C2",
-    "highlight":         "#FF5722",
+    # 系統角色 — 跨所有實驗保持一致
+    "baseline":          "#4C9BE8",   # 藍，System A / Full System / Baseline
+    "vlm":               "#888888",   # 灰，System B / VLM
+    "mom":               "#E8507A",   # 粉紅，User_Mom
+    "dad":               "#5B8DB8",   # 鋼藍，User_Dad
+
+    # Corruption 程度 — 藍→橘→橘紅→紅，越重越暖
+    "corruption_light":  "#F5A623",   # 橘，Light
+    "corruption_medium": "#E8734C",   # 橘紅，Medium
+    "corruption_heavy":  "#D94F3D",   # 紅，Heavy
+
+    # Ablation 專用
+    "ablation":          "#7B68EE",   # 紫，ablation 比較用（w/o Spatial）
+
+    # 強調 / 警示
+    "highlight":         "#D94F3D",   # 紅橘，誤判 / 警示數字
+    "pass":              "#4CAF50",   # 綠，通過/正常（保留備用）
+    "threshold":         "#9E9E9E",   # 灰，門檻線
 }
 
 FONT_TITLE  = 13

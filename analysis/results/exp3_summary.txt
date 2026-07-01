@@ -1,0 +1,9 @@
+Experiment 3: Modality Ablation
+DB: robot_exp_baseline
+
+Method                        Acc    Delta      N
+--------------------------------------------------
+Full System                88.4%       --    189
+w/o Skeleton               57.7%   -30.7%    189
+w/o Object Events          22.2%   -66.1%    189
+w/o Spatial Context        71.4%   -16.9%    189
