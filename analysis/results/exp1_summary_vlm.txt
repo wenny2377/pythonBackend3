@@ -1,0 +1,16 @@
+Experiment 1: HAR System B (VLM Direct)
+DB: robot_exp_baseline | Collection: experiment_logs_vlm
+Episodes: 184  Correct: 153  Overall: 83.2%
+
+Action              Acc    TP   Total
+--------------------------------------
+Drinking         100.0%    24      24
+Eating           84.1%    37      44
+Cooking          100.0%    14      14
+Laying           96.7%    29      30
+Watching          0.0%     0      20
+Reading          100.0%    13      13
+Cleaning         100.0%    10      10
+UsingPhone       93.3%    14      15
+Typing           100.0%    12      12
+Opening           0.0%     0       7
