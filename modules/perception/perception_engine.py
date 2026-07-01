@@ -304,57 +304,7 @@ class PerceptionEngine:
                 texts, normalize_embeddings=True).astype("float32")
             self._proto_behavior_labels = labels
 
-    def _parse_vlm_output(self, raw):
-        try:
-            cleaned = re.sub(r'```(?:json)?\s*', '', raw).strip().rstrip('`')
-            m       = re.search(r'\{.*\}', cleaned, re.DOTALL)
-            if not m:
-                return {}
-            data = json.loads(m.group(0))
-        except Exception:
-            return {}
-        visual_state = data.get("visual_state", "").strip()
-        key_object   = data.get("key_object", "none").strip().lower()
-        confidence   = float(data.get("confidence", 0.5))
-        if key_object in ("", "unknown"):
-            key_object = "none"
-        return {
-            "visual_state": visual_state,
-            "key_object":   key_object,
-            "confidence":   min(max(confidence, 0.0), 1.0),
-        }
-
-    def _call_vlm_with_retry(self, prompt, img_clean):
-        for attempt in range(VLM_MAX_RETRIES + 1):
-            try:
-                resp = requests.post(
-                    f"{self.url}/api/chat",
-                    json={
-                        "model":    self.model,
-                        "messages": [{"role": "user", "content": prompt,
-                                      "images": [img_clean]}],
-                        "stream":   False,
-                        "options":  {"temperature": 0.05, "num_predict": 200},
-                    },
-                    timeout=self._vlm_timeout)
-                raw    = resp.json().get("message", {}).get("content", "").strip()
-                parsed = self._parse_vlm_output(raw)
-                if parsed:
-                    return parsed
-                if attempt < VLM_MAX_RETRIES:
-                    time.sleep(VLM_RETRY_DELAY)
-            except requests.exceptions.Timeout:
-                print(f"[VLM] timeout attempt {attempt+1}/{VLM_MAX_RETRIES+1}")
-                if attempt < VLM_MAX_RETRIES:
-                    time.sleep(VLM_RETRY_DELAY)
-            except Exception as e:
-                print(f"[VLM] error attempt {attempt+1}: {e}")
-                if attempt < VLM_MAX_RETRIES:
-                    time.sleep(VLM_RETRY_DELAY)
-        return {}
-
     def _call_vlm_direct_har(self, img_list, room_name, candidates):
-        """System B: send all frames at once, VLM directly classifies activity."""
         candidate_str = ", ".join(sorted(candidates))
         prompt = (
             f"Look at these images carefully. "
@@ -503,21 +453,13 @@ class PerceptionEngine:
                 p[k] = -1.0
         elif ablation_mode == "no_object":
             p["_ablation_held_event"] = "none"
-        elif ablation_mode == "no_vlm":
-            p["_ablation_vlm_desc"]    = ""
-            p["_ablation_vlm_key_obj"] = "none"
         return p
 
-    def _spatial_reasoning(self, activity_hint, vlm_scene_desc,
-                            vlm_key_object, held_event,
-                            user_pos, user_forward,
-                            room_name, user_id,
-                            vlm_confidence=0.0,
-                            payload=None,
-                            coord_label="",
-                            held_age=0.0):
+    def _spatial_reasoning(self, held_event, user_pos, user_forward,
+                            room_name, user_id, payload=None,
+                            coord_label="", held_age=0.0):
         if not self.scene_engine.is_ready():
-            return activity_hint or "Unknown", "zone_not_ready", ""
+            return "Unknown", "zone_not_ready", ""
 
         nearest_zone = self.scene_engine.find_nearest_zone(user_pos, room_name)
         zone_label   = nearest_zone["zone_name"] if nearest_zone else ""
@@ -545,10 +487,8 @@ class PerceptionEngine:
             )
             nearby_objs = self._get_nearby_objects(user_pos, room_name)
             pmi = {
-                "near":       coord_label or "",
-                "nearby":     nearby_objs,
-                "vlm_desc":   vlm_scene_desc,
-                "key_object": vlm_key_object,
+                "near":   coord_label or "",
+                "nearby": nearby_objs,
             }
             llm_action, llm_reason, llm_conf = self._llm_reason(
                 scene, pmi, candidates, self._llm_url, self._llm_model)
@@ -572,10 +512,8 @@ class PerceptionEngine:
         if not candidates:
             return None, "", 0.0
 
-        near        = pmi.get("near",       "")
-        nearby_objs = pmi.get("nearby",     [])
-        vlm_desc    = pmi.get("vlm_desc",   "")
-        key_object  = pmi.get("key_object", "none")
+        near        = pmi.get("near",   "")
+        nearby_objs = pmi.get("nearby", [])
 
         room_str    = scene.get("room",    "")
         time_str    = scene.get("time",    "")
@@ -586,12 +524,10 @@ class PerceptionEngine:
         scene_text  = scene.get("text",    "")
 
         nl_parts = [f"A person is in the {room_str or 'home'}."]
-        if time_str:                            nl_parts.append(f"Time: {time_str}.")
-        if posture_str:                         nl_parts.append(f"Posture: {posture_str}.")
-        if held_str:                            nl_parts.append(f"Object event: {held_str}.")
-        if facing_str:                          nl_parts.append(f"Facing: {facing_str}.")
-        if vlm_desc:                            nl_parts.append(f"VLM observation: {vlm_desc}.")
-        if key_object and key_object != "none": nl_parts.append(f"Key object: {key_object}.")
+        if time_str:    nl_parts.append(f"Time: {time_str}.")
+        if posture_str: nl_parts.append(f"Posture: {posture_str}.")
+        if held_str:    nl_parts.append(f"Object event: {held_str}.")
+        if facing_str:  nl_parts.append(f"Facing: {facing_str}.")
         nl_parts.append(f"Nearest area: {near or 'unknown'}.")
         nl_parts.append("TV: ON" if tv_on else "TV: off")
 
@@ -781,14 +717,11 @@ class PerceptionEngine:
         }
 
     def _write_experiment_log(self, payload, final_user,
-                               spatial_action, activity_hint,
-                               upgrade_reason, zone_label,
-                               vlm_confidence, held_event,
-                               user_pos, interacting_items,
-                               ground_truth_raw,
+                               spatial_action, upgrade_reason, zone_label,
+                               vlm_confidence, held_event, user_pos,
+                               interacting_items, ground_truth_raw,
                                ablation_mode, experiment_mode,
-                               collection_suffix,
-                               vlm_timed_out=False):
+                               collection_suffix, vlm_timed_out=False):
         ground_truth = normalize_ground_truth(ground_truth_raw)
         predicted    = normalize_ground_truth(spatial_action)
         correct      = (ground_truth == predicted) if ground_truth else None
@@ -801,9 +734,6 @@ class PerceptionEngine:
                 "user_id":            final_user,
                 "ground_truth":       ground_truth,
                 "ground_truth_raw":   ground_truth_raw,
-                "vlm_output":         activity_hint,
-                "vlm_scene_desc":     activity_hint,
-                "vlm_key_object":     payload.get("_vlm_key_object", "none"),
                 "spatial_action":     spatial_action,
                 "predicted":          predicted,
                 "correct":            correct,
@@ -889,7 +819,6 @@ class PerceptionEngine:
         held_event = ablated_payload.get("_ablation_held_event", held_event_raw)
 
         sample_indices = self._select_sample_indices(image_list, node_scores)
-        user_votes     = []
         vlm_timed_out  = False
 
         if system_mode == "vlm":
@@ -900,7 +829,8 @@ class PerceptionEngine:
                         for b in forbidden:
                             candidates.discard(b)
 
-            img_list = []
+            user_votes = []
+            img_list   = []
             for idx in sample_indices:
                 try:
                     img_b64   = image_list[idx]
@@ -935,68 +865,18 @@ class PerceptionEngine:
                   f"frames={len(img_list)}")
 
         else:
-            prompt = (
-                f"Scene: {room_name} room. "
-                f"Person is near {coord_label or 'unknown'}.\n\n"
-                "Output ONLY valid JSON:\n"
-                '{"visual_state":"...","key_object":"...","confidence":0.0}\n'
-                "- visual_state: what person is doing (max 10 words)\n"
-                "- key_object: object person interacts with, or 'none'\n"
-                "- confidence: 0.0=unsure 1.0=certain\n"
-                "Output ONLY the JSON."
-            )
-
-            visual_state_votes = []
-            key_object_votes   = []
-            confidence_list    = []
-
-            for idx in sample_indices:
-                try:
-                    img_b64   = image_list[idx]
-                    uid       = self._get_user_id(img_b64, hint_user_id)
-                    user_votes.append(uid)
-
-                    if ablation_mode == "no_vlm":
-                        visual_state_votes.append("")
-                        key_object_votes.append("none")
-                        confidence_list.append(0.0)
-                        continue
-
-                    img_clean = img_b64.split(',')[1] if ',' in img_b64 else img_b64
-                    parsed    = self._call_vlm_with_retry(prompt, img_clean)
-
-                    if parsed:
-                        visual_state_votes.append(parsed.get("visual_state", ""))
-                        key_object_votes.append(parsed.get("key_object", "none"))
-                        confidence_list.append(parsed.get("confidence", 0.5))
-                    else:
-                        vlm_timed_out = True
-                except Exception as e:
-                    print(f"[Frame {idx}] error: {e}")
-                    vlm_timed_out = True
-
-            final_user = max(set(user_votes), key=user_votes.count) if user_votes else hint_user_id
-
-            vlm_scene_desc = Counter(visual_state_votes).most_common(1)[0][0] if visual_state_votes else ""
-            vlm_key_object = Counter(key_object_votes).most_common(1)[0][0]   if key_object_votes   else "none"
-            vlm_confidence = sum(confidence_list) / len(confidence_list)       if confidence_list    else 0.0
-
-            if ablation_mode == "no_vlm":
-                vlm_scene_desc = ablated_payload.get("_ablation_vlm_desc",    "")
-                vlm_key_object = ablated_payload.get("_ablation_vlm_key_obj", "none")
-                vlm_confidence = 0.0
-
-            print(f"[VLM] desc='{vlm_scene_desc[:30]}' key={vlm_key_object} "
-                  f"held={held_event} conf={vlm_confidence:.2f}")
+            final_user     = hint_user_id
+            vlm_confidence = 0.0
 
             spatial_action, upgrade_reason, zone_label = self._spatial_reasoning(
-                activity_hint=vlm_scene_desc, vlm_scene_desc=vlm_scene_desc,
-                vlm_key_object=vlm_key_object, held_event=held_event,
+                held_event=held_event,
                 user_pos=user_pos, user_forward=user_forward,
                 room_name=room_name, user_id=final_user,
-                vlm_confidence=vlm_confidence, payload=ablated_payload,
+                payload=ablated_payload,
                 coord_label=coord_label, held_age=held_age,
             )
+
+            print(f"[Semantic] {final_user} | held={held_event} | coord={coord_label}")
 
         bound_doc, confidence = self._bind_furniture(coord_label, user_pos, room_name)
         bound_label = bound_doc.get("label", "Unknown_Area") if bound_doc else "Unknown_Area"
@@ -1019,11 +899,9 @@ class PerceptionEngine:
             room_name=bound_room, user_pos=user_pos)
 
         if ground_truth_activity:
-            payload["_vlm_key_object"] = ""
             self._write_experiment_log(
                 payload=payload, final_user=final_user,
                 spatial_action=spatial_action,
-                activity_hint=spatial_action if system_mode == "vlm" else "",
                 upgrade_reason=upgrade_reason, zone_label=zone_label,
                 vlm_confidence=vlm_confidence, held_event=held_event,
                 user_pos=user_pos, interacting_items=interacting_item_list,
