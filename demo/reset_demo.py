@@ -14,18 +14,40 @@ DEMO_DB   = "robot_exp_demo"
 MONGO_URI = "mongodb://127.0.0.1:27017/"
 USERS     = ["User_Mom", "User_Dad"]
 
-RESET_COLLECTIONS = [
+# Cleared every reset — state accumulated during a demo run.
+# Learning data (observation_logs, transition_counts, etc.) is NOT cleared
+# because demo mode now skips all learning writes entirely.
+CLEAR_COLLECTIONS = [
     "user_skills",
     "skill_chunks",
     "service_proposals",
+    "activity_sequences",
     "conversation_logs",
 ]
 
+# Never touched — baseline learning data and static scene data.
+# These are safe because demo mode does not write to them.
+PRESERVE_COLLECTIONS = [
+    "observation_logs",
+    "transition_counts",
+    "behavior_patterns",
+    "user_spatial_affinity",
+    "scene_snapshots",
+    "dynamic_objects",
+    "object_events",
+    "affinity_matrix",
+    "affinity_history",
+    "zone_anchors",
+    "user_positions",
+]
 
-def _refresh_last_seen(db):
+
+def _refresh_timestamps(db):
     now = datetime.utcnow()
-    r   = db.dynamic_objects.update_many({}, {"$set": {"last_seen": now}})
-    print(f"  Refreshed last_seen: {r.modified_count} objects → now")
+    r = db.dynamic_objects.update_many({}, {"$set": {"last_seen": now}})
+    print(f"  Refreshed dynamic_objects.last_seen  ({r.modified_count} docs)")
+    r = db.user_positions.update_many({}, {"$set": {"updated_at": now}})
+    print(f"  Refreshed user_positions.updated_at  ({r.modified_count} docs)")
 
 
 def main():
@@ -34,22 +56,23 @@ def main():
 
     if not db.list_collection_names():
         print(f"[!] {DEMO_DB} does not exist. Run setup_demo_db.py first.")
+        client.close()
         return
 
     print(f"Resetting demo DB: {DEMO_DB}")
     print("=" * 50)
 
-    for col in RESET_COLLECTIONS:
+    print("Clearing demo-run state...")
+    for col in CLEAR_COLLECTIONS:
         result = db[col].delete_many({})
-        print(f"  Cleared {col:<25} ({result.deleted_count} docs)")
+        print(f"  Cleared {col:<30} ({result.deleted_count} docs)")
 
     print()
-    print("Refreshing object timestamps...")
-    _refresh_last_seen(db)
+    print("Refreshing timestamps...")
+    _refresh_timestamps(db)
 
     print()
-    print("Regenerating SKILL.md via PatternAnalyzer + SkillManager...")
-
+    print("Regenerating SKILL.md from baseline learning data...")
     analyzer = PatternAnalyzer(db)
     skill_manager = SkillManager(
         db_client=client,
@@ -57,7 +80,6 @@ def main():
         model_name=Config.LLM_MODEL,
         db_name=DEMO_DB,
     )
-
     for uid in USERS:
         skill_manager.generate(uid)
         patterns = analyzer.analyze_user(uid)
@@ -69,16 +91,17 @@ def main():
     print("=" * 50)
     print("Demo DB reset complete.")
     print()
-    print("State after reset:")
-    for col in RESET_COLLECTIONS:
-        print(f"  {col:<25} {db[col].count_documents({})} docs")
+    print("Cleared (demo run state):")
+    for col in CLEAR_COLLECTIONS:
+        print(f"  {col:<30} {db[col].count_documents({})} docs")
     print()
-    print("Untouched:")
-    for col in ["observation_logs", "transition_counts", "behavior_patterns",
-                "dynamic_objects", "scene_snapshots", "object_events"]:
-        print(f"  {col:<25} {db[col].count_documents({})} docs")
+    print("Preserved (untouched by demo mode):")
+    for col in PRESERVE_COLLECTIONS:
+        print(f"  {col:<30} {db[col].count_documents({})} docs")
     print()
-    print("Ready. Start Flask: python3 app.py → choose 3 (Demo)")
+    print("Ready. Start Flask with DB_NAME=robot_exp_demo, then run Unity in Demo mode.")
+
+    client.close()
 
 
 if __name__ == "__main__":

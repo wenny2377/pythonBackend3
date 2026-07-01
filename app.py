@@ -215,6 +215,7 @@ _demo_state       = {"current_scene": 0, "scene_done": False, "scene_user": ""}
 _speaking_state   = {"who": "none"}
 _experiment_state = {"mode": "baseline", "ablation_mode": "full",
                      "collection_suffix": "", "active": False}
+_is_demo = False
 
 _dynamic_sync_seen_labels: set = set()
 _dynamic_sync_lock = threading.Lock()
@@ -301,6 +302,16 @@ def start_experiment():
           f"db={db_name} suffix='{_experiment_state['collection_suffix']}'")
     return jsonify({"status": "ok", **_experiment_state}), 200
 
+
+
+
+@app.route("/set_demo_mode", methods=["POST"])
+def set_demo_mode():
+    global _is_demo
+    data     = request.get_json() or {}
+    _is_demo = bool(data.get("is_demo", False))
+    print(f"[App] Demo mode → {_is_demo}")
+    return jsonify({"status": "ok", "is_demo": _is_demo}), 200
 
 @app.route("/experiment_done", methods=["POST"])
 def experiment_done():
@@ -678,7 +689,7 @@ def _process_predict(episode_id: str, data: dict):
 
     NO_RECORD = {"Walking", "Standing", "StandUp", "PickingUp", "PuttingDown"}
 
-    if zone_label and spatial_action not in NO_RECORD and _exp_mode == "baseline":
+    if zone_label and spatial_action not in NO_RECORD and _exp_mode == "baseline" and not _is_demo:
         pos_xy = [(est_pos["x"] if est_pos else 0) / 10.0,
                   (est_pos["z"] if est_pos else 0) / 10.0]
         observation_store.record(
@@ -709,7 +720,7 @@ def _process_predict(episode_id: str, data: dict):
 
     if (spatial_action == "Standing" and
             prev_action not in ("Standing", "Walking") and
-            _exp_mode == "baseline"):
+            (_exp_mode == "baseline" or _is_demo)):
         proposal = proactive_service.evaluate(
             user_id=_user_id, current_action=spatial_action,
             prev_action=prev_action, time_slot=time_slot, user_pos=est_pos)
