@@ -1,5 +1,4 @@
-# 自訂
-debug_images/
+
 *.index
 *_meta.json
 venv/
