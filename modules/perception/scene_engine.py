@@ -415,7 +415,7 @@ class SceneEngine:
                 if v_norm > 1e-8:
                     v_space /= v_norm
 
-                base_name = f"{act_lbl}_Zone"
+                base_name = f"{anchor['label']}_Zone"
                 cnt       = zone_name_cnt.get(base_name, 0)
                 zone_name_cnt[base_name] = cnt + 1
                 zone_name = base_name if cnt == 0 else f"{base_name}_{cnt + 1}"
