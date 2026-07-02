@@ -1,0 +1,16 @@
+@startmindmap
+
+skinparam dpi 300
+
++ Body Tilt Angle
+++ > 20°
++++_ "lying down"
+++ ≤ 20° (upright)
++++ Knee Bend Ratio
+++++ > 0.65
++++++_ "sitting"
+++++ 0.50–0.65
++++++_ "possibly seated"
+++++ < 0.50
++++++_ "standing"
+@endmindmap

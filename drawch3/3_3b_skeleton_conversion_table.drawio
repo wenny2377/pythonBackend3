@@ -1,0 +1,139 @@
+<mxfile host="65bd71144e">
+    <diagram id="skel_nl" name="Page-1">
+        <mxGraphModel dx="1023" dy="1143" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1654" pageHeight="1169" math="0" shadow="0">
+            <root>
+                <mxCell id="0"/>
+                <mxCell id="1" parent="0"/>
+                <mxCell id="ch1" value="Feature" style="text;html=1;whiteSpace=wrap;fillColor=#2d3561;strokeColor=#2d3561;fontColor=#ffffff;fontSize=17;align=center;verticalAlign=middle;spacingLeft=8;spacingRight=4;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="20" y="64" width="200" height="44" as="geometry"/>
+                </mxCell>
+                <mxCell id="ch2" value="Condition" style="text;html=1;whiteSpace=wrap;fillColor=#2d3561;strokeColor=#2d3561;fontColor=#ffffff;fontSize=17;align=center;verticalAlign=middle;spacingLeft=8;spacingRight=4;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="220" y="64" width="180" height="44" as="geometry"/>
+                </mxCell>
+                <mxCell id="ch3" value="LLM Input" style="text;html=1;whiteSpace=wrap;fillColor=#2d3561;strokeColor=#2d3561;fontColor=#ffffff;fontSize=17;align=center;verticalAlign=middle;spacingLeft=8;spacingRight=4;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="400" y="64" width="420" height="44" as="geometry"/>
+                </mxCell>
+                <mxCell id="grp_BODY TILT" value="BODY TILT" style="text;html=1;whiteSpace=wrap;fillColor=#dae8fc;strokeColor=#aaaaaa;fontColor=#444444;fontSize=14;align=center;verticalAlign=middle;spacingLeft=8;spacingRight=4;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="20" y="108" width="800" height="34" as="geometry"/>
+                </mxCell>
+                <mxCell id="rs1" value="Body tilt angle" style="text;html=1;whiteSpace=wrap;fillColor=#ffffff;strokeColor=#cccccc;fontColor=#222222;fontSize=16;align=center;verticalAlign=middle;spacingLeft=8;spacingRight=4;" parent="1" vertex="1">
+                    <mxGeometry x="20" y="142" width="200" height="46" as="geometry"/>
+                </mxCell>
+                <mxCell id="rc1" value="&amp;gt; 20°" style="text;html=1;whiteSpace=wrap;fillColor=#ffffff;strokeColor=#cccccc;fontColor=#2f5597;fontSize=16;align=center;verticalAlign=middle;spacingLeft=8;spacingRight=4;fontStyle=2;" parent="1" vertex="1">
+                    <mxGeometry x="220" y="142" width="180" height="46" as="geometry"/>
+                </mxCell>
+                <mxCell id="rl1" value="&quot;person is lying down&quot;" style="text;html=1;whiteSpace=wrap;fillColor=#ffffff;strokeColor=#cccccc;fontColor=#1a1a1a;fontSize=16;align=center;verticalAlign=middle;spacingLeft=8;spacingRight=4;fontStyle=2;" parent="1" vertex="1">
+                    <mxGeometry x="400" y="142" width="420" height="46" as="geometry"/>
+                </mxCell>
+                <mxCell id="rs2" value="Body upright + knee ratio" style="text;html=1;whiteSpace=wrap;fillColor=#f5f7ff;strokeColor=#cccccc;fontColor=#222222;fontSize=16;align=center;verticalAlign=middle;spacingLeft=8;spacingRight=4;" parent="1" vertex="1">
+                    <mxGeometry x="20" y="188" width="200" height="46" as="geometry"/>
+                </mxCell>
+                <mxCell id="rc2" value="&amp;gt; 0.65" style="text;html=1;whiteSpace=wrap;fillColor=#f5f7ff;strokeColor=#cccccc;fontColor=#2f5597;fontSize=16;align=center;verticalAlign=middle;spacingLeft=8;spacingRight=4;fontStyle=2;" parent="1" vertex="1">
+                    <mxGeometry x="220" y="188" width="180" height="46" as="geometry"/>
+                </mxCell>
+                <mxCell id="rl2" value="&quot;body is upright, person is sitting&quot;" style="text;html=1;whiteSpace=wrap;fillColor=#f5f7ff;strokeColor=#cccccc;fontColor=#1a1a1a;fontSize=16;align=center;verticalAlign=middle;spacingLeft=8;spacingRight=4;fontStyle=2;" parent="1" vertex="1">
+                    <mxGeometry x="400" y="188" width="420" height="46" as="geometry"/>
+                </mxCell>
+                <mxCell id="rs3" value="Body upright + knee ratio" style="text;html=1;whiteSpace=wrap;fillColor=#ffffff;strokeColor=#cccccc;fontColor=#222222;fontSize=16;align=center;verticalAlign=middle;spacingLeft=8;spacingRight=4;" parent="1" vertex="1">
+                    <mxGeometry x="20" y="234" width="200" height="46" as="geometry"/>
+                </mxCell>
+                <mxCell id="rc3" value="0.50 – 0.65" style="text;html=1;whiteSpace=wrap;fillColor=#ffffff;strokeColor=#cccccc;fontColor=#2f5597;fontSize=16;align=center;verticalAlign=middle;spacingLeft=8;spacingRight=4;fontStyle=2;" parent="1" vertex="1">
+                    <mxGeometry x="220" y="234" width="180" height="46" as="geometry"/>
+                </mxCell>
+                <mxCell id="rl3" value="&quot;body is upright, possibly seated&quot;" style="text;html=1;whiteSpace=wrap;fillColor=#ffffff;strokeColor=#cccccc;fontColor=#1a1a1a;fontSize=16;align=center;verticalAlign=middle;spacingLeft=8;spacingRight=4;fontStyle=2;" parent="1" vertex="1">
+                    <mxGeometry x="400" y="234" width="420" height="46" as="geometry"/>
+                </mxCell>
+                <mxCell id="rs4" value="Body upright + knee ratio" style="text;html=1;whiteSpace=wrap;fillColor=#f5f7ff;strokeColor=#cccccc;fontColor=#222222;fontSize=16;align=center;verticalAlign=middle;spacingLeft=8;spacingRight=4;" parent="1" vertex="1">
+                    <mxGeometry x="20" y="280" width="200" height="46" as="geometry"/>
+                </mxCell>
+                <mxCell id="rc4" value="&amp;lt; 0.50" style="text;html=1;whiteSpace=wrap;fillColor=#f5f7ff;strokeColor=#cccccc;fontColor=#2f5597;fontSize=16;align=center;verticalAlign=middle;spacingLeft=8;spacingRight=4;fontStyle=2;" parent="1" vertex="1">
+                    <mxGeometry x="220" y="280" width="180" height="46" as="geometry"/>
+                </mxCell>
+                <mxCell id="rl4" value="&quot;body is upright, person is standing&quot;" style="text;html=1;whiteSpace=wrap;fillColor=#f5f7ff;strokeColor=#cccccc;fontColor=#1a1a1a;fontSize=16;align=center;verticalAlign=middle;spacingLeft=8;spacingRight=4;fontStyle=2;" parent="1" vertex="1">
+                    <mxGeometry x="400" y="280" width="420" height="46" as="geometry"/>
+                </mxCell>
+                <mxCell id="grp_HEAD ORIENTATION" value="HEAD ORIENTATION" style="text;html=1;whiteSpace=wrap;fillColor=#d5e8d4;strokeColor=#aaaaaa;fontColor=#444444;fontSize=14;align=center;verticalAlign=middle;spacingLeft=8;spacingRight=4;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="20" y="326" width="800" height="34" as="geometry"/>
+                </mxCell>
+                <mxCell id="rs5" value="Head pitch" style="text;html=1;whiteSpace=wrap;fillColor=#ffffff;strokeColor=#cccccc;fontColor=#222222;fontSize=16;align=center;verticalAlign=middle;spacingLeft=8;spacingRight=4;" parent="1" vertex="1">
+                    <mxGeometry x="20" y="360" width="200" height="46" as="geometry"/>
+                </mxCell>
+                <mxCell id="rc5" value="&amp;gt; 16°" style="text;html=1;whiteSpace=wrap;fillColor=#ffffff;strokeColor=#cccccc;fontColor=#2f5597;fontSize=16;align=center;verticalAlign=middle;spacingLeft=8;spacingRight=4;fontStyle=2;" parent="1" vertex="1">
+                    <mxGeometry x="220" y="360" width="180" height="46" as="geometry"/>
+                </mxCell>
+                <mxCell id="rl5" value="&quot;head is looking down&quot;" style="text;html=1;whiteSpace=wrap;fillColor=#ffffff;strokeColor=#cccccc;fontColor=#1a1a1a;fontSize=16;align=center;verticalAlign=middle;spacingLeft=8;spacingRight=4;fontStyle=2;" parent="1" vertex="1">
+                    <mxGeometry x="400" y="360" width="420" height="46" as="geometry"/>
+                </mxCell>
+                <mxCell id="rs6" value="Head pitch" style="text;html=1;whiteSpace=wrap;fillColor=#f5f7ff;strokeColor=#cccccc;fontColor=#222222;fontSize=16;align=center;verticalAlign=middle;spacingLeft=8;spacingRight=4;" parent="1" vertex="1">
+                    <mxGeometry x="20" y="406" width="200" height="46" as="geometry"/>
+                </mxCell>
+                <mxCell id="rc6" value="≤ 16°" style="text;html=1;whiteSpace=wrap;fillColor=#f5f7ff;strokeColor=#cccccc;fontColor=#2f5597;fontSize=16;align=center;verticalAlign=middle;spacingLeft=8;spacingRight=4;fontStyle=2;" parent="1" vertex="1">
+                    <mxGeometry x="220" y="406" width="180" height="46" as="geometry"/>
+                </mxCell>
+                <mxCell id="rl6" value="&quot;head is facing forward&quot;" style="text;html=1;whiteSpace=wrap;fillColor=#f5f7ff;strokeColor=#cccccc;fontColor=#1a1a1a;fontSize=16;align=center;verticalAlign=middle;spacingLeft=8;spacingRight=4;fontStyle=2;" parent="1" vertex="1">
+                    <mxGeometry x="400" y="406" width="420" height="46" as="geometry"/>
+                </mxCell>
+                <mxCell id="grp_HAND" value="HAND" style="text;html=1;whiteSpace=wrap;fillColor=#fff2cc;strokeColor=#aaaaaa;fontColor=#444444;fontSize=14;align=center;verticalAlign=middle;spacingLeft=8;spacingRight=4;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="20" y="452" width="800" height="34" as="geometry"/>
+                </mxCell>
+                <mxCell id="rs7" value="Hand-to-head min(R/L)" style="text;html=1;whiteSpace=wrap;fillColor=#ffffff;strokeColor=#cccccc;fontColor=#222222;fontSize=16;align=center;verticalAlign=middle;spacingLeft=8;spacingRight=4;" parent="1" vertex="1">
+                    <mxGeometry x="20" y="486" width="200" height="46" as="geometry"/>
+                </mxCell>
+                <mxCell id="rc7" value="&amp;lt; 0.40 body height" style="text;html=1;whiteSpace=wrap;fillColor=#ffffff;strokeColor=#cccccc;fontColor=#2f5597;fontSize=16;align=center;verticalAlign=middle;spacingLeft=8;spacingRight=4;fontStyle=2;" parent="1" vertex="1">
+                    <mxGeometry x="220" y="486" width="180" height="46" as="geometry"/>
+                </mxCell>
+                <mxCell id="rl7" value="&quot;hand is very close to face or mouth&quot;" style="text;html=1;whiteSpace=wrap;fillColor=#ffffff;strokeColor=#cccccc;fontColor=#1a1a1a;fontSize=16;align=center;verticalAlign=middle;spacingLeft=8;spacingRight=4;fontStyle=2;" parent="1" vertex="1">
+                    <mxGeometry x="400" y="486" width="420" height="46" as="geometry"/>
+                </mxCell>
+                <mxCell id="rs8" value="Hand-to-head min(R/L)" style="text;html=1;whiteSpace=wrap;fillColor=#f5f7ff;strokeColor=#cccccc;fontColor=#222222;fontSize=16;align=center;verticalAlign=middle;spacingLeft=8;spacingRight=4;" parent="1" vertex="1">
+                    <mxGeometry x="20" y="532" width="200" height="46" as="geometry"/>
+                </mxCell>
+                <mxCell id="rc8" value="&amp;lt; 0.50 body height" style="text;html=1;whiteSpace=wrap;fillColor=#f5f7ff;strokeColor=#cccccc;fontColor=#2f5597;fontSize=16;align=center;verticalAlign=middle;spacingLeft=8;spacingRight=4;fontStyle=2;" parent="1" vertex="1">
+                    <mxGeometry x="220" y="532" width="180" height="46" as="geometry"/>
+                </mxCell>
+                <mxCell id="rl8" value="&quot;hand is near chest level&quot;" style="text;html=1;whiteSpace=wrap;fillColor=#f5f7ff;strokeColor=#cccccc;fontColor=#1a1a1a;fontSize=16;align=center;verticalAlign=middle;spacingLeft=8;spacingRight=4;fontStyle=2;" parent="1" vertex="1">
+                    <mxGeometry x="400" y="532" width="420" height="46" as="geometry"/>
+                </mxCell>
+                <mxCell id="rs9" value="Hand-to-head min(R/L)" style="text;html=1;whiteSpace=wrap;fillColor=#ffffff;strokeColor=#cccccc;fontColor=#222222;fontSize=16;align=center;verticalAlign=middle;spacingLeft=8;spacingRight=4;" parent="1" vertex="1">
+                    <mxGeometry x="20" y="578" width="200" height="46" as="geometry"/>
+                </mxCell>
+                <mxCell id="rc9" value="≥ 0.50 body height" style="text;html=1;whiteSpace=wrap;fillColor=#ffffff;strokeColor=#cccccc;fontColor=#2f5597;fontSize=16;align=center;verticalAlign=middle;spacingLeft=8;spacingRight=4;fontStyle=2;" parent="1" vertex="1">
+                    <mxGeometry x="220" y="578" width="180" height="46" as="geometry"/>
+                </mxCell>
+                <mxCell id="rl9" value="&quot;hand is extended away from face&quot;" style="text;html=1;whiteSpace=wrap;fillColor=#ffffff;strokeColor=#cccccc;fontColor=#1a1a1a;fontSize=16;align=center;verticalAlign=middle;spacingLeft=8;spacingRight=4;fontStyle=2;" parent="1" vertex="1">
+                    <mxGeometry x="400" y="578" width="420" height="46" as="geometry"/>
+                </mxCell>
+                <mxCell id="grp_ARM ELEVATION" value="ARM ELEVATION" style="text;html=1;whiteSpace=wrap;fillColor=#ffe6cc;strokeColor=#aaaaaa;fontColor=#444444;fontSize=14;align=center;verticalAlign=middle;spacingLeft=8;spacingRight=4;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="20" y="624" width="800" height="34" as="geometry"/>
+                </mxCell>
+                <mxCell id="rs10" value="Arm elevation (R/L)" style="text;html=1;whiteSpace=wrap;fillColor=#ffffff;strokeColor=#cccccc;fontColor=#222222;fontSize=16;align=center;verticalAlign=middle;spacingLeft=8;spacingRight=4;" parent="1" vertex="1">
+                    <mxGeometry x="20" y="658" width="200" height="46" as="geometry"/>
+                </mxCell>
+                <mxCell id="rc10" value="&amp;lt; 130°" style="text;html=1;whiteSpace=wrap;fillColor=#ffffff;strokeColor=#cccccc;fontColor=#2f5597;fontSize=16;align=center;verticalAlign=middle;spacingLeft=8;spacingRight=4;fontStyle=2;" parent="1" vertex="1">
+                    <mxGeometry x="220" y="658" width="180" height="46" as="geometry"/>
+                </mxCell>
+                <mxCell id="rl10" value="&quot;arm is raised toward interaction level&quot;" style="text;html=1;whiteSpace=wrap;fillColor=#ffffff;strokeColor=#cccccc;fontColor=#1a1a1a;fontSize=16;align=center;verticalAlign=middle;spacingLeft=8;spacingRight=4;fontStyle=2;" parent="1" vertex="1">
+                    <mxGeometry x="400" y="658" width="420" height="46" as="geometry"/>
+                </mxCell>
+                <mxCell id="rs11" value="Arm elevation (R/L)" style="text;html=1;whiteSpace=wrap;fillColor=#f5f7ff;strokeColor=#cccccc;fontColor=#222222;fontSize=16;align=center;verticalAlign=middle;spacingLeft=8;spacingRight=4;" parent="1" vertex="1">
+                    <mxGeometry x="20" y="704" width="200" height="46" as="geometry"/>
+                </mxCell>
+                <mxCell id="rc11" value="&amp;gt; 155°" style="text;html=1;whiteSpace=wrap;fillColor=#f5f7ff;strokeColor=#cccccc;fontColor=#2f5597;fontSize=16;align=center;verticalAlign=middle;spacingLeft=8;spacingRight=4;fontStyle=2;" parent="1" vertex="1">
+                    <mxGeometry x="220" y="704" width="180" height="46" as="geometry"/>
+                </mxCell>
+                <mxCell id="rl11" value="&quot;arm is hanging down naturally&quot;" style="text;html=1;whiteSpace=wrap;fillColor=#f5f7ff;strokeColor=#cccccc;fontColor=#1a1a1a;fontSize=16;align=center;verticalAlign=middle;spacingLeft=8;spacingRight=4;fontStyle=2;" parent="1" vertex="1">
+                    <mxGeometry x="400" y="704" width="420" height="46" as="geometry"/>
+                </mxCell>
+                <mxCell id="rs12" value="Arm elevation (R/L)" style="text;html=1;whiteSpace=wrap;fillColor=#ffffff;strokeColor=#cccccc;fontColor=#222222;fontSize=16;align=center;verticalAlign=middle;spacingLeft=8;spacingRight=4;" parent="1" vertex="1">
+                    <mxGeometry x="20" y="750" width="200" height="46" as="geometry"/>
+                </mxCell>
+                <mxCell id="rc12" value="130° – 155°" style="text;html=1;whiteSpace=wrap;fillColor=#ffffff;strokeColor=#cccccc;fontColor=#2f5597;fontSize=16;align=center;verticalAlign=middle;spacingLeft=8;spacingRight=4;fontStyle=2;" parent="1" vertex="1">
+                    <mxGeometry x="220" y="750" width="180" height="46" as="geometry"/>
+                </mxCell>
+                <mxCell id="rl12" value="&quot;arm is at mid level&quot;" style="text;html=1;whiteSpace=wrap;fillColor=#ffffff;strokeColor=#cccccc;fontColor=#1a1a1a;fontSize=16;align=center;verticalAlign=middle;spacingLeft=8;spacingRight=4;fontStyle=2;" parent="1" vertex="1">
+                    <mxGeometry x="400" y="750" width="420" height="46" as="geometry"/>
+                </mxCell>
+            </root>
+        </mxGraphModel>
+    </diagram>
+</mxfile>

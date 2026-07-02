@@ -1,0 +1,114 @@
+<mxfile host="65bd71144e">
+    <diagram id="sys_compare" name="Page-1">
+        <mxGraphModel dx="1302" dy="1455" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1654" pageHeight="1169" math="0" shadow="0">
+            <root>
+                <mxCell id="0"/>
+                <mxCell id="1" parent="0"/>
+                <mxCell id="cam" value="Fixed Camera&#xa;(Unity virtual cameras)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#2f5597;fontColor=#000000;fontSize=18;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="40" y="340" width="200" height="70" as="geometry"/>
+                </mxCell>
+                <mxCell id="la" value="System A" style="text;html=1;strokeColor=none;fillColor=none;align=left;fontColor=#2f5597;fontSize=18;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="300" y="30" width="400" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="skel" value="Skeleton features (7)&#xa;pose / wrist / hand-to-head" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#2f5597;fontColor=#000000;fontSize=18;" parent="1" vertex="1">
+                    <mxGeometry x="300" y="80" width="240" height="70" as="geometry"/>
+                </mxCell>
+                <mxCell id="obj" value="Object events&#xa;pickup / putdown" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#bf8f00;fontColor=#000000;fontSize=18;" parent="1" vertex="1">
+                    <mxGeometry x="300" y="190" width="240" height="70" as="geometry"/>
+                </mxCell>
+                <mxCell id="ctx" value="Scene context&#xa;room / zone / time / facing" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#375623;fontColor=#000000;fontSize=18;" parent="1" vertex="1">
+                    <mxGeometry x="300" y="300" width="240" height="70" as="geometry"/>
+                </mxCell>
+                <mxCell id="bst" value="build_scene_text()&#xa;scene description" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#375623;fontColor=#000000;fontSize=18;" parent="1" vertex="1">
+                    <mxGeometry x="610" y="190" width="250" height="70" as="geometry"/>
+                </mxCell>
+                <mxCell id="lb" value="System B" style="text;html=1;strokeColor=none;fillColor=none;align=left;fontColor=#c55a11;fontSize=18;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="300" y="510" width="400" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="vlm" value="VLM + SoM&#xa;Gemma3:4b" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#c55a11;fontColor=#000000;fontSize=18;" parent="1" vertex="1">
+                    <mxGeometry x="300" y="560" width="260" height="70" as="geometry"/>
+                </mxCell>
+                <mxCell id="llma" value="LLM spatial reasoning&#xa;Llama 3.1:8b" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#375623;fontColor=#000000;fontSize=18;" parent="1" vertex="1">
+                    <mxGeometry x="930" y="190" width="250" height="70" as="geometry"/>
+                </mxCell>
+                <mxCell id="llmb" value="LLM spatial reasoning&#xa;Llama 3.1:8b" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#375623;fontColor=#000000;fontSize=18;" parent="1" vertex="1">
+                    <mxGeometry x="930" y="560" width="250" height="70" as="geometry"/>
+                </mxCell>
+                <mxCell id="outa" value="Inferred Activity" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#7030a0;fontColor=#000000;fontSize=18;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="1250" y="190" width="220" height="70" as="geometry"/>
+                </mxCell>
+                <mxCell id="outb" value="Inferred Activity" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#7030a0;fontColor=#000000;fontSize=18;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="1250" y="560" width="220" height="70" as="geometry"/>
+                </mxCell>
+                <mxCell id="e_skel" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#2f5597;strokeWidth=2;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="cam" target="skel" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="270" y="375"/>
+                            <mxPoint x="270" y="115"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="e_obj" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#bf8f00;strokeWidth=2;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="cam" target="obj" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="270" y="375"/>
+                            <mxPoint x="270" y="225"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="e_ctx" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#375623;strokeWidth=2;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="cam" target="ctx" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="270" y="375"/>
+                            <mxPoint x="270" y="335"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="e_vlm" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#c55a11;strokeWidth=2;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="cam" target="vlm" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="270" y="375"/>
+                            <mxPoint x="270" y="595"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="e_s2b" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#2f5597;strokeWidth=2;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="skel" target="bst" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="590" y="115"/>
+                            <mxPoint x="590" y="225"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="e_o2b" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#375623;strokeWidth=2;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="obj" target="bst" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="590" y="225"/>
+                            <mxPoint x="590" y="225"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="e_c2b" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#375623;strokeWidth=2;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="ctx" target="bst" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="590" y="335"/>
+                            <mxPoint x="590" y="225"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="e_bst2llm" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#375623;strokeWidth=2.5;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="bst" target="llma" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e_llma2out" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#7030a0;strokeWidth=2.5;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="llma" target="outa" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e_vlm2llm" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#c55a11;strokeWidth=2.5;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="vlm" target="llmb" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e_llmb2out" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#7030a0;strokeWidth=2.5;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="llmb" target="outb" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+            </root>
+        </mxGraphModel>
+    </diagram>
+</mxfile>

@@ -1,0 +1,43 @@
+<mxfile host="65bd71144e">
+    <diagram id="diagram1" name="Page-1">
+        <mxGraphModel dx="948" dy="677" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1169" pageHeight="1169" math="0" shadow="0">
+            <root>
+                <mxCell id="0"/>
+                <mxCell id="1" parent="0"/>
+                <mxCell id="cur" value="Current action&amp;nbsp;&lt;div&gt;&lt;i&gt;&lt;font style=&quot;font-size: 19px; font-weight: normal;&quot;&gt;e.g. Eating&lt;/font&gt;&lt;/i&gt;&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#2f5597;fontColor=#000000;fontSize=20;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="180" y="40" width="320" height="70" as="geometry"/>
+                </mxCell>
+                <mxCell id="s1" value="Step 1 prediction Watching&lt;div&gt;&lt;font style=&quot;font-size: 19px;&quot;&gt;&lt;i&gt;(P=0.65)&lt;/i&gt;&lt;/font&gt;&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#2f5597;fontColor=#000000;fontSize=20;" parent="1" vertex="1">
+                    <mxGeometry x="180" y="150" width="320" height="70" as="geometry"/>
+                </mxCell>
+                <mxCell id="s2" value="Step 2 prediction Drinking&amp;nbsp;&lt;div&gt;&amp;nbsp;&lt;i&gt;&lt;font style=&quot;font-size: 19px;&quot;&gt;(P=0.58)&lt;/font&gt;&lt;/i&gt;&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#2f5597;fontColor=#000000;fontSize=20;" parent="1" vertex="1">
+                    <mxGeometry x="180" y="260" width="320" height="70" as="geometry"/>
+                </mxCell>
+                <mxCell id="need" value="Infer need: beverage&amp;nbsp;&lt;div&gt;&lt;font style=&quot;font-size: 15px;&quot;&gt;&lt;i&gt;conf = 0.65 × 0.58 = 0.38 &amp;gt; threshold (0.25)&lt;/i&gt;&lt;/font&gt;&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#bf8f00;fontColor=#000000;fontSize=20;" parent="1" vertex="1">
+                    <mxGeometry x="180" y="370" width="320" height="80" as="geometry"/>
+                </mxCell>
+                <mxCell id="obj" value="Object availability&amp;nbsp;&lt;div&gt;&lt;i&gt;&lt;font style=&quot;font-size: 19px;&quot;&gt;check DB&lt;/font&gt;&lt;/i&gt;&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#375623;fontColor=#000000;fontSize=20;" parent="1" vertex="1">
+                    <mxGeometry x="180" y="490" width="320" height="70" as="geometry"/>
+                </mxCell>
+                <mxCell id="llm" value="Proactive proposal" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#7030a0;fontColor=#000000;fontSize=20;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="180" y="600" width="320" height="70" as="geometry"/>
+                </mxCell>
+                <mxCell id="e1" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#2f5597;strokeWidth=3;" parent="1" source="cur" target="s1" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e2" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#2f5597;strokeWidth=3;" parent="1" source="s1" target="s2" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e3" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#bf8f00;strokeWidth=3;" parent="1" source="s2" target="need" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e4" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#375623;strokeWidth=3;" parent="1" source="need" target="obj" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e5" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#7030a0;strokeWidth=3;" parent="1" source="obj" target="llm" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+            </root>
+        </mxGraphModel>
+    </diagram>
+</mxfile>

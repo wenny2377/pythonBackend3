@@ -1,0 +1,64 @@
+<mxfile host="65bd71144e">
+    <diagram id="diagram1" name="Page-1">
+        <mxGraphModel dx="948" dy="677" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1169" pageHeight="1169" math="0" shadow="0">
+            <root>
+                <mxCell id="0"/>
+                <mxCell id="1" parent="0"/>
+                <mxCell id="cam" value="Fixed Camera&amp;nbsp;&lt;div&gt;&lt;i style=&quot;font-weight: normal;&quot;&gt;&lt;font style=&quot;font-size: 17px;&quot;&gt;(event-driven capture)&lt;/font&gt;&lt;/i&gt;&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#2f5597;fontColor=#000000;fontSize=20;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="314" y="40" width="340" height="70" as="geometry"/>
+                </mxCell>
+                <mxCell id="skel" value="Skeleton features (7)&amp;nbsp;&lt;div&gt;&lt;i&gt;&lt;font style=&quot;font-size: 16px;&quot;&gt;pose / wrist / hand-to-head&lt;/font&gt;&lt;/i&gt;&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#2f5597;fontColor=#000000;fontSize=20;" parent="1" vertex="1">
+                    <mxGeometry x="80" y="180" width="244" height="70" as="geometry"/>
+                </mxCell>
+                <mxCell id="obj" value="Object events&amp;nbsp;&lt;div&gt;&lt;i&gt;&lt;font style=&quot;font-size: 17px;&quot;&gt;pickup / putdown&lt;/font&gt;&lt;/i&gt;&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#bf8f00;fontColor=#000000;fontSize=20;" parent="1" vertex="1">
+                    <mxGeometry x="374" y="180" width="220" height="70" as="geometry"/>
+                </mxCell>
+                <mxCell id="spatio" value="&lt;font style=&quot;color: rgb(0, 0, 0);&quot;&gt;Spatiotemporal context&lt;/font&gt;&lt;br&gt;&lt;i&gt;&lt;font style=&quot;font-size: 16px;&quot;&gt;room&amp;nbsp;&lt;/font&gt;&lt;/i&gt;&lt;i style=&quot;color: rgb(63, 63, 63); scrollbar-color: rgb(226, 226, 226) rgb(251, 251, 251);&quot;&gt;&lt;font style=&quot;color: rgb(63, 63, 63); scrollbar-color: rgb(226, 226, 226) rgb(251, 251, 251); font-size: 16px;&quot;&gt;/&amp;nbsp;&lt;/font&gt;&lt;/i&gt;&lt;i&gt;&lt;font style=&quot;font-size: 16px;&quot;&gt;zone&amp;nbsp;&lt;/font&gt;&lt;/i&gt;&lt;i style=&quot;color: rgb(63, 63, 63); scrollbar-color: rgb(226, 226, 226) rgb(251, 251, 251);&quot;&gt;&lt;font style=&quot;color: rgb(63, 63, 63); scrollbar-color: rgb(226, 226, 226) rgb(251, 251, 251); font-size: 16px;&quot;&gt;/&amp;nbsp;&lt;/font&gt;&lt;/i&gt;&lt;i style=&quot;color: rgb(63, 63, 63); scrollbar-color: rgb(226, 226, 226) rgb(251, 251, 251);&quot;&gt;&lt;font style=&quot;color: rgb(63, 63, 63); scrollbar-color: rgb(226, 226, 226) rgb(251, 251, 251); font-size: 16px;&quot;&gt;facing&amp;nbsp;&lt;i style=&quot;color: rgb(63, 63, 63); scrollbar-color: rgb(226, 226, 226) rgb(251, 251, 251); font-size: 20px;&quot;&gt;&lt;font style=&quot;color: rgb(63, 63, 63); scrollbar-color: rgb(226, 226, 226) rgb(251, 251, 251); font-size: 16px;&quot;&gt;/&amp;nbsp;&lt;/font&gt;&lt;/i&gt;&lt;/font&gt;&lt;/i&gt;&lt;i&gt;&lt;font style=&quot;font-size: 16px;&quot;&gt;time slot&amp;nbsp;&lt;/font&gt;&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#375623;fontColor=#000000;fontSize=20;" parent="1" vertex="1">
+                    <mxGeometry x="644" y="180" width="246" height="70" as="geometry"/>
+                </mxCell>
+                <mxCell id="2" value="" style="edgeStyle=none;html=1;" edge="1" parent="1" source="bst" target="llm">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="bst" value="Scene description&amp;nbsp;&lt;div&gt;&lt;font style=&quot;font-size: 16px;&quot;&gt;&lt;i style=&quot;font-weight: normal;&quot;&gt;structured text for LLM&lt;/i&gt;&lt;/font&gt;&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#375623;fontColor=#000000;fontSize=20;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="314" y="340" width="340" height="70" as="geometry"/>
+                </mxCell>
+                <mxCell id="filt" value="Room-based action filtering&amp;nbsp;&lt;div&gt;&lt;i&gt;&lt;font style=&quot;font-size: 16px;&quot;&gt;e.g. no Laying in Kitchen&lt;/font&gt;&lt;/i&gt;&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#bf8f00;fontColor=#000000;fontSize=20;" parent="1" vertex="1">
+                    <mxGeometry x="740" y="480" width="300" height="70" as="geometry"/>
+                </mxCell>
+                <mxCell id="llm" value="LLM reasoning&amp;nbsp;&lt;div&gt;&lt;i&gt;&lt;font style=&quot;font-size: 17px;&quot;&gt;Llama 3.1:8b&lt;/font&gt;&lt;/i&gt;&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#375623;fontColor=#000000;fontSize=20;" parent="1" vertex="1">
+                    <mxGeometry x="314" y="480" width="340" height="70" as="geometry"/>
+                </mxCell>
+                <mxCell id="out" value="Inferred Activity" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#7030a0;fontColor=#000000;fontSize=20;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="314" y="620" width="340" height="70" as="geometry"/>
+                </mxCell>
+                <mxCell id="e1" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#2f5597;strokeWidth=3;" parent="1" source="cam" target="skel" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e2" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#bf8f00;strokeWidth=3;" parent="1" source="cam" target="obj" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e3" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#375623;strokeWidth=3;" parent="1" source="cam" target="spatio" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e4" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#375623;strokeWidth=3;" parent="1" source="skel" target="bst" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e5" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#375623;strokeWidth=3;" parent="1" source="obj" target="bst" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e6" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#375623;strokeWidth=3;" parent="1" source="spatio" target="bst" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e7" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#375623;strokeWidth=3;" parent="1" source="bst" target="llm" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e8" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#bf8f00;strokeWidth=3;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="filt" target="llm" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e9" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#7030a0;strokeWidth=3;" parent="1" source="llm" target="out" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+            </root>
+        </mxGraphModel>
+    </diagram>
+</mxfile>

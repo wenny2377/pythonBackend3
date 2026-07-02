@@ -1,0 +1,49 @@
+<mxfile host="65bd71144e">
+    <diagram id="diagram1" name="Page-1">
+        <mxGraphModel dx="1115" dy="796" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1169" pageHeight="1169" math="0" shadow="0">
+            <root>
+                <mxCell id="0" value="" style=""/>
+                <mxCell id="1" value="" style="" parent="0"/>
+                <mxCell id="inp" value="Inferred Activity&lt;br&gt;&lt;i style=&quot;font-weight: normal;&quot;&gt;LLM reasoning&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#2f5597;fontColor=#000000;fontSize=22;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="275" y="30" width="430" height="80" as="geometry"/>
+                </mxCell>
+                <mxCell id="obs" value="Observation log&lt;br&gt;&lt;i&gt;&lt;font style=&quot;font-size: 20px; font-weight: normal;&quot;&gt;location · action · time · object held&lt;/font&gt;&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#375623;fontColor=#000000;fontSize=22;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="55" y="190" width="360" height="80" as="geometry"/>
+                </mxCell>
+                <mxCell id="tra" value="Transition log&lt;br&gt;&lt;i style=&quot;font-weight: normal;&quot;&gt;action → next action&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#375623;fontColor=#000000;fontSize=22;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="590" y="190" width="310" height="80" as="geometry"/>
+                </mxCell>
+                <mxCell id="w1" value="&lt;b&gt;weight ≥ 5?&lt;/b&gt;" style="shape=rhombus;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#bf8f00;fontColor=#000000;fontSize=22;" parent="1" vertex="1">
+                    <mxGeometry x="55" y="350" width="360" height="100" as="geometry"/>
+                </mxCell>
+                <mxCell id="w2" value="&lt;b&gt;count ≥ 3?&lt;/b&gt;" style="shape=rhombus;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#bf8f00;fontColor=#000000;fontSize=22;" parent="1" vertex="1">
+                    <mxGeometry x="565" y="350" width="360" height="100" as="geometry"/>
+                </mxCell>
+                <mxCell id="sk" value="Write to SKILL.md&lt;br&gt;&lt;i style=&quot;font-weight: normal;&quot;&gt;Behavior Patterns + Preferences&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#7030a0;fontColor=#000000;fontSize=22;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="55" y="530" width="360" height="80" as="geometry"/>
+                </mxCell>
+                <mxCell id="lo" value="Used by 2-Step Lookahead&lt;br&gt;&lt;i style=&quot;font-weight: normal;&quot;&gt;proactive service&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#7030a0;fontColor=#000000;fontSize=22;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="565" y="530" width="360" height="80" as="geometry"/>
+                </mxCell>
+                <mxCell id="e1" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#2f5597;strokeWidth=3;" parent="1" source="inp" target="obs" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e2" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#2f5597;strokeWidth=3;" parent="1" source="inp" target="tra" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e3" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#375623;strokeWidth=3;" parent="1" source="obs" target="w1" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e4" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#375623;strokeWidth=3;" parent="1" source="tra" target="w2" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e5" value="yes" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#7030a0;strokeWidth=3;fontSize=15;" parent="1" source="w1" target="sk" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e6" value="yes" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#7030a0;strokeWidth=3;fontSize=15;" parent="1" source="w2" target="lo" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+            </root>
+        </mxGraphModel>
+    </diagram>
+</mxfile>
