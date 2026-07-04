@@ -203,15 +203,19 @@ class ReactiveService:
             "food  = hungry, eating, meal, snack, something to eat\n"
             "any   = not specific\n\n"
             "Examples:\n"
-            "I am thirsty        → need, drink\n"
-            "could use a drink   → need, drink\n"
-            "I am hungry         → need, food\n"
-            "feeling peckish     → need, food\n"
-            "get me something    → need, any\n"
-            "where is the remote → query, any\n"
-            "what food do we have→ query, food\n"
-            "I am sad            → chat, any\n"
-            "hello               → chat, any",
+            "I am thirsty              → need, drink\n"
+            "I am pretty thirsty       → need, drink\n"
+            "Hey Mami, I am thirsty   → need, drink\n"
+            "could use a drink         → need, drink\n"
+            "get me something to drink → need, drink\n"
+            "I am hungry               → need, food\n"
+            "feeling peckish           → need, food\n"
+            "get me something          → need, any\n"
+            "where is the remote       → query, any\n"
+            "what food do we have      → query, food\n"
+            "I am sad                  → chat, any\n"
+            "I am tired                → chat, any\n"
+            "hello                     → chat, any",
             f'"{query}"',
             max_tokens=10,
         )

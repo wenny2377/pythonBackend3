@@ -22,48 +22,50 @@ apply_style()
 
 
 def plot_confusion_matrix(docs: list, save_path: str, system_label: str = "Baseline") -> tuple:
-    present = [l for l in ADL_LABELS
-               if any(d.get("ground_truth") == l for d in docs)]
-    n      = len(present)
-    matrix = np.zeros((n, n), dtype=int)
+    gt_labels   = [l for l in ADL_LABELS if any(d.get("ground_truth") == l for d in docs)]
+    extra_preds = sorted(set(d.get("_pred", "") for d in docs if d.get("_pred") and d.get("_pred") not in gt_labels))
+    all_labels  = gt_labels + extra_preds
+    n_gt        = len(gt_labels)
+    n_all       = len(all_labels)
+    matrix = np.zeros((n_gt, n_all), dtype=int)
 
     for d in docs:
         gt   = d.get("ground_truth", "")
         pred = d.get("_pred", "")
-        if gt in present and pred in present:
-            matrix[present.index(gt)][present.index(pred)] += 1
+        if gt in gt_labels and pred in all_labels:
+            matrix[gt_labels.index(gt)][all_labels.index(pred)] += 1
 
     total   = int(matrix.sum())
-    correct = int(np.trace(matrix))
+    correct = sum(matrix[i][i] for i in range(n_gt))
     acc     = correct / total if total else 0
 
     row_sums = matrix.sum(axis=1, keepdims=True)
     row_sums[row_sums == 0] = 1
     norm = matrix / row_sums
 
-    fig, ax = plt.subplots(figsize=(11, 9))
-    im   = ax.imshow(norm, cmap="Blues", vmin=0, vmax=1)
+    fig, ax = plt.subplots(figsize=(max(11, n_all), n_gt))
+    im   = ax.imshow(norm, cmap="Blues", vmin=0, vmax=1, aspect="auto")
     cbar = plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
     cbar.set_label("Recall Rate", fontsize=FONT_AXIS)
 
-    for i in range(n):
-        for j in range(n):
+    for i in range(n_gt):
+        for j in range(n_all):
             v = norm[i][j]
             if matrix[i][j] > 0:
                 ax.text(j, i,
                         f"{v:.2f}\n({matrix[i][j]})",
                         ha="center", va="center", fontsize=7.5,
                         color="white" if v > 0.55 else "black",
-                        fontweight="bold" if i == j else "normal")
+                        fontweight="bold" if gt_labels[i] == all_labels[j] else "normal")
 
-    ax.set_xticks(range(n)); ax.set_yticks(range(n))
-    ax.set_xticklabels(present, rotation=40, ha="right", fontsize=FONT_TICK)
-    ax.set_yticklabels(present, fontsize=FONT_TICK)
+    ax.set_xticks(range(n_all)); ax.set_yticks(range(n_gt))
+    ax.set_xticklabels(all_labels, rotation=40, ha="right", fontsize=FONT_TICK)
+    ax.set_yticklabels(gt_labels, fontsize=FONT_TICK)
     ax.set_xlabel("Predicted", fontsize=FONT_AXIS)
     ax.set_ylabel("Ground Truth", fontsize=FONT_AXIS)
     ax.set_title(
         f"HAR Confusion Matrix — {system_label}\n"
-        f"Overall Accuracy: {acc:.1%}  ({correct}/{total} episodes)",
+        f"Overall Accuracy: {acc:.1%}",
         fontsize=FONT_TITLE, fontweight="bold", pad=12)
 
     plt.tight_layout()
@@ -95,10 +97,10 @@ def plot_system_comparison(docs_a: list, docs_b: list, save_path: str):
     w = 0.35
     fig, ax = plt.subplots(figsize=(14, 6))
     ax.bar(x - w/2, accs_a, w,
-           label="Semantic System: Skeleton+Object+Spatial→LLM",
+           label="Semantic System",
            color=C["baseline"], alpha=0.85)
     ax.bar(x + w/2, accs_b, w,
-           label="VLM System: VLM Direct",
+           label="VLM System",
            color=C["ablation"], alpha=0.85)
 
     # Add value labels on each bar
@@ -126,8 +128,7 @@ def plot_system_comparison(docs_a: list, docs_b: list, save_path: str):
     ax.set_ylim(0, 115)
     ax.set_title(
         f"Semantic System vs VLM System — Per-class Accuracy\n"
-        f"Semantic: {acc_a:.1%} ({c_a}/{t_a})  |  "
-        f"VLM: {acc_b:.1%} ({c_b}/{t_b})",
+        f"Semantic: {acc_a:.1%}  |  VLM: {acc_b:.1%}",
         fontsize=FONT_TITLE, fontweight="bold", pad=10)
     ax.legend(fontsize=FONT_TICK)
 
@@ -155,14 +156,14 @@ def main():
     acc_a, correct_a, total_a = plot_confusion_matrix(
         docs_a,
         os.path.join(RESULTS_DIR, "exp1_confusion_matrix_semantic.png"),
-        system_label="Semantic System (Skeleton+Object+Spatial)")
+        system_label="Semantic System (Skeleton+Object+Spatiotemporal)")
 
     # Confusion matrix — VLM System
     if docs_b:
         acc_b, correct_b, total_b = plot_confusion_matrix(
             docs_b,
             os.path.join(RESULTS_DIR, "exp1_confusion_matrix_vlm.png"),
-            system_label="VLM System (VLM Direct)")
+            system_label="VLM System")
 
     # System comparison bar chart
     plot_system_comparison(

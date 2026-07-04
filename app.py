@@ -531,8 +531,31 @@ def demo_scene_ready():
     _demo_state["current_scene"] = data.get("scene", 0)
     _demo_state["scene_done"]    = False
     _demo_state["scene_user"]    = data.get("user_id", "")
+
+    # Reset session for the user in this scene so no stale state carries over
+    user_id = data.get("user_id", "")
+    if user_id and user_id in reactive_service._sessions:
+        reactive_service._sessions[user_id].reset()
+        print(f"[Demo] Reset session for {user_id} at scene {data.get('scene')}")
+
     return jsonify({"status": "ok"}), 200
 
+
+@app.route("/demo/prime_session", methods=["POST"])
+def demo_prime_session():
+    data    = request.get_json()
+    user_id = data.get("user_id", "")
+    item    = data.get("item", "")
+    need    = data.get("need", "drink")
+    if user_id and item:
+        session = reactive_service._session(user_id)
+        session.reset()
+        session.state        = "CONFIRMING"
+        session.pending_item = item
+        session.need_type    = need
+        session.touch()
+        print(f"[Demo] Primed session for {user_id}: CONFIRMING → {item}")
+    return jsonify({"status": "ok"}), 200
 
 @app.route("/demo/current_scene", methods=["GET"])
 def demo_current_scene():

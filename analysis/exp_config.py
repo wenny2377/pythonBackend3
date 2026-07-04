@@ -103,7 +103,10 @@ def load_docs(db, collection: str) -> list:
     ))
     for d in docs:
         d["ground_truth"] = normalize_gt(d.get("ground_truth", ""))
-        pred = d.get("spatial_action") or d.get("vlm_output", "")
+        if "vlm" in collection:
+            pred = d.get("predicted", "")
+        else:
+            pred = d.get("spatial_action", "")
         d["_pred"] = normalize_gt(pred)
     return docs
 
