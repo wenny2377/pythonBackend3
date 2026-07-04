@@ -90,6 +90,10 @@ Evaluated in a Unity 3D simulation over a 7-day virtual observation window, two 
 | Modality ablation — remove spatial context | −16.9 pp (88.4% → 71.4%) |
 | Personalization check | BPA correctly separates two users' behavioral profiles from its own (imperfect) observations, without ground truth |
 
+Accuracy degrades gradually (not catastrophically) as sensor corruption increases across three severity levels:
+
+![HAR accuracy vs. sensor corruption level — Baseline 88.4%, Light 81.5%, Medium 76.7%, Heavy 74.1%](assets/corruption_accuracy_chart.png)
+
 *(Full methodology, thresholds, and discussion of limitations are in the accompanying thesis.)*
 
 ---
