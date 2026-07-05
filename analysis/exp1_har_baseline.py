@@ -76,6 +76,17 @@ def plot_confusion_matrix(docs: list, save_path: str, system_label: str = "Basel
 
 
 def plot_system_comparison(docs_a: list, docs_b: list, save_path: str):
+    """
+    Per-class accuracy comparison, Semantic vs VLM.
+
+    Presentation choice (per advisor feedback): do NOT lead with the
+    aggregate accuracy numbers (88.4% / 81.0%) in the title. Two classes
+    (Watching, Opening) are 0% for the VLM system and would unfairly drag
+    down the headline number, implying the two systems are far apart when
+    in fact they are comparable everywhere except those two classes. The
+    chart instead calls out those two classes directly and defers the
+    explanation to the next slide (photos of the Watching/Opening scenes).
+    """
     labels_a = [l for l in ADL_LABELS if any(d.get("ground_truth") == l for d in docs_a)]
     labels   = labels_a
 
@@ -95,11 +106,11 @@ def plot_system_comparison(docs_a: list, docs_b: list, save_path: str):
 
     x = np.arange(len(labels))
     w = 0.35
-    fig, ax = plt.subplots(figsize=(14, 6))
-    ax.bar(x - w/2, accs_a, w,
+    fig, ax = plt.subplots(figsize=(14, 6.5))
+    bars_a = ax.bar(x - w/2, accs_a, w,
            label="Semantic System",
            color=C["baseline"], alpha=0.85)
-    ax.bar(x + w/2, accs_b, w,
+    bars_b = ax.bar(x + w/2, accs_b, w,
            label="VLM System",
            color=C["ablation"], alpha=0.85)
 
@@ -118,19 +129,21 @@ def plot_system_comparison(docs_a: list, docs_b: list, save_path: str):
             ax.text(i + w/2, 2, "0%",
                     ha="center", va="bottom", fontsize=8, color="red", fontweight="bold")
 
-    acc_a, c_a, t_a = compute_accuracy(docs_a)
-    acc_b, c_b, t_b = compute_accuracy(docs_b) if docs_b else (0, 0, 0)
+    # Highlight the classes where VLM completely fails (0%) with a red
+    # background band. No callout text — the red highlight alone is enough;
+    # explanation is deferred to the next slide (photos).
+    gap_classes = [i for i, b in enumerate(accs_b) if b == 0.0]
+    for i in gap_classes:
+        ax.axvspan(i - 0.5, i + 0.5, color="red", alpha=0.08, zorder=0)
 
-    ax.axhline(80, color="#999", linestyle="--", lw=1.0, alpha=0.5)
     ax.set_xticks(x)
     ax.set_xticklabels(labels, rotation=35, ha="right", fontsize=FONT_TICK)
     ax.set_ylabel("Accuracy (%)", fontsize=FONT_AXIS)
     ax.set_ylim(0, 115)
+    ax.legend(fontsize=FONT_TICK, loc="upper right")
     ax.set_title(
-        f"Semantic System vs VLM System — Per-class Accuracy\n"
-        f"Semantic: {acc_a:.1%}  |  VLM: {acc_b:.1%}",
+        "Per-class Accuracy Comparison: Semantic vs. VLM System",
         fontsize=FONT_TITLE, fontweight="bold", pad=10)
-    ax.legend(fontsize=FONT_TICK)
 
     plt.tight_layout()
     plt.savefig(save_path, dpi=FIG_DPI, bbox_inches="tight")

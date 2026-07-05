@@ -3,9 +3,15 @@ DB: robot_exp_corruption
 
 Condition                 Acc  Correct   Total
 ------------------------------------------------
-Baseline（System A）     88.4%      167     189  
-Light Corruption       81.5%      154     189  
-Medium Corruption      76.7%      145     189  
-Heavy Corruption       74.1%      140     189  
+Baseline               88.4%      167     189  
+Light Corruption       81.5%      154     189  (−6.9%)
+Medium Corruption      76.7%      145     189  (−11.6%)
+Heavy Corruption       74.1%      140     189  (−14.3%)
 
 Worst drop by class (Baseline → Heavy):
+  Drinking         79.2% → 66.7%  (−12.5%)
+  Eating           100.0% → 88.6%  (−11.4%)
+  Reading          100.0% → 69.2%  (−30.8%)
+  Cleaning         100.0% → 50.0%  (−50.0%)
+  UsingPhone       100.0% → 60.0%  (−40.0%)
+  Opening          57.1% → 28.6%  (−28.6%)

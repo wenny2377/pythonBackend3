@@ -21,7 +21,7 @@ from exp_config import (
 apply_style()
 
 CONDITIONS = [
-    ("Baseline（System A）", DB_BASELINE,   COL_SEMANTIC,          C["baseline"]),
+    ("Baseline",           DB_BASELINE,   COL_SEMANTIC,          C["baseline"]),
     ("Light Corruption",    DB_CORRUPTION, COL_CORRUPTION_LIGHT,  C["corruption_light"]),
     ("Medium Corruption",   DB_CORRUPTION, COL_CORRUPTION_MEDIUM, C["corruption_medium"]),
     ("Heavy Corruption",    DB_CORRUPTION, COL_CORRUPTION_HEAVY,  C["corruption_heavy"]),
@@ -40,11 +40,15 @@ def per_class_accuracy(docs: list) -> dict:
 
 
 NOISE_DETAIL = {
-    "Baseline（System A）": "",
+    "Baseline":            "",
     "Light Corruption":    "pickup 15% / putdown 5% / obj 10% / skel 5°",
     "Medium Corruption":   "pickup 25% / putdown 10% / obj 15% / skel 10°",
     "Heavy Corruption":    "pickup 35% / putdown 15% / obj 20% / skel 15°",
 }
+
+# Font sizes for this chart's x-axis tick labels were previously too small
+# to read (FONT_TICK - 2). Bumped up and made explicit here.
+XTICK_FONT = FONT_TICK + 3
 
 
 def plot_accuracy_drop(results: dict, save_path: str):
@@ -52,7 +56,7 @@ def plot_accuracy_drop(results: dict, save_path: str):
     accs  = [results[n]["acc"] * 100 for n in names]
     colors = [r[3] for r in CONDITIONS if r[0] in names]
 
-    fig, ax = plt.subplots(figsize=(13, 6.5))
+    fig, ax = plt.subplots(figsize=(13, 7))
     bars = ax.bar(range(len(names)), accs, color=colors,
                   alpha=0.88, width=0.55, edgecolor="white")
 
@@ -64,7 +68,7 @@ def plot_accuracy_drop(results: dict, save_path: str):
             label += f"\n(−{drop:.1f}%)"
         ax.text(bar.get_x() + bar.get_width() / 2,
                 bar.get_height() + 0.5, label,
-                ha="center", va="bottom", fontsize=FONT_ANNOT,
+                ha="center", va="bottom", fontsize=FONT_ANNOT + 1,
                 color=C["highlight"] if drop > 5 else "#333",
                 fontweight="bold" if drop > 5 else "normal")
 
@@ -74,15 +78,12 @@ def plot_accuracy_drop(results: dict, save_path: str):
         detail_lines = detail.replace(" / ", "\n") if detail else ""
         tick_labels.append(f"{n}\n{detail_lines}".rstrip())
 
-    ax.axhline(baseline_acc, color=C["baseline"], linestyle="--",
-               lw=1.5, alpha=0.6, label=f"Baseline ({baseline_acc:.1f}%)")
     ax.set_xticks(range(len(names)))
-    ax.set_xticklabels(tick_labels, fontsize=FONT_TICK - 2)
+    ax.set_xticklabels(tick_labels, fontsize=XTICK_FONT)
     ax.set_ylabel("Accuracy (%)", fontsize=FONT_AXIS)
     ax.set_ylim(0, 110)
     ax.set_title("HAR Accuracy vs Sensor Corruption Level",
                  fontsize=FONT_TITLE, fontweight="bold", pad=10)
-    ax.legend(fontsize=FONT_TICK)
 
     plt.tight_layout()
     plt.savefig(save_path, dpi=FIG_DPI, bbox_inches="tight")
