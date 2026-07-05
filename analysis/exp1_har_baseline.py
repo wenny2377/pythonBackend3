@@ -62,7 +62,7 @@ def plot_confusion_matrix(docs: list, save_path: str, system_label: str = "Basel
     ax.set_xticklabels(all_labels, rotation=40, ha="right", fontsize=FONT_TICK)
     ax.set_yticklabels(gt_labels, fontsize=FONT_TICK)
     ax.set_xlabel("Predicted", fontsize=FONT_AXIS)
-    ax.set_ylabel("Ground Truth", fontsize=FONT_AXIS)
+    ax.set_ylabel("Actual", fontsize=FONT_AXIS)
     ax.set_title(
         f"HAR Confusion Matrix — {system_label}\n"
         f"Overall Accuracy: {acc:.1%}",

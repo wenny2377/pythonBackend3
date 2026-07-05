@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>MAMI Chat</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;700;800&display=swap');
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg:     #f5f6fa;
+  --panel:  #ffffff;
+  --border: #e2e5ee;
+  --accent: #4a7de8;
+  --orange: #f0a04b;
+  --green:  #3aaa6e;
+  --text:   #1a1d2e;
+  --muted:  #8b92a8;
+  --mom:    #d4487a;
+  --dad:    #4a7de8;
+}
+
+body {
+  font-family: 'DM Sans', system-ui, sans-serif;
+  background: var(--bg);
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ── Top bar ── */
+.top-bar {
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  padding: 16px 24px;
+  display: flex; align-items: center; gap: 16px;
+  flex-shrink: 0;
+}
+.top-logo { font-size: 22px; font-weight: 800; color: var(--accent); }
+.scene-badge {
+  font-size: 13px; font-weight: 700;
+  padding: 5px 14px; border-radius: 20px;
+  border: 1px solid; letter-spacing: 0.5px;
+  transition: all 0.4s; white-space: nowrap;
+}
+.scene-info { flex: 1; }
+.scene-title { font-size: 17px; font-weight: 700; color: var(--text); }
+.scene-desc  { font-size: 14px; color: var(--muted); margin-top: 3px; }
+.scene-steps { display: flex; gap: 6px; }
+.scene-step  { width: 32px; height: 5px; border-radius: 3px; background: var(--border); transition: background 0.3s; }
+.scene-step.done   { background: var(--green); }
+.scene-step.active { background: var(--accent); }
+
+/* ── Messages ── */
+.messages {
+  flex: 1; overflow-y: auto;
+  padding: 20px 20px 8px;
+  display: flex; flex-direction: column; gap: 14px;
+}
+.messages::-webkit-scrollbar { width: 3px; }
+.messages::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+.msg { max-width: 78%; font-size: 14px; line-height: 1.6; }
+.msg.bot  { align-self: flex-start; }
+.msg.user { align-self: flex-end; }
+
+.msg-header       { display: flex; align-items: center; gap: 7px; margin-bottom: 4px; }
+.msg-header.right { justify-content: flex-end; }
+
+.msg-name        { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
+.msg-name.mami   { color: var(--accent); }
+.msg-name.mom    { color: var(--mom); }
+.msg-name.dad    { color: var(--dad); }
+
+.msg-bubble { padding: 11px 15px; border-radius: 16px; }
+.msg.bot      .msg-bubble { background: #f0f2f8; color: var(--text); border-bottom-left-radius: 4px; }
+.msg.user.mom .msg-bubble { background: rgba(212,72,122,.10); color: var(--mom); border-bottom-right-radius: 4px; }
+.msg.user.dad .msg-bubble { background: rgba(74,125,232,.10); color: var(--dad); border-bottom-right-radius: 4px; }
+
+/* typing dots */
+.typing-dots span {
+  display: inline-block; width: 6px; height: 6px;
+  border-radius: 50%; background: var(--muted); margin: 0 2px;
+  animation: bounce .8s infinite;
+}
+.typing-dots span:nth-child(2) { animation-delay: .15s; }
+.typing-dots span:nth-child(3) { animation-delay: .30s; }
+@keyframes bounce { 0%,80%,100%{transform:translateY(0)} 40%{transform:translateY(-6px)} }
+
+.badge {
+  display: inline-block; padding: 2px 7px; border-radius: 4px;
+  font-size: 10px; font-weight: 700; text-transform: uppercase;
+  margin-left: 6px; vertical-align: middle;
+}
+.badge.proactive { background: rgba(240,160,75,.15);  color: var(--orange); }
+.badge.query     { background: rgba(58,170,110,.15);  color: var(--green); }
+.badge.need      { background: rgba(74,125,232,.15);  color: var(--accent); }
+.badge.pers      { background: rgba(212,72,122,.15);  color: var(--mom); }
+
+@keyframes msgIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.msg { animation: msgIn 0.3s ease both; }
+
+/* observe state */
+.observe-state {
+  flex: 1; display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  gap: 12px; color: var(--muted);
+}
+.observe-dot {
+  width: 10px; height: 10px; border-radius: 50%;
+  background: var(--green);
+  animation: pulse 2s ease-in-out infinite;
+}
+@keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.4;transform:scale(0.6)} }
+.observe-text { font-size: 13px; }
+</style>
+</head>
+<body>
+
+<div class="top-bar">
+  <div class="top-logo">MAMI</div>
+  <div class="scene-badge" id="scene-badge">Ready</div>
+  <div class="scene-info">
+    <div class="scene-title" id="scene-title">Mami is ready</div>
+    <div class="scene-desc"  id="scene-desc">Home AI Agent initialized</div>
+  </div>
+  <div class="scene-steps">
+    <div class="scene-step" id="st1"></div>
+    <div class="scene-step" id="st2"></div>
+    <div class="scene-step" id="st3"></div>
+    <div class="scene-step" id="st4"></div>
+    <div class="scene-step" id="st5"></div>
+  </div>
+</div>
+
+<div class="messages" id="messages">
+  <div class="observe-state" id="observe-state">
+    <div class="observe-dot"></div>
+    <div class="observe-text">Waiting for demo to start...</div>
+  </div>
+</div>
+
+<script>
+const BACKEND = 'http://localhost:5000'
+
+const SCENE_INFO = {
+  0: { badge:'Ready',    title:'Mami is ready',                       desc:'Home AI Agent initialized',                              color:'#8b92a8' },
+  1: { badge:'Scene 1',  title:'Behavior Observation',                desc:'Mami silently observes and learns daily routines',       color:'#3aaa6e' },
+  2: { badge:'Scene 2',  title:'Proactive Service',                   desc:'Mami acts before being asked based on learned behavior', color:'#f0a04b' },
+  3: { badge:'Scene 3',  title:'Personalized Response — Mom',         desc:'Mom calls Mami — response tailored to her preferences', color:'#d4487a' },
+  4: { badge:'Scene 4',  title:'Personalized Response — Dad',         desc:'Dad calls Mami — different answer for a different user', color:'#4a7de8' },
+  5: { badge:'Scene 5',  title:'Item Unavailable — Smart Suggestion', desc:'No cookie — Mami checks inventory',                     color:'#9b59b6' },
+}
+
+const SCENE_QUESTIONS = {
+  3: { user: 'User_Mom', question: 'Hey Mami, I am pretty tired' },
+  4: { user: 'User_Dad', question: 'Hey Mami, I am thirsty' },
+  5: { user: 'User_Dad', question: 'Hey Mami, is there any cookie?' },
+}
+
+let lastScene = 0
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)) }
+const scroll = () => { const m = document.getElementById('messages'); m.scrollTop = m.scrollHeight }
+
+// ── Banner ──────────────────────────────────────────────────────
+function updateBanner(scene) {
+  const info = SCENE_INFO[scene] || SCENE_INFO[0]
+  const badge = document.getElementById('scene-badge')
+  badge.textContent       = info.badge
+  badge.style.color       = info.color
+  badge.style.borderColor = info.color
+  badge.style.background  = info.color + '22'
+  document.getElementById('scene-title').textContent = info.title
+  document.getElementById('scene-desc').textContent  = info.desc
+  for (let i = 1; i <= 5; i++) {
+    const el = document.getElementById(`st${i}`)
+    el.className = 'scene-step'
+    if (i < scene)  el.classList.add('done')
+    if (i === scene) el.classList.add('active')
+  }
+}
+
+// ── Message helpers ─────────────────────────────────────────────
+function clearMessages() { document.getElementById('messages').innerHTML = '' }
+
+function showObserve(text) {
+  document.getElementById('messages').innerHTML = `
+    <div class="observe-state">
+      <div class="observe-dot"></div>
+      <div class="observe-text">${text}</div>
+    </div>`
+}
+
+function appendUserMsg(text, uid) {
+  const msgs = document.getElementById('messages')
+  const cls  = uid === 'User_Mom' ? 'mom' : 'dad'
+  const name = uid.replace('_', ' ')
+  const div  = document.createElement('div')
+  div.className = `msg user ${cls}`
+  div.innerHTML = `
+    <div class="msg-header right"><div class="msg-name ${cls}">${name}</div></div>
+    <div class="msg-bubble"><div class="msg-text">${text}</div></div>`
+  msgs.appendChild(div); scroll(); return div
+}
+
+function appendBotMsg(text) {
+  const msgs = document.getElementById('messages')
+  const div  = document.createElement('div')
+  div.className = 'msg bot'
+  div.innerHTML = `
+    <div class="msg-header"><div class="msg-name mami">Mami</div></div>
+    <div class="msg-bubble"><div class="msg-text">${text}</div></div>`
+  msgs.appendChild(div); scroll(); return div
+}
+
+function appendTyping() {
+  const msgs = document.getElementById('messages')
+  const div  = document.createElement('div')
+  div.className = 'msg bot'
+  div.innerHTML = `
+    <div class="msg-header"><div class="msg-name mami">Mami</div></div>
+    <div class="msg-bubble"><div class="typing-dots"><span></span><span></span><span></span></div></div>`
+  msgs.appendChild(div); scroll(); return div
+}
+
+async function typeText(el, text, speed = 28) {
+  const textEl = el.querySelector('.msg-text')
+  for (const char of text) { textEl.textContent += char; scroll(); await sleep(speed) }
+}
+
+// ── Backend helpers ─────────────────────────────────────────────
+async function postSpeaking(who) {
+  try { await fetch(`${BACKEND}/demo/speaking`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({who}) }) } catch(e) {}
+}
+async function postSceneDone() {
+  try { await fetch(`${BACKEND}/demo/scene_done`, { method:'POST' }) } catch(e) {}
+}
+// Wait for Unity animation by polling /demo/wait_scene_done
+// Unity calls /demo/scene_done when its animation finishes
+// HTML calls /demo/scene_done when chat step finishes — these are different steps
+// So we poll until scene_done flips back to true (Unity's signal that animation is done)
+async function waitUnityAnimation(timeoutMs = 20000) {
+  const start = Date.now()
+  while (Date.now() - start < timeoutMs) {
+    try {
+      const r = await fetch(`${BACKEND}/demo/wait_scene_done`)
+      const d = await r.json()
+      if (d.done) return
+    } catch(e) {}
+    await sleep(400)
+  }
+}
+
+// ── Stream MAMI response from backend ──────────────────────────
+async function streamMamiResponse(query, userId) {
+  console.log(`[MAMI] streamMamiResponse → userID="${userId}" query="${query}"`)
+  const typingEl = appendTyping()
+  let fullAnswer = '', intentType = '', isPersonalized = false, botEl = null
+
+  try {
+    const resp = await fetch(`${BACKEND}/interact/stream`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query, userID: userId, room: '' })
+    })
+    const reader = resp.body.getReader()
+    const dec    = new TextDecoder()
+
+    while (true) {
+      const { done, value } = await reader.read(); if (done) break
+      for (const line of dec.decode(value).split('\n')) {
+        if (!line.startsWith('data: ')) continue
+        try {
+          const ev = JSON.parse(line.slice(6))
+          if (ev.type === 'token') {
+            if (!botEl) { typingEl.remove(); botEl = appendBotMsg('') }
+            fullAnswer += ev.content
+            botEl.querySelector('.msg-text').textContent = fullAnswer
+            scroll()
+          }
+          if (ev.type === 'done') {
+            intentType     = ev.intent_type    || ''
+            isPersonalized = ev.is_personalized || false
+            if (botEl && intentType) {
+              const b = document.createElement('span')
+              b.className = `badge ${intentType}`; b.textContent = intentType
+              botEl.querySelector('.msg-bubble').appendChild(b)
+            }
+            if (botEl && isPersonalized) {
+              const pb = document.createElement('span')
+              pb.className = 'badge pers'; pb.textContent = 'personalized'
+              botEl.querySelector('.msg-bubble').appendChild(pb)
+            }
+          }
+        } catch(e) {}
+      }
+    }
+  } catch(e) {
+    typingEl?.remove(); appendBotMsg('...')
+  }
+  return fullAnswer
+}
+
+// ── Scene 2: Proactive ──────────────────────────────────────────
+// Flow:
+//   1. Poll proposal → MAMI types it out (speaking: mami)
+//   2. postSceneDone → Unity plays "Mom walking over" animation
+//   3. waitUnityAnimation → Unity done
+//   4. Mom says "Yes please." (speaking: user)
+//   5. postSceneDone → Unity plays "Mom accepting" animation
+//   6. waitUnityAnimation → Unity done
+//   7. Stream MAMI confirmation from backend (speaking: mami)
+//   8. postSceneDone → Unity plays "MAMI delivers" animation
+
+async function runScene2() {
+  clearMessages()
+
+  // 1. Poll proposal from backend
+  let proposal = null
+  const start = Date.now()
+  while (!proposal && Date.now() - start < 30000) {
+    try {
+      const r = await fetch(`${BACKEND}/service_proposal`)
+      if (r.ok) { const d = await r.json(); if (d.proposal_id && d.message) proposal = d }
+    } catch(e) {}
+    if (!proposal) await sleep(1000)
+  }
+  if (!proposal) proposal = { message: "Would you like something to drink?", proposal_id: null, item: "" }
+
+  // Step 1: MAMI says proposal
+  await sleep(600)
+  await postSpeaking('mami')
+  const botEl = appendBotMsg('')
+  await typeText(botEl, proposal.message)
+  const b = document.createElement('span')
+  b.className = 'badge proactive'; b.textContent = 'proactive'
+  botEl.querySelector('.msg-bubble').appendChild(b)
+
+  // Prime Mom's session to CONFIRMING so "Yes please." is handled correctly
+  try {
+    await fetch(`${BACKEND}/demo/prime_session`, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ user_id: 'User_Mom', item: proposal.item || '', need: 'drink' })
+    })
+  } catch(e) {}
+
+  // Signal Unity: MAMI finished → play Mom walking over animation
+  await postSceneDone()
+  await waitUnityAnimation()
+
+  // Step 2: Mom appears and says Yes please
+  await sleep(500)
+  await postSpeaking('user')
+  appendUserMsg('Yes please.', 'User_Mom')
+  await sleep(800)
+  await postSpeaking('none')
+
+  // Record acceptance in backend
+  if (proposal.proposal_id) {
+    try {
+      await fetch(`${BACKEND}/service_response`, {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ proposal_id: proposal.proposal_id, user_id: 'User_Mom', result: 'accepted' })
+      })
+    } catch(e) {}
+  }
+
+  // Signal Unity: Mom accepted → play MAMI fetching animation
+  await postSceneDone()
+  await waitUnityAnimation()
+
+  // Step 3: MAMI streams real confirmation from backend
+  // Session is now CONFIRMING so backend handles "Yes please." correctly
+  await sleep(400)
+  await postSpeaking('mami')
+  await streamMamiResponse('Yes please.', 'User_Mom')
+
+  // Done — let Unity know to play delivery animation
+  await postSpeaking('none')
+  await postSceneDone()
+}
+
+// ── Scene 3/4/5: Reactive ───────────────────────────────────────
+// Flow:
+//   1. Show user question (speaking: user)
+//   2. postSceneDone → Unity plays "user asking" animation
+//   3. waitUnityAnimation → Unity done
+//   4. Stream MAMI response (speaking: mami)
+//   5. postSceneDone → Unity plays MAMI action animation
+
+async function runQuestionScene(scene) {
+  const script = SCENE_QUESTIONS[scene]; if (!script) return
+  clearMessages()
+
+  await sleep(600)
+
+  // Step 1: Show user question first
+  await postSpeaking('user')
+  appendUserMsg(script.question, script.user)
+  await sleep(1000) // give time for bubble to appear before MAMI responds
+  await postSpeaking('none')
+
+  // Step 2: MAMI streams response
+  await postSpeaking('mami')
+  await streamMamiResponse(script.question, script.user)
+
+  // Step 3: Notify Unity that MAMI finished answering → play action animation
+  await postSpeaking('none')
+  await postSceneDone()
+}
+
+// ── Scene dispatch ──────────────────────────────────────────────
+async function handleScene(scene) {
+  updateBanner(scene)
+  if (scene === 1) {
+    showObserve('Mami is observing daily routines...')
+  } else if (scene === 2) {
+    await runScene2()
+  } else if (SCENE_QUESTIONS[scene]) {
+    await runQuestionScene(scene)
+  }
+}
+
+// ── Poll backend ────────────────────────────────────────────────
+async function pollScene() {
+  try {
+    const r = await fetch(`${BACKEND}/demo/current_scene`); if (!r.ok) return
+    const d = await r.json()
+    const scene = d.current_scene || 0
+    if (scene !== lastScene && scene > 0) {
+      lastScene = scene
+      await handleScene(scene)
+    }
+  } catch(e) {}
+}
+
+setInterval(pollScene, 2000)
+</script>
+</body>
+</html>

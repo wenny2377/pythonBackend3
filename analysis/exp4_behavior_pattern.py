@@ -219,6 +219,125 @@ def _plot_action_counts_by_group(get_value, mode: str, save_path: str, title: st
     print(f"[exp4] Saved: {save_path}")
 
 
+def plot_actual_vs_inferred_stacked(hourly: dict, actual_counts: dict, save_path: str,
+                                     highlight_action: str = None):
+    """
+    Two vertically-stacked subplots sharing the same x-axis (action order)
+    and the same y-axis scale, so bar heights for the same action can be
+    compared directly by scanning up/down.
+
+    Top panel    = Actual (Unity-scheduled) counts
+    Bottom panel = System-inferred (HAR-predicted) counts
+
+    If `highlight_action` is given (e.g. "Eating"), a plain red box is
+    drawn around that action's bars in both panels — no text, no
+    cross-panel connector line, just a visual anchor point for the
+    presenter to talk through out loud. Leave as None for the clean,
+    unannotated thesis version.
+    """
+    shared   = sorted(SCHEDULED_FOR_USER["User_Mom"] & SCHEDULED_FOR_USER["User_Dad"])
+    mom_only = sorted(SCHEDULED_FOR_USER["User_Mom"] - SCHEDULED_FOR_USER["User_Dad"])
+    dad_only = sorted(SCHEDULED_FOR_USER["User_Dad"] - SCHEDULED_FOR_USER["User_Mom"])
+    action_order = mom_only + shared + dad_only
+    x = np.arange(len(action_order))
+    w = 0.35
+
+    def get_actual(uid, a):
+        return actual_counts[uid].get(a, 0)
+
+    def get_inferred(uid, a):
+        return sum(hourly[uid].get(a, {}).values())
+
+    mom_actual   = [get_actual("User_Mom", a) for a in action_order]
+    dad_actual   = [get_actual("User_Dad", a) for a in action_order]
+    mom_inferred = [get_inferred("User_Mom", a) for a in action_order]
+    dad_inferred = [get_inferred("User_Dad", a) for a in action_order]
+
+    # Shared y-limit across both panels so heights are directly comparable.
+    ymax = max(mom_actual + dad_actual + mom_inferred + dad_inferred, default=1)
+    ymax = max(ymax, 1) * 1.30
+
+    n_shared = len(shared)
+    n_mom    = len(mom_only)
+    n_dad    = len(dad_only)
+    boundaries = []
+    if n_mom and (n_shared or n_dad):
+        boundaries.append(n_mom - 0.5)
+    if n_dad and (n_shared or n_mom):
+        boundaries.append(n_mom + n_shared - 0.5)
+    group_ranges = []
+    if n_mom:
+        group_ranges.append((0, n_mom, C["mom"], f"Mom-only (n={n_mom})"))
+    if n_shared:
+        group_ranges.append((n_mom, n_mom + n_shared, "#888888", f"Shared (n={n_shared})"))
+    if n_dad:
+        group_ranges.append((n_mom + n_shared, n_mom + n_shared + n_dad, C["dad"], f"Dad-only (n={n_dad})"))
+
+    fig, (ax_top, ax_bot) = plt.subplots(
+        2, 1, figsize=(14, 10), sharex=True,
+        gridspec_kw={"hspace": 0.18},
+    )
+
+    def _draw_panel(ax, mom_vals, dad_vals, panel_label):
+        bars_m = ax.bar(x - w/2, mom_vals, w, label="Mom",
+                         color=C["mom"], alpha=0.85, edgecolor="white", zorder=3)
+        bars_d = ax.bar(x + w/2, dad_vals, w, label="Dad",
+                         color=C["dad"], alpha=0.85, edgecolor="white", zorder=3)
+        for bar, val in zip(bars_m, mom_vals):
+            if val > 0:
+                ax.text(bar.get_x() + bar.get_width()/2, val + ymax*0.015, str(val),
+                        ha="center", va="bottom", fontsize=FONT_TICK - 1, color="#333")
+        for bar, val in zip(bars_d, dad_vals):
+            if val > 0:
+                ax.text(bar.get_x() + bar.get_width()/2, val + ymax*0.015, str(val),
+                        ha="center", va="bottom", fontsize=FONT_TICK - 1, color="#333")
+
+        for b in boundaries:
+            ax.axvline(b, color="#999", linestyle="--", lw=1.2, alpha=0.7, zorder=2)
+        for start, end, color, label in group_ranges:
+            ax.axvspan(start - 0.5, end - 0.5, alpha=0.06, color=color, zorder=1)
+
+        if highlight_action and highlight_action in action_order:
+            hi = action_order.index(highlight_action)
+            ax.add_patch(plt.Rectangle(
+                (hi - 0.5, 0), 1.0, ymax,
+                linewidth=2.2, edgecolor="red", facecolor="none", zorder=5))
+
+        ax.set_ylim(0, ymax)
+        ax.set_ylabel(panel_label, fontsize=FONT_AXIS)
+        ax.grid(axis="y", linestyle="--", alpha=0.4, zorder=0)
+
+    _draw_panel(ax_top, mom_actual, dad_actual, "Actual\n(scheduled count)")
+    _draw_panel(ax_bot, mom_inferred, dad_inferred, "System-Inferred\n(predicted count)")
+
+    # Group labels only on the top panel (shared across both).
+    for start, end, color, label in group_ranges:
+        cx = (start + end - 1) / 2
+        if end - start == 1:
+            cx += 0.3
+        ax_top.text(cx, ymax * 1.05, label, ha="center", va="bottom",
+                    fontsize=FONT_TICK - 1, fontweight="bold", color="#444")
+
+    ax_bot.set_xticks(x)
+    ax_bot.set_xticklabels(action_order, rotation=30, ha="right", fontsize=FONT_TICK)
+    ax_top.legend(fontsize=FONT_TICK, loc="upper right")
+
+    fig.suptitle(
+        "Actual vs. System-Inferred Action Frequency per User",
+        fontsize=FONT_TITLE, fontweight="bold", y=0.98)
+
+    caption_lines = [
+        f"Shared: {', '.join(shared)}   |   "
+        f"Mom-only: {', '.join(mom_only) if mom_only else '(none)'}   |   "
+        f"Dad-only: {', '.join(dad_only) if dad_only else '(none)'}",
+    ]
+    ax_bot.set_xlabel("\n".join(caption_lines), fontsize=FONT_TICK - 2, color="#666", labelpad=12)
+
+    plt.savefig(save_path, dpi=FIG_DPI, bbox_inches="tight")
+    plt.close()
+    print(f"[exp4] Saved: {save_path}")
+
+
 def plot_shared_vs_exclusive_actions(hourly: dict, save_path: str):
     """System-inferred (observed) action counts per user. May include a
     small number of misclassified 'unexpected' values (highlighted red)."""
@@ -228,7 +347,7 @@ def plot_shared_vs_exclusive_actions(hourly: dict, save_path: str):
     _plot_action_counts_by_group(
         get_value, mode="observed", save_path=save_path,
         title="BPA Behavioral Differentiation: System-Inferred Action Counts per User",
-        ylabel="System-inferred count (System A, 189 episodes)",
+        ylabel="System-inferred count",
     )
 
 
@@ -242,7 +361,7 @@ def plot_actual_scheduled_actions(actual_counts: dict, save_path: str):
     _plot_action_counts_by_group(
         get_value, mode="actual", save_path=save_path,
         title="BPA Behavioral Differentiation: Actual (Scheduled) Action Counts per User",
-        ylabel="Actual scheduled count (System A, 189 episodes)",
+        ylabel="Actual scheduled count",
     )
 
 
@@ -311,21 +430,24 @@ def main():
 
     print(f"[exp4] {total} episodes loaded")
 
+    actual_counts = load_actual_scheduled_counts(db)
+
+    # --- For the thesis: two separate, unannotated, same-style charts ---
     plot_shared_vs_exclusive_actions(
         hourly,
         os.path.join(RESULTS_DIR, "exp4_shared_vs_exclusive.png"),
     )
-
-    # NEW: identical-layout "twin" chart using Actual (Unity-scheduled)
-    # counts instead of system-inferred counts, for direct side-by-side
-    # comparison — same grouping, same axes, same order, only the data
-    # source differs. Together the two charts support: (1) the system's
-    # learned pattern tracks real behavior despite HAR errors, and
-    # (2) Mom's and Dad's profiles remain clearly distinguishable.
-    actual_counts = load_actual_scheduled_counts(db)
     plot_actual_scheduled_actions(
         actual_counts,
         os.path.join(RESULTS_DIR, "exp4_actual_scheduled.png"),
+    )
+
+    # --- For the slides: one stacked figure with a plain red box around
+    #     "Eating" (no text) — talk through the point live in person. ---
+    plot_actual_vs_inferred_stacked(
+        hourly, actual_counts,
+        os.path.join(RESULTS_DIR, "exp4_stacked_eating_highlight.png"),
+        highlight_action="Eating",
     )
 
     exp1_docs = load_docs(db, COL_SEMANTIC)
