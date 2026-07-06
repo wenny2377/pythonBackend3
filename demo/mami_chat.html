@@ -33,20 +33,20 @@ body {
 .top-bar {
   background: var(--panel);
   border-bottom: 1px solid var(--border);
-  padding: 16px 24px;
+  padding: 20px 24px;
   display: flex; align-items: center; gap: 16px;
   flex-shrink: 0;
 }
-.top-logo { font-size: 22px; font-weight: 800; color: var(--accent); }
+.top-logo { font-size: 26px; font-weight: 800; color: var(--accent); }
 .scene-badge {
-  font-size: 13px; font-weight: 700;
-  padding: 5px 14px; border-radius: 20px;
+  font-size: 15px; font-weight: 700;
+  padding: 6px 16px; border-radius: 20px;
   border: 1px solid; letter-spacing: 0.5px;
   transition: all 0.4s; white-space: nowrap;
 }
 .scene-info { flex: 1; }
-.scene-title { font-size: 17px; font-weight: 700; color: var(--text); }
-.scene-desc  { font-size: 14px; color: var(--muted); margin-top: 3px; }
+.scene-title { font-size: 22px; font-weight: 700; color: var(--text); }
+.scene-desc  { font-size: 16px; color: var(--muted); margin-top: 3px; }
 .scene-steps { display: flex; gap: 6px; }
 .scene-step  { width: 32px; height: 5px; border-radius: 3px; background: var(--border); transition: background 0.3s; }
 .scene-step.done   { background: var(--green); }
@@ -61,19 +61,22 @@ body {
 .messages::-webkit-scrollbar { width: 3px; }
 .messages::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 
-.msg { max-width: 78%; font-size: 14px; line-height: 1.6; }
+/* 對話字體放大：14px -> 19px，並加大行高方便閱讀 */
+.msg { max-width: 78%; font-size: 19px; line-height: 1.7; }
 .msg.bot  { align-self: flex-start; }
 .msg.user { align-self: flex-end; }
 
 .msg-header       { display: flex; align-items: center; gap: 7px; margin-bottom: 4px; }
 .msg-header.right { justify-content: flex-end; }
 
-.msg-name        { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
+/* 名稱字體也稍微放大 */
+.msg-name        { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
 .msg-name.mami   { color: var(--accent); }
 .msg-name.mom    { color: var(--mom); }
 .msg-name.dad    { color: var(--dad); }
 
-.msg-bubble { padding: 11px 15px; border-radius: 16px; }
+/* 對話泡泡加大內距以配合更大的字 */
+.msg-bubble { padding: 14px 18px; border-radius: 18px; }
 .msg.bot      .msg-bubble { background: #f0f2f8; color: var(--text); border-bottom-left-radius: 4px; }
 .msg.user.mom .msg-bubble { background: rgba(212,72,122,.10); color: var(--mom); border-bottom-right-radius: 4px; }
 .msg.user.dad .msg-bubble { background: rgba(74,125,232,.10); color: var(--dad); border-bottom-right-radius: 4px; }
