@@ -33,13 +33,6 @@ class Config:
 
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
-    FAISS_INDEX_PATH       = "robot_memory.index"
-    FAISS_META_PATH        = "robot_memory_meta.json"
-    DYNAMIC_INDEX_PATH     = "dynamic_memory.index"
-    DYNAMIC_META_PATH      = "dynamic_memory_meta.json"
-    SKILL_CHUNK_INDEX_PATH = "skill_chunks.index"
-    SKILL_CHUNK_META_PATH  = "skill_chunks_meta.json"
-
     LLM_TEMPERATURE = 0.3
     LLM_MAX_TOKENS  = 500
     LLM_TIMEOUT     = 60
@@ -49,10 +42,6 @@ class Config:
 
     SNAPSHOT_TTL_HOURS = 2
     SNAPSHOT_MAX_ITEMS = 30
-
-    HABIT_DECAY_FACTOR   = 0.95
-    HABIT_MIN_WEIGHT     = 1.0
-    OBSERVATION_TTL_DAYS = 14
 
     OBJECT_CONFUSION_ENABLED = False
 
@@ -75,21 +64,6 @@ class Config:
     MAX_ZONE_SEARCH      = 5.0
     SCENE_RETRY_INTERVAL = 5.0
     SCENE_RETRY_MAX      = 60
-
-    ENTROPY_HIGH_THRESHOLD   = 1.2
-    ENTROPY_LOW_THRESHOLD    = 0.4
-    ENTROPY_VLM_WEIGHT_HIGH  = 0.10
-    ENTROPY_VLM_WEIGHT_LOW   = 0.30
-
-    SAYCAN_ENV_FALLBACK   = 0.30
-    SAYCAN_MIN_GATE_SCORE = 0.05
-
-    MANIFOLD_MIN_TRAIN_SAMPLE = 20
-    MANIFOLD_AUGMENT_FACTOR   = 100
-    MANIFOLD_RETRAIN_EVERY    = 20
-    MANIFOLD_TIME_NOISE_STD   = 0.5 / 24
-    MANIFOLD_POS_NOISE_STD    = 0.05
-    MANIFOLD_MIN_CONFIDENCE   = 0.60
 
     DEFINITIONS_YAML = "config/definitions.yaml"
     OBJECTS_YAML     = "config/objects.yaml"
