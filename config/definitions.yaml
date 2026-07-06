@@ -41,12 +41,6 @@ room_impossible:
     - "Watching"
     - "Typing"
 
-strong_held_items:
-  broom:   "Cleaning"
-  mop:     "Cleaning"
-  pan:     "Cooking"
-  spatula: "Cooking"
-
 affordance_descriptions:
   Eating:         "dining table or chair where person eats food with fork spoon or chopsticks"
   Drinking:       "sink or table where person stands and drinks water juice or beverage from cup or bottle"

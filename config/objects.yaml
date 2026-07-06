@@ -35,17 +35,6 @@ static_fixtures:
   - "television"
   - "monitor"
 
-high_affordance_furniture:
-  - "tv"
-  - "television"
-  - "monitor"
-  - "stove"
-  - "oven"
-  - "refrigerator"
-  - "fridge"
-  - "keyboard"
-  - "cabinet"
-
 item_to_action:
   broom:    "Cleaning"
   mop:      "Cleaning"
@@ -122,6 +111,10 @@ object_vocab:
   - "plate"
   - "apple"
   - "banana"
+
+# 下方兩個區塊（coco_objects、objects）在目前檢視過的
+# perception_engine.py / scene_engine.py / scene_graph.py 中
+# 未發現被讀取或呼叫，用途尚待確認，暫時保留不刪。
 
 coco_objects:
   - "person"
