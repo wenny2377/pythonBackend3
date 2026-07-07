@@ -82,7 +82,7 @@ def plot_accuracy_drop(results: dict, save_path: str):
     ax.set_xticklabels(tick_labels, fontsize=XTICK_FONT)
     ax.set_ylabel("Accuracy (%)", fontsize=FONT_AXIS)
     ax.set_ylim(0, 110)
-    ax.set_title("HAR Accuracy vs Sensor Corruption Level",
+    ax.set_title("HAR Accuracy vs. Corruption Level",
                  fontsize=FONT_TITLE, fontweight="bold", pad=10)
 
     plt.tight_layout()
