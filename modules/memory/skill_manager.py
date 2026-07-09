@@ -10,7 +10,6 @@ logger = logging.getLogger(__name__)
 
 LLM_TIMEOUT = Config.LLM_TIMEOUT
 LLM_TEMP    = Config.LLM_TEMPERATURE
-STALE_DAYS  = 30
 
 MAX_SKILL_LEN = 2500
 MAX_BULLETS   = 8
@@ -43,12 +42,6 @@ RULES:
 3. Each section: max 8 bullets. Start each bullet with "- " (hyphen space). Do NOT use * or **.
 4. If no data for a section, leave the section header only.
 5. Output ONLY the filled Markdown. No explanations. No bold text."""
-
-UPDATE_SYSTEM = """You are a skill profile updater for a home service robot.
-Update ONLY the parts that have EXPLICIT new information from the conversation.
-Keep the exact 4-section structure. Max 8 bullets per section.
-Start each bullet with "- " (hyphen space). Do NOT use * or **.
-Output ONLY the complete updated Markdown."""
 
 RELEVANCE_SYSTEM = (
     'Relevance judge for home robot. '
@@ -244,6 +237,19 @@ def _pattern_to_bullets(pattern: dict) -> tuple:
 
 
 class SkillManager:
+    """
+    Manages each user's personalized SKILL.md profile.
+
+    NOTE (refactor, see thesis discussion): two methods that previously
+    existed here — a nightly bullet-deduplication refactor pass and a
+    staleness check that flagged profiles unused for 30+ days — have been
+    removed. Neither was ever wired to a scheduler or API endpoint in this
+    Proof-of-Concept system, so they were dead code with no effect on any
+    experiment or reported result. If periodic profile consolidation is
+    revisited in future work, it should be reintroduced together with an
+    explicit trigger (e.g. a cron job or a scheduled Flask job) so the
+    thesis can accurately describe when and how it runs.
+    """
 
     def __init__(self, db_client=None, ollama_url="http://localhost:11434",
                  model_name="llama3.1:8b", db_name="robot_rag_db"):
@@ -315,10 +321,7 @@ class SkillManager:
         doc = self.db.user_skills.find_one({"user_id": user_id})
         if not doc:
             return None
-        skill = doc["skill_md"]
-        if doc.get("is_stale", False):
-            skill = f"> Warning: skill profile not updated for over {STALE_DAYS} days.\n\n" + skill
-        return skill
+        return doc["skill_md"]
 
     def get_version(self, user_id: str) -> int:
         doc = self.db.user_skills.find_one({"user_id": user_id})
@@ -414,41 +417,6 @@ class SkillManager:
             return updated
         return current
 
-    def check_stale(self, user_id: str):
-        doc = self.db.user_skills.find_one({"user_id": user_id})
-        if not doc:
-            return
-        last_used = doc.get("last_used")
-        is_stale  = bool(
-            last_used
-            and isinstance(last_used, datetime)
-            and (datetime.utcnow() - last_used.replace(tzinfo=None)).days > STALE_DAYS
-        )
-        self.db.user_skills.update_one(
-            {"user_id": user_id},
-            {"$set": {"is_stale": is_stale}},
-        )
-
-    def nightly_refactor(self, user_id: str) -> str:
-        doc = self.db.user_skills.find_one({"user_id": user_id})
-        if not doc:
-            return ""
-        current    = doc["skill_md"]
-        refactored = _call_llm(
-            self.ollama_url, self.model_name, UPDATE_SYSTEM,
-            f"Refactor this SKILL.md:\n{current}\n\n"
-            f"Merge duplicate or similar rules. Remove contradictions (keep newer).\n"
-            f"Max {MAX_BULLETS} bullets per section. Keep exact 4-section structure. "
-            f"Output Markdown only.",
-        )
-        if refactored:
-            refactored = _normalize_bullets(refactored)
-            valid, _   = validate_skill(refactored)
-            if valid:
-                self._save(user_id, refactored)
-                return refactored
-        return current
-
     def _save(self, user_id: str, skill_md: str):
         skill_md = _normalize_bullets(skill_md)
         version  = self.get_version(user_id) + 1
@@ -459,7 +427,6 @@ class SkillManager:
                 "version":    version,
                 "updated_at": datetime.utcnow(),
                 "last_used":  datetime.utcnow(),
-                "is_stale":   False,
             }},
             upsert=True,
         )
