@@ -1,0 +1,63 @@
+<mxfile host="app.diagrams.net">
+  <diagram id="fig34symbolic" name="Figure 3.4 - 2-Step Lookahead (Symbolic)">
+    <mxGraphModel dx="800" dy="600" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <mxCell id="cur" value="Current action&lt;div&gt;&lt;i&gt;&lt;font style=&quot;font-size: 15px; font-weight: normal;&quot;&gt;e.g., Eating&lt;/font&gt;&lt;/i&gt;&lt;/div&gt;"
+                style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#2f5597;fontColor=#000000;fontSize=18;fontStyle=1;"
+                parent="1" vertex="1">
+          <mxGeometry x="180" y="40" width="320" height="70" as="geometry" />
+        </mxCell>
+
+        <mxCell id="s1" value="Step 1: predict next action&lt;div&gt;&lt;font style=&quot;font-size: 14px;&quot;&gt;&lt;i&gt;transition probability P&lt;sub&gt;1&lt;/sub&gt;&lt;/i&gt;&lt;/font&gt;&lt;/div&gt;"
+                style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#2f5597;fontColor=#000000;fontSize=17;"
+                parent="1" vertex="1">
+          <mxGeometry x="180" y="150" width="320" height="70" as="geometry" />
+        </mxCell>
+
+        <mxCell id="s2" value="Step 2: predict action following Step 1&lt;div&gt;&lt;font style=&quot;font-size: 14px;&quot;&gt;&lt;i&gt;transition probability P&lt;sub&gt;2&lt;/sub&gt;&lt;/i&gt;&lt;/font&gt;&lt;/div&gt;"
+                style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#2f5597;fontColor=#000000;fontSize=17;"
+                parent="1" vertex="1">
+          <mxGeometry x="180" y="260" width="320" height="70" as="geometry" />
+        </mxCell>
+
+        <mxCell id="need" value="Infer service need&lt;div&gt;&lt;font style=&quot;font-size: 13px;&quot;&gt;&lt;i&gt;confidence = P&lt;sub&gt;1&lt;/sub&gt; &amp;#215; P&lt;sub&gt;2&lt;/sub&gt;  (Eq. 3.1)&lt;/i&gt;&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;font style=&quot;font-size: 13px;&quot;&gt;&lt;i&gt;confidence &#8805; threshold&lt;/i&gt;&lt;/font&gt;&lt;/div&gt;"
+                style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#bf8f00;fontColor=#000000;fontSize=17;"
+                parent="1" vertex="1">
+          <mxGeometry x="180" y="370" width="320" height="90" as="geometry" />
+        </mxCell>
+
+        <mxCell id="obj" value="Check object availability&lt;div&gt;&lt;i&gt;&lt;font style=&quot;font-size: 14px;&quot;&gt;query database&lt;/font&gt;&lt;/i&gt;&lt;/div&gt;"
+                style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#375623;fontColor=#000000;fontSize=17;"
+                parent="1" vertex="1">
+          <mxGeometry x="180" y="500" width="320" height="70" as="geometry" />
+        </mxCell>
+
+        <mxCell id="proposal" value="Proactive proposal"
+                style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#7030a0;fontColor=#000000;fontSize=17;fontStyle=1;"
+                parent="1" vertex="1">
+          <mxGeometry x="180" y="610" width="320" height="70" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e1" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#2f5597;strokeWidth=3;" parent="1" source="cur" target="s1" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e2" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#2f5597;strokeWidth=3;" parent="1" source="s1" target="s2" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e3" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#bf8f00;strokeWidth=3;" parent="1" source="s2" target="need" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e4" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#375623;strokeWidth=3;" parent="1" source="need" target="obj" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e5" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#7030a0;strokeWidth=3;" parent="1" source="obj" target="proposal" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
