@@ -169,7 +169,7 @@ def main():
     acc_a, correct_a, total_a = plot_confusion_matrix(
         docs_a,
         os.path.join(RESULTS_DIR, "exp1_confusion_matrix_semantic.png"),
-        system_label="Semantic System (Skeleton+Object+Spatiotemporal)")
+        system_label="Semantic System (Skeleton+Object+Spatial)")
 
     # Confusion matrix — VLM System
     if docs_b:
