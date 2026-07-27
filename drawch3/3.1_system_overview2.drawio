@@ -1,0 +1,110 @@
+<mxfile host="65bd71144e">
+    <diagram id="diagram1" name="Page-1">
+        <mxGraphModel dx="1451" dy="967" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1654" pageHeight="1169" math="0" shadow="0">
+            <root>
+                <mxCell id="0"/>
+                <mxCell id="1" parent="0"/>
+                <mxCell id="hw_band" value="&lt;h4&gt;&lt;b&gt;&lt;font style=&quot;color: rgb(102, 102, 102);&quot;&gt;Hardware&lt;/font&gt;&lt;/b&gt;&lt;br&gt;&lt;br&gt;&lt;/h4&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f2f2f2;strokeColor=#666666;fontColor=#666666;fontSize=22;verticalAlign=top;align=left;spacingLeft=14;spacingTop=10;" parent="1" vertex="1">
+                    <mxGeometry x="10" y="30" width="1580" height="140" as="geometry"/>
+                </mxCell>
+                <mxCell id="hw2" value="Local Host&lt;br&gt;&lt;span style=&quot;font-weight: normal;&quot;&gt;&lt;font style=&quot;font-size: 15px;&quot;&gt;&lt;i&gt;RTX 2080 GPU, MongoDB, Ollama&lt;/i&gt;&lt;/font&gt;&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;dashed=1;fillColor=#ffffff;strokeColor=#666666;fontColor=#666666;fontSize=17;fontStyle=0;" parent="1" vertex="1">
+                    <mxGeometry x="615" y="75" width="420" height="70" as="geometry"/>
+                </mxCell>
+                <mxCell id="p_band" value="&lt;h4&gt;&lt;font&gt;&lt;b style=&quot;&quot;&gt;&lt;font style=&quot;color: rgb(0, 0, 0);&quot;&gt;Perception Layer&lt;/font&gt;&lt;/b&gt;&lt;br&gt;&lt;/font&gt;&lt;br&gt;&lt;/h4&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#2f5597;fontColor=#2f5597;fontSize=22;verticalAlign=top;align=left;spacingLeft=14;spacingTop=10;" parent="1" vertex="1">
+                    <mxGeometry x="10" y="200" width="1580" height="220" as="geometry"/>
+                </mxCell>
+                <mxCell id="p_cam" value="Virtual Camera Nodes (Unity)&lt;br&gt;&lt;span style=&quot;font-weight: normal;&quot;&gt;&lt;font style=&quot;font-size: 15px;&quot;&gt;&lt;i&gt;12 nodes, 3 rooms&amp;nbsp;&lt;/i&gt;&lt;/font&gt;&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#2f5597;fontColor=#000000;fontSize=17;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="290" y="230" width="350" height="70" as="geometry"/>
+                </mxCell>
+                <mxCell id="p_vlm" value="VLM System&lt;br&gt;&lt;span style=&quot;font-weight: normal;&quot;&gt;&lt;font style=&quot;font-size: 15px;&quot;&gt;&lt;i&gt;comparison group only&lt;/i&gt;&lt;/font&gt;&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;dashed=1;fillColor=#f8cecc;strokeColor=#b85450;fontColor=#b85450;fontSize=17;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="780" y="230" width="350" height="70" as="geometry"/>
+                </mxCell>
+                <mxCell id="p_gt" value="Unity ground-truth state&lt;br&gt;&lt;span style=&quot;font-weight: normal;&quot;&gt;&lt;font style=&quot;font-size: 15px;&quot;&gt;skeleton, object events, position&lt;/font&gt;&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#2f5597;fontColor=#000000;fontSize=17;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="290" y="335" width="350" height="70" as="geometry"/>
+                </mxCell>
+                <mxCell id="p_feat" value="Skeleton + Object + Spatial features" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#2f5597;fontColor=#000000;fontSize=18;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="670" y="335" width="350" height="70" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2" value="LLM Reasoning" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#375623;fontColor=#000000;fontSize=20;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="1060" y="335" width="210" height="70" as="geometry"/>
+                </mxCell>
+                <mxCell id="p3" value="Inferred Activity" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#375623;fontColor=#000000;fontSize=20;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="1310" y="335" width="210" height="70" as="geometry"/>
+                </mxCell>
+                <mxCell id="e_cam_vlm" value="rendered frames" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#b85450;strokeWidth=2;dashed=1;fontColor=#b85450;fontSize=14;" parent="1" source="p_cam" target="p_vlm" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e_cam_gt" value="triggers capture timing" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#666666;strokeWidth=1;dashed=1;fontColor=#666666;fontSize=14;" parent="1" source="p_cam" target="p_gt" edge="1">
+                    <mxGeometry x="0.1429" y="85" relative="1" as="geometry">
+                        <mxPoint as="offset"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="e_gt_feat" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#2f5597;strokeWidth=3;" parent="1" source="p_gt" target="p_feat" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e_feat_llm" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#2f5597;strokeWidth=3;" parent="1" source="p_feat" target="p2" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e_llm_act" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#375623;strokeWidth=3;" parent="1" source="p2" target="p3" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="l_band" value="&lt;h4&gt;&lt;b&gt;&lt;font style=&quot;color: rgb(0, 0, 0);&quot;&gt;Learning Layer&lt;/font&gt;&lt;/b&gt;&lt;/h4&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#375623;fontColor=#375623;fontSize=22;verticalAlign=top;align=left;spacingLeft=14;spacingTop=10;" parent="1" vertex="1">
+                    <mxGeometry x="10" y="450" width="1580" height="140" as="geometry"/>
+                </mxCell>
+                <mxCell id="l1" value="Inferred Activity" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#375623;fontColor=#000000;fontSize=22;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="280" y="490" width="310" height="80" as="geometry"/>
+                </mxCell>
+                <mxCell id="l2" value="Behavioral Pattern Accumulation&lt;br&gt;&lt;i style=&quot;font-weight: normal;&quot;&gt;(BPA)&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#375623;fontColor=#000000;fontSize=22;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="680" y="490" width="430" height="80" as="geometry"/>
+                </mxCell>
+                <mxCell id="l3" value="&lt;b&gt;&lt;font style=&quot;color: rgb(0, 0, 0);&quot;&gt;SKILL.md&lt;/font&gt;&lt;/b&gt;&lt;div&gt;&lt;span style=&quot;font-weight: normal;&quot;&gt;personalized rules&lt;/span&gt;&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#7030a0;fontColor=#000000;fontSize=22;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="1220" y="490" width="300" height="80" as="geometry"/>
+                </mxCell>
+                <mxCell id="el1" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#375623;strokeWidth=3;" parent="1" source="l1" target="l2" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="el2" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#7030a0;strokeWidth=3;" parent="1" source="l2" target="l3" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="s_band" value="&lt;h4&gt;&lt;font style=&quot;color: rgb(0, 0, 0);&quot;&gt;&lt;b&gt;&lt;font style=&quot;color: rgb(0, 0, 0);&quot;&gt;Service Layer&lt;/font&gt;&lt;/b&gt;&lt;br&gt;&lt;i style=&quot;font-weight: normal;&quot;&gt;proactive and reactive&lt;/i&gt;&lt;/font&gt;&lt;/h4&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#bf8f00;fontColor=#bf8f00;fontSize=22;verticalAlign=top;align=left;spacingLeft=14;spacingTop=10;" parent="1" vertex="1">
+                    <mxGeometry x="10" y="620" width="1580" height="140" as="geometry"/>
+                </mxCell>
+                <mxCell id="s1" value="2-step lookahead&lt;br&gt;&lt;i&gt;&lt;font style=&quot;font-size: 19px; font-weight: normal;&quot;&gt;predict activity, propose service&lt;/font&gt;&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#bf8f00;fontColor=#000000;fontSize=22;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="280" y="655" width="310" height="80" as="geometry"/>
+                </mxCell>
+                <mxCell id="s2" value="Proactive proposal" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#bf8f00;fontColor=#000000;fontSize=22;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="680" y="655" width="280" height="80" as="geometry"/>
+                </mxCell>
+                <mxCell id="s3" value="User input" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#bf8f00;fontColor=#000000;fontSize=22;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="990" y="655" width="240" height="80" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4" value="Personalized response" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#bf8f00;fontColor=#000000;fontSize=22;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="1290" y="655" width="230" height="80" as="geometry"/>
+                </mxCell>
+                <mxCell id="es1" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#bf8f00;strokeWidth=3;" parent="1" source="s1" target="s2" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="es2" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#bf8f00;strokeWidth=3;" parent="1" source="s3" target="s4" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="kb" value="Shared knowledge base&lt;br&gt;SKILL.md ↔&amp;nbsp;Environmental Context&lt;br&gt;&lt;i style=&quot;font-weight: normal;&quot;&gt;furniture layout, object locations (updated every 5s)&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#7030a0;fontColor=#000000;fontSize=20;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="10" y="795" width="1580" height="90" as="geometry"/>
+                </mxCell>
+                <mxCell id="ek1" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#7030a0;strokeWidth=2;dashed=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="l3" target="kb" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="1610" y="530"/>
+                            <mxPoint x="1610" y="840"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="ek2" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#7030a0;strokeWidth=2;dashed=1;" parent="1" source="kb" target="s1" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="ek3" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#7030a0;strokeWidth=2;dashed=1;" parent="1" source="kb" target="s3" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+            </root>
+        </mxGraphModel>
+    </diagram>
+</mxfile>
